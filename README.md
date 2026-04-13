@@ -23,7 +23,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                        Ingest Pipeline                      │
 │                                                             │
-│  walk_repo → load_file → detect_language → chunk_file      │
+│  walk_repo → load_file → detect_language → chunk_file       │
 │       │                                        │            │
 │  extract_symbols/imports              embed_texts (local    │
 │       │                               sentence-transformers │
@@ -32,8 +32,8 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  DependencyGraph (NetworkX)           FAISSStore            │
 │       │                               (IndexFlatIP)         │
 │       ▼                                    │                │
-│  data/metadata/{repo_id}.db          data/indexes/         │
-│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index       │
+│  data/metadata/{repo_id}.db          data/indexes/          │
+│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
