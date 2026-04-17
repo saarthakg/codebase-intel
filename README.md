@@ -23,7 +23,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                        Ingest Pipeline                      │
 │                                                             │
-│  walk_repo → load_file → detect_language → chunk_file      │
+│  walk_repo → load_file → detect_language → chunk_file       │
 │       │                                        │            │
 │  extract_symbols/imports              embed_texts (local    │
 │       │                               sentence-transformers │
@@ -32,8 +32,8 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  DependencyGraph (NetworkX)           FAISSStore            │
 │       │                               (IndexFlatIP)         │
 │       ▼                                    │                │
-│  data/metadata/{repo_id}.db          data/indexes/         │
-│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index       │
+│  data/metadata/{repo_id}.db          data/indexes/          │
+│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -42,7 +42,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  POST /search   → embed query → FAISS search → ranked chunks│
 │  GET  /definition → SQLite symbol lookup → graph references │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
-│  POST /ask      → search → LLM (grounded answer + cites)   │
+│  POST /ask      → search → LLM (grounded answer + cites)    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
