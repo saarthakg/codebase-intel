@@ -23,7 +23,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                        Ingest Pipeline                      │
 │                                                             │
-│  walk_repo → load_file → detect_language → chunk_file       │
+│  walk_repo → load_file → detect_language → chunk_file      │
 │       │                                        │            │
 │  extract_symbols/imports              embed_texts (local    │
 │       │                               sentence-transformers │
@@ -32,8 +32,8 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  DependencyGraph (NetworkX)           FAISSStore            │
 │       │                               (IndexFlatIP)         │
 │       ▼                                    │                │
-│  data/metadata/{repo_id}.db          data/indexes/          │
-│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index        │
+│  data/metadata/{repo_id}.db          data/indexes/         │
+│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index       │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -42,7 +42,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  POST /search   → embed query → FAISS search → ranked chunks│
 │  GET  /definition → SQLite symbol lookup → graph references │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
-│  POST /ask      → search → Claude (grounded answer + cites) │
+│  POST /ask      → search → LLM (grounded answer + cites)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,7 +58,25 @@ cd codebase-intel
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env and set ANTHROPIC_API_KEY (needed for /ask mode only)
+```
+
+### Configure your LLM key
+
+The search, definition, and impact features work with no API key. Only `/ask` requires one.
+
+Edit `.env` and set your preferred backend:
+
+**Option A — Gemini (free tier, no credit card):**
+Get a free API key at [aistudio.google.com](https://aistudio.google.com), then:
+```
+LLM_BACKEND=gemini
+GEMINI_API_KEY=your-key-here
+```
+
+**Option B — Anthropic:**
+```
+LLM_BACKEND=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### Ingest a repo
@@ -71,16 +89,16 @@ python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
 ### Query
 
 ```bash
-# Semantic search
+# Semantic search (no API key needed)
 python scripts/demo_query.py --repo-id my-project "where is authentication handled?"
 
-# Symbol definition
+# Symbol definition (no API key needed)
 python scripts/demo_query.py --repo-id my-project --mode definition --symbol HTTPAdapter
 
-# Impact analysis
+# Impact analysis (no API key needed)
 python scripts/demo_query.py --repo-id my-project --mode impact --target src/requests/adapters.py
 
-# Grounded Q&A (requires ANTHROPIC_API_KEY)
+# Grounded Q&A (requires LLM API key)
 python scripts/demo_query.py --repo-id my-project --mode ask "how does redirect handling work?"
 ```
 
@@ -88,7 +106,7 @@ python scripts/demo_query.py --repo-id my-project --mode ask "how does redirect 
 
 ```bash
 uvicorn app.main:app --reload
-# API docs at http://localhost:8000/docs
+# Interactive docs at http://localhost:8000/docs
 ```
 
 ---
@@ -137,7 +155,7 @@ Returns `high_confidence` (graph traversal), `medium_confidence` (symbol refs), 
 
 ### `POST /ask`
 
-Grounded LLM Q&A with citations. Requires `ANTHROPIC_API_KEY`.
+Grounded LLM Q&A with citations. Requires a Gemini or Anthropic API key in `.env`.
 
 ```json
 {"repo_id": "my-project", "question": "How does redirect handling work?", "top_k": 8}
@@ -145,7 +163,7 @@ Grounded LLM Q&A with citations. Requires `ANTHROPIC_API_KEY`.
 
 ```json
 {
-  "answer": "Redirect handling is implemented in `src/requests/sessions.py` [1][2]. After `Session.send()` receives a response, it checks `response.status_code` against redirect codes (301, 302, 303, 307, 308) [1]...",
+  "answer": "Redirect handling is implemented in sessions.py [1][2]. After Session.send() receives a response, it checks response.status_code against redirect codes (301, 302, 303, 307, 308)...",
   "citations": [
     {"file_path": "src/requests/sessions.py", "start_line": 340, "end_line": 398,
      "relevance": "Cited as [1] in the answer"}
@@ -181,6 +199,25 @@ RELATED:
 [3] src/requests/adapters.py     lines 395–425 score=0.410
 ```
 
+**Grounded Q&A: "Where is SSL certificate verification handled?"**
+```
+A: SSL certificate verification is handled primarily in src/requests/adapters.py
+through the processing of the verify parameter:
+
+- Logic for CA Bundles: The HTTPAdapter determines the CA bundle location.
+  If verify=True, it defaults to DEFAULT_CA_BUNDLE_PATH; if verify is a
+  string, it uses that as the bundle path [5].
+- Default CA Source: The default CA bundle is provided by certifi,
+  defined in src/requests/certs.py [3].
+- Connection Configuration: For HTTPS, if verification is enabled,
+  the adapter sets conn.cert_reqs = "CERT_REQUIRED" [5].
+
+Citations:
+  src/requests/certs.py       lines 1–19
+  src/requests/adapters.py    lines 289–334
+  src/requests/adapters.py    lines 395–425
+```
+
 ---
 
 ## Design Decisions
@@ -196,10 +233,9 @@ for file-level dependency DAGs. The graph serializes to a single pickle.
 function names, wrong file paths, and fabricated behavior are worse than "I don't know."
 Every answer cites the exact file and line range it was derived from.
 
-**Why three impact signals:** Import edges alone miss semantic coupling (two files that
-share a protocol without importing each other). Semantic similarity alone produces false
-positives. Combining graph traversal + symbol references + semantic similarity gives
-calibrated confidence scores that are actually useful.
+**Why three impact signals:** Import edges alone miss semantic coupling. Semantic similarity
+alone produces false positives. Combining graph traversal + symbol references + semantic
+similarity gives calibrated confidence scores that are actually useful.
 
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
@@ -212,9 +248,6 @@ via tree-sitter, proper import resolution) beats six languages done poorly.
 pytest tests/ -v
 # 52 passed
 ```
-
-Tests are unit-only (no embedding model, no API calls) except for integration tests that
-require a pre-indexed repo.
 
 ---
 

@@ -4,8 +4,7 @@ import re
 from app.models.schemas import AskResponse, Citation, ChunkMetadata
 
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
-GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GEMINI_MODEL = "gemini-flash-latest"
 
 SYSTEM_PROMPT = """You are a codebase assistant. You answer questions about source code \
 using ONLY the provided code excerpts. You must cite the specific files and line ranges \
@@ -48,20 +47,18 @@ def _call_anthropic(prompt: str) -> str:
 
 
 def _call_gemini(prompt: str) -> str:
-    import openai
-    client = openai.OpenAI(
-        api_key=os.environ.get("GEMINI_API_KEY"),
-        base_url=GEMINI_BASE_URL,
-    )
-    response = client.chat.completions.create(
-        model=GEMINI_MODEL,
-        max_tokens=1000,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return response.choices[0].message.content
+    import httpx
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={gemini_key}"
+    body = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 1000},
+    }
+    resp = httpx.post(url, json=body, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def generate_answer(

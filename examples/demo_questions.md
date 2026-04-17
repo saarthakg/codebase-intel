@@ -181,13 +181,44 @@ and calls the auth callable.
 
 ---
 
-## Notes on /ask mode
-
-The `/ask` endpoint (and `--mode ask`) requires `ANTHROPIC_API_KEY` set in `.env`. It calls
-`claude-sonnet-4-6` with retrieved chunks as context and returns a grounded answer with
-`[N]` citations. Example:
+## Q7: Where is SSL certificate verification handled? (grounded Q&A)
 
 ```
 python scripts/demo_query.py --repo-id requests --mode ask \
-  "How does requests handle redirects?"
+  "Where is SSL certificate verification handled?"
 ```
+
+```
+Q: Where is SSL certificate verification handled?
+
+A: SSL certificate verification is handled primarily in src/requests/adapters.py
+through the processing of the verify parameter:
+
+- Logic for CA Bundles: The HTTPAdapter determines the CA bundle location.
+  If verify=True, it defaults to DEFAULT_CA_BUNDLE_PATH; if verify is a string,
+  it uses that as the path to the CA bundle [5].
+- Connection Configuration: For HTTPS requests, if verification is enabled,
+  the adapter sets conn.cert_reqs = "CERT_REQUIRED" [5]. If the specified CA
+  bundle path does not exist, an OSError is raised [5].
+- Default CA Source: The default CA certificate bundle is provided by the
+  certifi package, as defined in src/requests/certs.py [3].
+- Method Parameters: Methods in src/requests/adapters.py such as those involving
+  connection retrieval and request sending accept verify (server TLS verification)
+  and cert (client-side certificates) [4][6][10].
+
+Citations:
+  src/requests/certs.py       lines 1–19    (cited as [3])
+  src/requests/adapters.py    lines 395–425 (cited as [4])
+  src/requests/adapters.py    lines 289–334 (cited as [5])
+  src/requests/adapters.py    lines 421–458 (cited as [6])
+  src/requests/adapters.py    lines 597–635 (cited as [10])
+```
+
+---
+
+## Notes on /ask mode
+
+The `/ask` endpoint requires a `GEMINI_API_KEY` (free at [aistudio.google.com](https://aistudio.google.com))
+or `ANTHROPIC_API_KEY` set in `.env`, along with `LLM_BACKEND=gemini` or `LLM_BACKEND=anthropic`.
+The LLM reads retrieved code chunks and answers with `[N]` citations — it cannot invent
+behavior not present in the excerpts.
