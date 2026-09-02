@@ -70,6 +70,26 @@ def test_deduplication_multiple_paths():
     assert "D.py" in files
 
 
+def test_import_cycle_excludes_start_from_its_own_results():
+    """A.py <-> B.py is a real import cycle (common with circular imports).
+    dependents_of/dependencies_of must never report a file as one of its own
+    dependents/dependencies, even though it's graph-theoretically reachable
+    from itself via the cycle."""
+    g = DependencyGraph()
+    g.add_file("A.py")
+    g.add_file("B.py")
+    g.add_import_edge("A.py", "B.py")
+    g.add_import_edge("B.py", "A.py")
+
+    dependents = [r["file"] for r in g.dependents_of("A.py", depth=5)]
+    assert "A.py" not in dependents
+    assert "B.py" in dependents
+
+    dependencies = [r["file"] for r in g.dependencies_of("A.py", depth=5)]
+    assert "A.py" not in dependencies
+    assert "B.py" in dependencies
+
+
 def test_unknown_file_returns_empty():
     g = make_chain()
     result = g.dependents_of("nonexistent.py", depth=3)

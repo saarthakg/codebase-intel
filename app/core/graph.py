@@ -40,18 +40,18 @@ class DependencyGraph:
         queue: deque[tuple[str, int]] = deque([(start, 0)])
         while queue:
             node, d = queue.popleft()
-            if node == start:
-                for neighbor in graph.successors(node):
-                    if neighbor not in visited and d + 1 <= depth:
-                        visited[neighbor] = d + 1
-                        queue.append((neighbor, d + 1))
-            else:
-                if d < visited.get(node, d + 1):
-                    visited[node] = d
-                for neighbor in graph.successors(node):
-                    if neighbor not in visited and d + 1 <= depth:
-                        visited[neighbor] = d + 1
-                        queue.append((neighbor, d + 1))
+            if d >= depth:
+                continue
+            for neighbor in graph.successors(node):
+                # Exclude `start` itself: with an import cycle (real code does
+                # this — e.g. two modules importing each other), a path can
+                # lead back to the start node, which would otherwise report a
+                # file as one of its own dependents/dependencies. That's never
+                # useful information, cycle or not.
+                if neighbor == start or neighbor in visited:
+                    continue
+                visited[neighbor] = d + 1
+                queue.append((neighbor, d + 1))
         return sorted(
             [{"file": f, "depth": d} for f, d in visited.items()],
             key=lambda x: x["depth"],

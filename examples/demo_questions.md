@@ -3,8 +3,11 @@
 Indexed with:
 ```
 python scripts/ingest_repo.py --repo ../requests-demo --repo-id requests
-# Indexed 46 files, 378 chunks, 757 symbols, 62 graph edges.
+# Indexed 47 files, 405 chunks, 807 symbols, 81 graph edges.
 ```
+
+All output below is real, regenerated against the current `requests-demo` source (post the
+2026-09 upstream pull that added the `_types.py` typing pass).
 
 ---
 
@@ -18,33 +21,49 @@ python scripts/demo_query.py --repo-id requests "where is SSL certificate verifi
 Search: "where is SSL certificate verification handled?"
 Top 10 results:
 
-[1] tests/certs/README.md  lines 1–11  score=0.442
-    # Testing Certificates
-    This is a collection of certificates useful for testing aspects of Requests' behaviour.
+[1] src/requests/adapters.py  lines 296–337  score=0.457
+    manager = self.proxy_manager[proxy] = proxy_from_url(...)
+    (proxy connection pool setup, used by the TLS-verifying send() path)
 
-[2] tests/certs/mtls/README.md  lines 1–5  score=0.420
+[2] tests/certs/README.md  lines 1–11  score=0.442
+    # Testing Certificates
+    This is a collection of certificates useful for testing aspects of
+    Requests' behaviour.
+
+[3] src/requests/adapters.py  lines 431–464  score=0.423
+    must both set "ssl_context" and based on what else they require,
+    alter the other keys to ensure the desired behaviour.
+
+[4] tests/certs/mtls/README.md  lines 1–5  score=0.420
     # Certificate Examples for mTLS
 
-[3] src/requests/certs.py  lines 1–19  score=0.415
+[5] src/requests/certs.py  lines 1–19  score=0.415
     #!/usr/bin/env python
     """
     requests.certs
     ~~~~~~~~~~~~~~
-    This module returns the preferred default CA certificate bundle. There is
-    only one — the one from the certifi package.
+    This module returns the preferred default CA certificate bundle.
 
-[4] src/requests/adapters.py  lines 395–425  score=0.410
-    (TLS context construction, verify/cert parameter handling)
+[6] src/requests/sessions.py  lines 470–503  score=0.385
+    #: If verify is set to `False`, requests will accept any TLS certificate
+    #: presented by the server, and will ignore hostname mismatches...
 
-[5] src/requests/adapters.py  lines 289–334  score=0.381
-    the server's TLS certificate, or a string, in which case it must be a path
-        to a CA bundle to use
-    :param cert: The SSL certificate to verify.
+[7] src/requests/sessions.py  lines 602–639  score=0.373
+    hostname to the URL of the proxy...
+
+[8] tests/certs/README.md  lines 9–11  score=0.370
+    * [mtls](./mtls) provides a valid client certificate with a 2 year validity
+
+[9] tests/testserver/server.py  lines 153–177  score=0.370
+    (test server TLS context setup for mTLS tests)
+
+[10] src/requests/adapters.py  lines 640–679  score=0.355
+    Sends PreparedRequest object. Returns Response object.
 ```
 
-**Answer:** SSL certificate verification lives primarily in `src/requests/certs.py` (CA bundle
-resolution via certifi) and `src/requests/adapters.py` (the `send()` method's `verify`/`cert`
-parameter handling and TLS context construction).
+**Answer:** SSL certificate verification lives primarily in `src/requests/adapters.py` (TLS
+context construction and the `verify`/`cert` parameter handling in `send()`/`cert_verify()`)
+and `src/requests/certs.py` (CA bundle resolution via `certifi`).
 
 ---
 
@@ -58,68 +77,90 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "src/requ
 Impact analysis: src/requests/adapters.py
 
 HIGH CONFIDENCE (direct/transitive imports):
+  [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
+  [0.75] src/requests/cookies.py  — transitive import (2 hops)
+  [0.75] src/requests/_types.py  — transitive import (2 hops)
+  [0.75] src/requests/auth.py  — transitive import (2 hops)
+  [0.75] src/requests/utils.py  — transitive import (2 hops)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.75] src/requests/api.py  — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/utils.py  — transitive import (3 hops)
-  [0.50] src/requests/api.py  — transitive import (3 hops)
   [0.50] src/requests/help.py  — transitive import (3 hops)
 
 RELATED (semantic similarity):
-  [0.35] README.md  — semantically related
   [0.35] tests/test_adapters.py  — semantically related
+  [0.35] pyproject.toml  — semantically related
+  [0.35] README.md  — semantically related
 ```
+
+Note `adapters.py` does **not** appear in its own results, even though `adapters.py` and
+`models.py` actually import each other (a real circular import in `requests`). That's a
+deliberate fix — see the "Why the dependency-graph traversal excludes its own starting file"
+design decision in the main README.
 
 ---
 
 ## Q3: What happens after Session.send() is called?
 
 ```
-python scripts/demo_query.py --repo-id requests "what happens after Session.send() is called?"
+python scripts/demo_query.py --repo-id requests "what happens after Session.send() is called?" --top-k 5
 ```
 
 ```
 Search: "what happens after Session.send() is called?"
 Top 5 results:
 
-[1] src/requests/api.py  lines 56–106  score=0.418
-    with sessions.Session() as session:
-        return session.request(...)
-
-[2] src/requests/sessions.py  lines 340–398  score=0.416
-    (redirect handling, response reconstruction)
-
-[3] src/requests/sessions.py  lines 829–834  score=0.414
+[1] src/requests/sessions.py  lines 916–921  score=0.414
+    to create a session. This may be removed at a future date.
+    :rtype: Session
+    """
     return Session()
 
-[4] src/requests/api.py  lines 1–31  score=0.411
-    (top-level API wiring)
+[2] src/requests/sessions.py  lines 377–436  score=0.402
+    # https://tools.ietf.org/html/rfc7231#section-6.4.4
+    if response.status_code == codes.see_other and method != "HEAD":
+        method = "GET"
+    # Do what the browsers do, despite standards... (redirect handling)
 
-[5] src/requests/models.py  lines 327–379  score=0.411
-    >>> s = requests.Session()
-    >>> s.send(r)
-    <Response [200]>
+[3] src/requests/models.py  lines 793–835  score=0.402
+    #: Textual reason of responded HTTP Status, e.g. "Not Found" or "OK".
+    self.reason = None
+    #: A CookieJar of Cookies the server sent back.
+
+[4] src/requests/sessions.py  lines 901–921  score=0.396
+    return state
+    def __setstate__(self, state): ...
+    def session() -> Session: ...
+
+[5] src/requests/sessions.py  lines 1–66  score=0.386
+    """
+    requests.sessions
+    ~~~~~~~~~~~~~~~~~
+    This module provides a Session object to manage and persist settings.
 ```
 
 ---
 
-## Q4: Where is PreparedRequest defined?
+## Q4: Where is HTTPAdapter defined?
 
 ```
-python scripts/demo_query.py --repo-id requests --mode definition --symbol PreparedRequest
+python scripts/demo_query.py --repo-id requests --mode definition --symbol HTTPAdapter
 ```
 
 ```
-Definition: PreparedRequest
-  Defined in: src/requests/models.py  line 315  (class)
+Definition: HTTPAdapter
+  Defined in: src/requests/adapters.py  line 158  (class)
   Referenced in (1 files):
-    - src/requests/models.py
+    - src/requests/adapters.py
 ```
 
 ---
 
-## Q5: What would break if I changed the send() method?
+## Q5: What would break if I changed the send() code path?
 
 ```
 python scripts/demo_query.py --repo-id requests --mode impact --target "send"
@@ -129,55 +170,70 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "send"
 Impact analysis: send
 
 HIGH CONFIDENCE (direct/transitive imports):
-  [0.95] src/requests/sessions.py  — direct import
-  [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.95] src/requests/__init__.py  — direct import
+  [0.75] src/requests/models.py  — transitive import (2 hops)
+  [0.75] src/requests/utils.py  — transitive import (2 hops)
+  [0.75] src/requests/adapters.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
+  [0.75] src/requests/api.py  — transitive import (2 hops)
+  [0.75] src/requests/help.py  — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/utils.py  — transitive import (3 hops)
-  [0.50] src/requests/api.py  — transitive import (3 hops)
-  [0.50] src/requests/help.py  — transitive import (3 hops)
+  [0.50] src/requests/cookies.py  — transitive import (3 hops)
+  [0.50] src/requests/_types.py  — transitive import (3 hops)
+  [0.50] src/requests/auth.py  — transitive import (3 hops)
+  [0.50] src/requests/exceptions.py  — transitive import (3 hops)
 
 RELATED (semantic similarity):
-  [0.35] tests/test_lowlevel.py  — semantically related
   [0.35] tests/test_requests.py  — semantically related
+  [0.35] tests/test_lowlevel.py  — semantically related
+  [0.35] HISTORY.md  — semantically related
 ```
+
+`send` is a common enough name that symbol lookup resolves to whichever matching definition
+was indexed first (`__init__.py` re-exports here) — a good illustration of why `/impact`
+accepts file paths as well as symbol names when you want to be unambiguous.
 
 ---
 
 ## Q6: Where is authentication handled?
 
 ```
-python scripts/demo_query.py --repo-id requests "where is authentication handled?"
+python scripts/demo_query.py --repo-id requests "where is authentication handled?" --top-k 5
 ```
 
 ```
 Search: "where is authentication handled?"
 Top 5 results:
 
-[1] src/requests/auth.py  lines 96–143  score=0.342
-    class HTTPProxyAuth(HTTPBasicAuth):
-        """Attaches HTTP Proxy Authentication to a given Request object."""
+[1] src/requests/auth.py  lines 330–355  score=0.358
+    r.headers["Authorization"] = _digest_auth
+    if (tell := getattr(r.body, "tell", None)) is not None: ...
 
-[2] src/requests/auth.py  lines 1–49  score=0.321
+[2] src/requests/auth.py  lines 1–52  score=0.355
     """
     requests.auth
     ~~~~~~~~~~~~~
     This module contains the authentication handlers for Requests.
     """
 
-[3] src/requests/sessions.py  lines 461–509  score=0.306
-    (session.request() — where auth is merged and applied)
+[3] src/requests/auth.py  lines 93–143  score=0.339
+    @overload
+    def __init__(self, username: bytes, password: bytes) -> None: ...
 
-[4] src/requests/auth.py  lines 46–102  score=0.303
-    (HTTPDigestAuth implementation)
+[4] HISTORY.md  lines 2022–2093  score=0.325
+    - Internal Refactor
+    - Bytes data upload Bugfix ...
 
-[5] src/requests/sessions.py  lines 272–309  score=0.289
-    (redirect handling with auth re-application)
+[5] src/requests/sessions.py  lines 306–343  score=0.317
+    url = self.get_redirect_target(resp)
+    yield resp
+    def rebuild_auth(self, prepared_request, response): ...
 ```
 
-**Answer:** Authentication is handled in `src/requests/auth.py` (HTTPBasicAuth, HTTPDigestAuth,
-HTTPProxyAuth classes) and applied in `src/requests/sessions.py` where session.request() merges
-and calls the auth callable.
+**Answer:** Authentication is handled in `src/requests/auth.py` (`HTTPBasicAuth`,
+`HTTPDigestAuth`, `HTTPProxyAuth`) and applied/re-applied across redirects in
+`src/requests/sessions.py`.
 
 ---
 
@@ -191,28 +247,65 @@ python scripts/demo_query.py --repo-id requests --mode ask \
 ```
 Q: Where is SSL certificate verification handled?
 
-A: SSL certificate verification is handled primarily in src/requests/adapters.py
-through the processing of the verify parameter:
-
-- Logic for CA Bundles: The HTTPAdapter determines the CA bundle location.
-  If verify=True, it defaults to DEFAULT_CA_BUNDLE_PATH; if verify is a string,
-  it uses that as the path to the CA bundle [5].
-- Connection Configuration: For HTTPS requests, if verification is enabled,
-  the adapter sets conn.cert_reqs = "CERT_REQUIRED" [5]. If the specified CA
-  bundle path does not exist, an OSError is raised [5].
-- Default CA Source: The default CA certificate bundle is provided by the
-  certifi package, as defined in src/requests/certs.py [3].
-- Method Parameters: Methods in src/requests/adapters.py such as those involving
-  connection retrieval and request sending accept verify (server TLS verification)
-  and cert (client-side certificates) [4][6][10].
+A: Based on the provided excerpts, SSL/TLS certificate verification is handled in
+the following places:
+* HTTPAdapter.cert_verify method in src/requests/adapters.py: Specifically
+  dedicated to verifying an SSL certificate (exposed for subclassing
+  HTTPAdapter) [1]. Adapter methods also accept and process verify (a boolean
+  to control TLS certificate verification or a path string to a CA bundle)
+  and client cert parameters [3, 10].
+* Session in src/requests/sessions.py: Manages the self.verify configuration
+  (defaulting to True) and the verify parameter on session requests to
+  determine whether to verify the server's TLS certificate or specify a CA
+  bundle path [6, 7].
+* src/requests/certs.py: Provides the preferred default CA certificate bundle
+  used for verification via certifi.where() [5].
+* Test Server in tests/testserver/server.py: Configures server-side
+  verification using ssl.SSLContext (verify_mode and load_verify_locations)
+  for mutual TLS tests [9].
 
 Citations:
-  src/requests/certs.py       lines 1–19    (cited as [3])
-  src/requests/adapters.py    lines 395–425 (cited as [4])
-  src/requests/adapters.py    lines 289–334 (cited as [5])
-  src/requests/adapters.py    lines 421–458 (cited as [6])
-  src/requests/adapters.py    lines 597–635 (cited as [10])
+  src/requests/adapters.py    lines 296–337  (cited as [1])
+  src/requests/certs.py       lines 1–19     (cited as [5])
+  tests/testserver/server.py  lines 153–177  (cited as [9])
 ```
+
+---
+
+## Q8: What does a PR touching adapters.py and certs.py affect? (batch impact)
+
+```
+python scripts/demo_query.py --repo-id requests --mode impact-batch \
+  --targets "src/requests/adapters.py,src/requests/certs.py"
+```
+
+```
+Batch impact analysis: src/requests/adapters.py, src/requests/certs.py
+
+HIGH CONFIDENCE (direct/transitive imports):
+  [0.95] src/requests/models.py    — direct import              (via src/requests/adapters.py)
+  [0.95] src/requests/sessions.py  — direct import              (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/cookies.py   — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/_types.py    — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/auth.py      — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/utils.py     — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/exceptions.py — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/hooks.py     — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/__init__.py  — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.75] src/requests/api.py       — transitive import (2 hops) (via src/requests/adapters.py)
+
+MEDIUM CONFIDENCE:
+  [0.50] src/requests/help.py      — transitive import (3 hops) (via src/requests/adapters.py)
+
+RELATED (semantic similarity):
+  [0.35] tests/test_adapters.py    — semantically related (via src/requests/adapters.py)
+  [0.35] pyproject.toml            — semantically related (via src/requests/adapters.py)
+  [0.35] README.md                 — semantically related (via src/requests/adapters.py, src/requests/certs.py)
+  [0.35] tests/test_requests.py    — semantically related (via src/requests/certs.py)
+```
+
+`sessions.py` and `README.md` are each impacted by *both* changed files — `triggered_by` makes
+that visible in one call instead of running `/impact` twice and diffing the results by hand.
 
 ---
 

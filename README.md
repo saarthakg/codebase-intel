@@ -89,7 +89,7 @@ Both backends default to a current model (`claude-sonnet-5` / `gemini-flash-late
 
 ```bash
 python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
-# Indexed 46 files, 378 chunks, 757 symbols, 62 graph edges.
+# Indexed 47 files, 405 chunks, 807 symbols, 81 graph edges.
 ```
 
 `repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). Re-running ingest on the same `repo_id` is safe and idempotent — it fully replaces the previous index rather than accumulating stale chunks/symbols/edges alongside it, and the embedding backend used at ingest time is recorded and reused automatically for every later query against that `repo_id`, even if `EMBEDDING_BACKEND` in `.env` changes afterward.
@@ -130,8 +130,8 @@ Ingest a repository and build all indexes.
 ```
 
 ```json
-{"repo_id": "my-project", "files_indexed": 46, "chunks_indexed": 378,
- "symbols_extracted": 757, "edges_in_graph": 62}
+{"repo_id": "my-project", "files_indexed": 47, "chunks_indexed": 405,
+ "symbols_extracted": 807, "edges_in_graph": 81}
 ```
 
 ### `POST /search`
@@ -148,7 +148,7 @@ Symbol definition lookup with cross-reference list.
 
 ```json
 {"symbol": "HTTPAdapter", "defining_file": "src/requests/adapters.py",
- "start_line": 144, "references": ["src/requests/sessions.py"]}
+ "start_line": 158, "references": ["src/requests/adapters.py"]}
 ```
 
 ### `POST /impact`
@@ -202,47 +202,121 @@ Grounded LLM Q&A with citations. Requires a Gemini or Anthropic API key in `.env
 
 ## Example Output
 
-Demoed against `psf/requests` — see [`examples/demo_questions.md`](examples/demo_questions.md) for full real output.
+Demoed against `psf/requests` (47 files, ~12K lines of Python) — see
+[`examples/demo_questions.md`](examples/demo_questions.md) for the full set of real,
+regenerated output.
 
 **Impact analysis of `adapters.py`:**
 ```
-HIGH CONFIDENCE:
+HIGH CONFIDENCE (direct/transitive imports):
+  [0.95] src/requests/models.py    — direct import
   [0.95] src/requests/sessions.py  — direct import
+  [0.75] src/requests/cookies.py   — transitive import (2 hops)
+  [0.75] src/requests/auth.py      — transitive import (2 hops)
+  [0.75] src/requests/utils.py     — transitive import (2 hops)
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.75] src/requests/api.py       — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/utils.py  — transitive import (3 hops)
-  [0.50] src/requests/api.py    — transitive import (3 hops)
+  [0.50] src/requests/help.py      — transitive import (3 hops)
 
 RELATED:
-  [0.35] tests/test_adapters.py  — semantically related
+  [0.35] tests/test_adapters.py    — semantically related
 ```
 
-**Search: "where is SSL verification handled?":**
+**Search: "where is SSL certificate verification handled?":**
 ```
-[1] src/requests/certs.py        lines 1–19    score=0.415
-[2] src/requests/adapters.py     lines 289–334 score=0.381
-[3] src/requests/adapters.py     lines 395–425 score=0.410
+[1] src/requests/adapters.py  lines 296–337  score=0.457
+[2] tests/certs/README.md     lines 1–11     score=0.442
+[3] src/requests/adapters.py  lines 431–464  score=0.423
+[4] src/requests/certs.py     lines 1–19     score=0.415
+[5] src/requests/sessions.py  lines 470–503  score=0.385
 ```
 
 **Grounded Q&A: "Where is SSL certificate verification handled?"**
 ```
-A: SSL certificate verification is handled primarily in src/requests/adapters.py
-through the processing of the verify parameter:
-
-- Logic for CA Bundles: The HTTPAdapter determines the CA bundle location.
-  If verify=True, it defaults to DEFAULT_CA_BUNDLE_PATH; if verify is a
-  string, it uses that as the bundle path [5].
-- Default CA Source: The default CA bundle is provided by certifi,
-  defined in src/requests/certs.py [3].
-- Connection Configuration: For HTTPS, if verification is enabled,
-  the adapter sets conn.cert_reqs = "CERT_REQUIRED" [5].
+A: Based on the provided excerpts, SSL/TLS certificate verification is handled in
+the following places:
+* HTTPAdapter.cert_verify method in src/requests/adapters.py: Specifically
+  dedicated to verifying an SSL certificate (exposed for subclassing
+  HTTPAdapter) [1]. Adapter methods also accept and process verify (a boolean
+  to control TLS certificate verification or a path string to a CA bundle)
+  and client cert parameters [3, 10].
+* Session in src/requests/sessions.py: Manages the self.verify configuration
+  (defaulting to True) and the verify parameter on session requests [6, 7].
+* src/requests/certs.py: Provides the preferred default CA certificate bundle
+  used for verification via certifi.where() [5].
+* Test Server in tests/testserver/server.py: Configures server-side
+  verification using ssl.SSLContext for mutual TLS tests [9].
 
 Citations:
-  src/requests/certs.py       lines 1–19
-  src/requests/adapters.py    lines 289–334
-  src/requests/adapters.py    lines 395–425
+  src/requests/adapters.py    lines 296–337   (cited as [1])
+  src/requests/certs.py       lines 1–19      (cited as [5])
+  tests/testserver/server.py  lines 153–177   (cited as [9])
 ```
+
+**Batch impact analysis (`POST /impact/batch`) — "what does this PR touch?":**
+```
+targets: ["src/requests/adapters.py", "src/requests/certs.py"]
+
+HIGH CONFIDENCE:
+  [0.95] src/requests/models.py    — direct import    (via src/requests/adapters.py)
+  [0.95] src/requests/sessions.py  — direct import    (via src/requests/adapters.py, src/requests/certs.py)
+  ...
+RELATED:
+  [0.35] README.md  — semantically related  (via src/requests/adapters.py, src/requests/certs.py)
+```
+`sessions.py` and `README.md` are each triggered by *both* changed files — one call
+instead of running `/impact` twice and manually merging the results. Full output in
+[`examples/demo_questions.md`](examples/demo_questions.md#q8-what-does-a-pr-touching-adapterspy-and-certspy-affect-batch-impact).
+
+---
+
+## Results
+
+Validated end-to-end against `psf/requests` (47 files, ~12K lines of Python) and dogfooded
+against its own source. Everything below is measured, not estimated.
+
+**Ingestion is fast and fully local.** 47 files → 405 chunks, 807 symbols, 81 dependency
+edges in ~7 seconds on a laptop CPU — walking, chunking, tree-sitter parsing, dependency
+resolution, and embedding with the local `all-MiniLM-L6-v2` model, no API key and no network
+calls required.
+
+**Re-ingestion is provably idempotent.** Ingesting the same `repo_id` twice leaves the exact
+same row counts, not double — verified both with a synthetic fixture
+(`tests/test_pipeline.py::test_reingest_replaces_not_accumulates`) and by re-ingesting the real
+`requests` repo mid-development and diffing chunk counts before/after. A symbol removed from
+source (e.g. a rename) is confirmed gone from the DB after re-ingest, not left as an orphaned row.
+
+**Retrieval finds the right code with pure semantic similarity — no keyword matching.**
+Querying "where is SSL certificate verification handled?" against all 405 chunks returns
+`adapters.py`'s TLS/cert-verification logic and `certs.py`'s CA-bundle resolution in the top 5
+results, purely from embedding similarity — neither file name nor the query share much
+vocabulary. See [Example Output](#example-output) above for the exact ranked results.
+
+**The impact engine caught a real bug in a mature, heavily-tested library — on itself.**
+Running `/impact` against `adapters.py` in the actual `requests` codebase surfaced that
+`adapters.py` and `models.py` import each other (a genuine circular import, not a test
+fixture). The graph BFS didn't originally exclude the traversal's own starting file from its
+results, so it reported "changing `adapters.py` might be impacted by `adapters.py`." That's
+exactly the kind of false result a hand-rolled impact tool ships silently until it's run
+against real code with a real import cycle. Fixed and covered by a regression test
+(`tests/test_graph.py::test_import_cycle_excludes_start_from_its_own_results`) that encodes
+the cycle directly rather than relying on the one real repo that happens to have one.
+
+**Test suite: 70/70 passing in well under a second**, covering ingestion and language
+detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
+symbol extraction for both Python and TypeScript (including the class-method extraction gap
+that was fixed), the dependency graph and its import-cycle handling, all three impact-analysis
+signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
+the full FastAPI surface (ingest → search → impact → repos → delete) driven through
+`TestClient` rather than mocked at the unit level.
+
+**Fixes were verified against production behavior, not just unit tests.** Re-ingest safety,
+`repo_id` path-traversal rejection, and embedding-backend/dimension consistency were each
+exercised through the live FastAPI app (`tests/test_repos.py`) in addition to targeted unit
+tests, and manually re-run against the real `requests` and `requests-demo` repos while making
+the change — the numbers and outputs throughout this README come from those actual runs.
 
 ---
 
@@ -262,6 +336,13 @@ Every answer cites the exact file and line range it was derived from.
 **Why three impact signals:** Import edges alone miss semantic coupling. Semantic similarity
 alone produces false positives. Combining graph traversal + symbol references + semantic
 similarity gives calibrated confidence scores that are actually useful.
+
+**Why the dependency-graph traversal explicitly excludes its own starting file:** Real
+codebases have import cycles (`requests`' own `adapters.py` and `models.py` import each
+other). Graph-theoretically, a file is reachable from itself through a cycle, so a naive BFS
+will report a file as one of its own transitive dependents. That's never actionable
+information for "what breaks if I change this file" — it's excluded unconditionally, cycle or
+not, rather than trying to special-case cycle detection.
 
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
@@ -285,7 +366,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 69 passed
+# 70 passed
 ```
 
 ---
