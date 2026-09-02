@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.search import search_chunks
+from app.core.validation import validate_repo_id
 from app.models.schemas import DefinitionResponse, SearchRequest, SearchResponse
 
 router = APIRouter()
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search(request: SearchRequest):
+def search(request: SearchRequest):
     from app.main import get_repo_state
     try:
         state = get_repo_state(request.repo_id)
@@ -25,10 +26,15 @@ async def search(request: SearchRequest):
 
 
 @router.get("/definition", response_model=DefinitionResponse)
-async def definition(
+def definition(
     repo_id: str = Query(...),
     symbol: str = Query(...),
 ):
+    try:
+        validate_repo_id(repo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     from app.main import get_repo_state
     try:
         state = get_repo_state(repo_id)

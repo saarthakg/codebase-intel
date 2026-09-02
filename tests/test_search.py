@@ -67,6 +67,29 @@ def test_save_and_load(tmp_path):
     assert results[0][0] == "chunk-0"
 
 
+def test_dim_mismatch_raises_clear_error():
+    """Querying with a differently-sized embedding should fail loudly, not with
+    an opaque FAISS/C++ error — this happens if a repo is queried with a
+    different EMBEDDING_BACKEND than it was ingested with."""
+    store = FAISSStore(dim=DIM)
+    store.add(unit_vector(0), ["chunk-0"])
+    wrong_dim_query = np.zeros((1, DIM * 2), dtype=np.float32)
+    with pytest.raises(ValueError, match="dim"):
+        store.search(wrong_dim_query, top_k=1)
+
+
+def test_embedding_backend_round_trips_through_save_load(tmp_path):
+    store = FAISSStore(dim=DIM, embedding_backend="openai", embedding_model="text-embedding-3-small")
+    store.add(unit_vector(0), ["chunk-0"])
+    path = str(tmp_path / "test.index")
+    store.save(path)
+
+    store2 = FAISSStore(dim=DIM)
+    store2.load(path)
+    assert store2.embedding_backend == "openai"
+    assert store2.embedding_model == "text-embedding-3-small"
+
+
 def test_normalization_consistency():
     """Non-unit vectors should still find the right match after normalization."""
     store = FAISSStore(dim=DIM)

@@ -1,18 +1,16 @@
 from dataclasses import dataclass
-from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI
 
-from app.api import routes_ingest, routes_search, routes_impact, routes_ask
+from app.api import routes_ask, routes_impact, routes_ingest, routes_repos, routes_search
+from app.core import paths
 from app.core.graph import DependencyGraph
+from app.core.validation import validate_repo_id
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
-
-DATA_INDEXES = Path(__file__).parent.parent / "data" / "indexes"
-DATA_METADATA = Path(__file__).parent.parent / "data" / "metadata"
 
 
 @dataclass
@@ -26,26 +24,25 @@ _loaded_repos: dict[str, RepoState] = {}
 
 
 def get_repo_state(repo_id: str) -> RepoState:
+    validate_repo_id(repo_id)
     if repo_id in _loaded_repos:
         return _loaded_repos[repo_id]
 
-    index_path = str(DATA_INDEXES / f"{repo_id}.index")
-    db_path = str(DATA_METADATA / f"{repo_id}.db")
-    graph_path = str(DATA_METADATA / f"{repo_id}.graph.pkl")
-
-    if not Path(index_path).exists():
+    index_path = paths.index_path(repo_id)
+    if not index_path.exists():
         raise FileNotFoundError(
             f"No index found for repo '{repo_id}'. Run POST /ingest first."
         )
 
-    faiss_store = FAISSStore(dim=384)  # dim overwritten by load
-    faiss_store.load(index_path)
+    faiss_store = FAISSStore(dim=384)  # dim/backend overwritten by load
+    faiss_store.load(str(index_path))
 
-    metadata_store = MetadataStore(db_path)
+    metadata_store = MetadataStore(str(paths.db_path(repo_id)))
 
     graph = DependencyGraph()
-    if Path(graph_path).exists():
-        graph.load(graph_path)
+    graph_path = paths.graph_path(repo_id)
+    if graph_path.exists():
+        graph.load(str(graph_path))
 
     state = RepoState(
         faiss_store=faiss_store,
@@ -59,13 +56,14 @@ def get_repo_state(repo_id: str) -> RepoState:
 app = FastAPI(
     title="codebase-intel",
     description="AI-powered codebase intelligence: semantic search, symbol lookup, dependency-aware impact analysis, and grounded repository Q&A.",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.include_router(routes_ingest.router)
 app.include_router(routes_search.router)
 app.include_router(routes_impact.router)
 app.include_router(routes_ask.router)
+app.include_router(routes_repos.router)
 
 
 @app.get("/health")

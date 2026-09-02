@@ -40,6 +40,24 @@ const processOrder = async (id: number) => {
 };
 """
 
+TYPESCRIPT_CLASS_METHODS_FIXTURE = """\
+class ApiClient {
+    baseUrl: string;
+
+    constructor(baseUrl: string) {
+        this.baseUrl = baseUrl;
+    }
+
+    async fetchUser(id: number): Promise<any> {
+        return this.get(`/users/${id}`);
+    }
+
+    private get(path: string) {
+        return fetch(this.baseUrl + path);
+    }
+}
+"""
+
 
 # ── Python extraction ─────────────────────────────────────────────────────────
 
@@ -95,6 +113,16 @@ def test_typescript_extract_arrow_function():
     syms = extract_symbols(TYPESCRIPT_FIXTURE, "api.ts", "typescript")
     names = [s.name for s in syms]
     assert "processOrder" in names
+
+
+def test_typescript_extract_class_methods():
+    """Class methods are `method_definition` nodes, distinct from top-level functions —
+    previously these were silently dropped by the tree-sitter extractor."""
+    syms = extract_symbols(TYPESCRIPT_CLASS_METHODS_FIXTURE, "api.ts", "typescript")
+    methods = {s.name for s in syms if s.kind == "method"}
+    assert "fetchUser" in methods
+    assert "get" in methods
+    assert "constructor" in methods
 
 
 def test_typescript_extract_imports():

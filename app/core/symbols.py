@@ -117,12 +117,23 @@ def _ts_extract_typescript(tree, content: str, file_path: str) -> tuple[list[Sym
     imports: list[ImportInfo] = []
 
     func_types = {"function_declaration", "function_expression", "arrow_function"}
+    method_types = {"method_definition"}
     class_types = {"class_declaration"}
     import_types = {"import_statement"}
     lexical_types = {"lexical_declaration", "variable_declaration"}
 
-    for node in _walk_tree(tree.root_node, func_types | class_types | import_types | lexical_types):
-        if node.type in func_types | class_types:
+    walk_types = func_types | method_types | class_types | import_types | lexical_types
+    for node in _walk_tree(tree.root_node, walk_types):
+        if node.type in method_types:
+            # Class methods are `method_definition` nodes, not `function_declaration` —
+            # without this branch, every method on a TS/JS class was silently dropped.
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = content[name_node.start_byte:name_node.end_byte]
+                line = node.start_point[0] + 1
+                symbols.append(SymbolInfo(name=name, kind="method", start_line=line, file_path=file_path))
+
+        elif node.type in func_types | class_types:
             name_node = node.child_by_field_name("name")
             if name_node:
                 name = content[name_node.start_byte:name_node.end_byte]

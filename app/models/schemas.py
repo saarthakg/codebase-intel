@@ -1,5 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
+
+from app.core.validation import validate_repo_id
+
+
+class _RepoScoped(BaseModel):
+    """Base for any request keyed by repo_id — enforces the filesystem-safe format."""
+    repo_id: str
+
+    @field_validator("repo_id")
+    @classmethod
+    def _check_repo_id(cls, v: str) -> str:
+        return validate_repo_id(v)
 
 
 # --- Shared ---
@@ -17,9 +29,9 @@ class ChunkMetadata(BaseModel):
 
 # --- Ingest ---
 
-class IngestRequest(BaseModel):
+class IngestRequest(_RepoScoped):
+    """repo_id: user-chosen name, e.g. 'my-project' (inherited from _RepoScoped)."""
     repo_path: str
-    repo_id: str            # user-chosen name, e.g. "my-project"
 
 
 class IngestResponse(BaseModel):
@@ -32,8 +44,7 @@ class IngestResponse(BaseModel):
 
 # --- Search ---
 
-class SearchRequest(BaseModel):
-    repo_id: str
+class SearchRequest(_RepoScoped):
     query: str
     top_k: int = 10
 
@@ -62,8 +73,7 @@ class DefinitionResponse(BaseModel):
 
 # --- Impact ---
 
-class ImpactRequest(BaseModel):
-    repo_id: str
+class ImpactRequest(_RepoScoped):
     target: str             # file path or symbol name
     depth: int = 3          # graph traversal depth
 
@@ -82,10 +92,29 @@ class ImpactResponse(BaseModel):
     related: list[ImpactedFile]
 
 
+class ImpactBatchRequest(_RepoScoped):
+    targets: list[str]      # e.g. changed files from `git diff --name-only`
+    depth: int = 3
+
+
+class BatchImpactedFile(BaseModel):
+    file_path: str
+    reason: str
+    confidence: float
+    depth: int
+    triggered_by: list[str]  # which of the requested targets caused this impact
+
+
+class ImpactBatchResponse(BaseModel):
+    targets: list[str]
+    high_confidence: list[BatchImpactedFile]
+    medium_confidence: list[BatchImpactedFile]
+    related: list[BatchImpactedFile]
+
+
 # --- Ask ---
 
-class AskRequest(BaseModel):
-    repo_id: str
+class AskRequest(_RepoScoped):
     question: str
     top_k: int = 8
 
@@ -101,3 +130,24 @@ class AskResponse(BaseModel):
     answer: str
     citations: list[Citation]
     uncertainty: Optional[str] = None  # null if confident; else a caveat
+
+
+# --- Repos ---
+
+class RepoInfo(BaseModel):
+    repo_id: str
+    files_indexed: int
+    chunks_indexed: int
+    symbols_extracted: int
+    edges_in_graph: int
+    embedding_backend: Optional[str] = None
+    ingested_at: Optional[str] = None  # ISO-8601 UTC timestamp
+
+
+class RepoListResponse(BaseModel):
+    repos: list[RepoInfo]
+
+
+class DeleteRepoResponse(BaseModel):
+    repo_id: str
+    deleted: bool

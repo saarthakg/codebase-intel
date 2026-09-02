@@ -8,7 +8,7 @@ router = APIRouter()
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask(request: AskRequest):
+def ask(request: AskRequest):
     from app.main import get_repo_state
     try:
         state = get_repo_state(request.repo_id)

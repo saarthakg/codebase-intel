@@ -12,6 +12,7 @@ Ask developer questions about any Python or TypeScript codebase:
 - **"What files import `auth.py`?"** → Dependency graph traversal
 - **"What would break if I change `adapters.py`?"** → Multi-signal impact analysis
 - **"How does data flow from the API layer to the database?"** → Grounded LLM answer over retrieved code chunks
+- **"What does this pull request touch?"** → Batch impact analysis across every changed file, merged into one ranked result
 
 Answers are always grounded in retrieved code — no hallucinated function names or invented behavior.
 
@@ -42,7 +43,10 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  POST /search   → embed query → FAISS search → ranked chunks│
 │  GET  /definition → SQLite symbol lookup → graph references │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
+│  POST /impact/batch → merge /impact across many changed files│
 │  POST /ask      → search → LLM (grounded answer + cites)    │
+│  GET  /repos    → list ingested repos + last-ingest stats   │
+│  DELETE /repos/{repo_id} → remove a repo's on-disk artifacts│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,12 +83,16 @@ LLM_BACKEND=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+Both backends default to a current model (`claude-sonnet-5` / `gemini-flash-latest`); override with `ANTHROPIC_MODEL=...` or `GEMINI_MODEL=...` in `.env` if you want a different one.
+
 ### Ingest a repo
 
 ```bash
 python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
 # Indexed 46 files, 378 chunks, 757 symbols, 62 graph edges.
 ```
+
+`repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). Re-running ingest on the same `repo_id` is safe and idempotent — it fully replaces the previous index rather than accumulating stale chunks/symbols/edges alongside it, and the embedding backend used at ingest time is recorded and reused automatically for every later query against that `repo_id`, even if `EMBEDDING_BACKEND` in `.env` changes afterward.
 
 ### Query
 
@@ -152,6 +160,24 @@ Multi-signal impact analysis: which files are likely affected by changing a targ
 ```
 
 Returns `high_confidence` (graph traversal), `medium_confidence` (symbol refs), and `related` (semantic similarity) buckets.
+
+### `POST /impact/batch`
+
+Diff-aware impact analysis: the same three signals, run across every file in a change set and merged into one ranked result. Point `targets` at the output of `git diff --name-only` to see everything a whole PR is likely to affect, not just one file at a time.
+
+```json
+{"repo_id": "my-project", "targets": ["src/requests/adapters.py", "src/requests/certs.py"], "depth": 3}
+```
+
+Each impacted file additionally reports `triggered_by`: which of the requested targets caused it to show up, and keeps the highest confidence when a file is impacted by more than one target.
+
+### `GET /repos`
+
+List every repo_id that has been ingested, with its most recent ingest stats (file/chunk/symbol/edge counts, embedding backend, timestamp).
+
+### `DELETE /repos/{repo_id}`
+
+Remove a repo's index, database, graph, and metadata from disk, and evict it from the in-memory cache. Returns `404` if the repo_id was never ingested.
 
 ### `POST /ask`
 
@@ -240,13 +266,26 @@ similarity gives calibrated confidence scores that are actually useful.
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
 
+**Why route handlers are sync `def`, not `async def`:** Every endpoint does CPU-bound work
+(embedding, FAISS search, tree-sitter parsing) with no `await` in the body. FastAPI runs sync
+path operations in a worker thread automatically; leaving them `async def` would run that
+CPU-bound work directly on the single asyncio event loop and block every other in-flight
+request — including `/health` — for the duration.
+
+**Why the embedding backend is pinned per repo, not read from the environment at query
+time:** `EMBEDDING_BACKEND` can change between when a repo was ingested and when it's later
+queried (e.g. switching `.env` to try OpenAI embeddings on a new repo). Reading the *current*
+env var at query time would silently mis-embed the query, either producing meaningless
+results or crashing on a dimension mismatch. The backend and model used at ingest time are
+recorded alongside the FAISS index and reused for every query against that `repo_id`.
+
 ---
 
 ## Running Tests
 
 ```bash
 pytest tests/ -v
-# 52 passed
+# 69 passed
 ```
 
 ---
@@ -254,15 +293,21 @@ pytest tests/ -v
 ## Limitations
 
 - File-level dependency graph, not call-level (no intra-function call edges)
-- No live repo sync — re-run `ingest` after changes
+- No live repo sync — re-run `ingest` after changes (safe to do repeatedly; see Quickstart)
 - Import resolution is best-effort for relative paths; external packages are excluded
 - Answer quality depends on whether the relevant code was retrieved in the top-k chunks
 - `all-MiniLM-L6-v2` is 384-dimensional and fast but not state-of-the-art; swap to
   `text-embedding-3-small` via `EMBEDDING_BACKEND=openai` for better retrieval
+- `/impact/batch` is file-level diff-awareness (which files does a change set touch), not
+  line-level (which *symbols* within a file a specific hunk affects)
+- Single-process, in-memory `_loaded_repos` cache — fine for local/single-worker use, not
+  designed for multiple concurrent `uvicorn` workers
 
 ## Future Work
 
-- Diff-aware impact analysis: changed lines → affected symbols
+- Line/hunk-level diff-aware impact analysis: changed lines → affected symbols, not just files
 - Tree-sitter call graph for intra-file function-call edges
 - Multi-repo support with cross-repo symbol resolution
 - Streaming responses for `/ask`
+- Background ingest jobs with progress polling, so `/ingest` on a large repo doesn't hold the
+  HTTP connection open for the whole run

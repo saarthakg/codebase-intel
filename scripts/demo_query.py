@@ -6,9 +6,10 @@ Usage:
   python scripts/demo_query.py --repo-id <id> "query string"
   python scripts/demo_query.py --repo-id <id> --mode definition --symbol <name>
   python scripts/demo_query.py --repo-id <id> --mode impact --target <file_or_symbol>
+  python scripts/demo_query.py --repo-id <id> --mode impact-batch --targets <f1,f2,...>
   python scripts/demo_query.py --repo-id <id> --mode ask "question"
 
-Modes: search (default), definition, impact, ask
+Modes: search (default), definition, impact, impact-batch, ask
 """
 import argparse
 import sys
@@ -19,31 +20,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.storage.faiss_store import FAISSStore
-from app.storage.metadata_store import MetadataStore
+from app.core import paths
 from app.core.graph import DependencyGraph
 from app.core.search import search_chunks
-from app.core.embeddings import get_embedding_dim
-
-DATA_INDEXES = Path(__file__).parent.parent / "data" / "indexes"
-DATA_METADATA = Path(__file__).parent.parent / "data" / "metadata"
+from app.core.validation import validate_repo_id
+from app.storage.faiss_store import FAISSStore
+from app.storage.metadata_store import MetadataStore
 
 
 def load_state(repo_id: str):
-    index_path = str(DATA_INDEXES / f"{repo_id}.index")
-    db_path = str(DATA_METADATA / f"{repo_id}.db")
-    graph_path = str(DATA_METADATA / f"{repo_id}.graph.pkl")
-
-    if not Path(index_path).exists():
+    validate_repo_id(repo_id)
+    index_path = paths.index_path(repo_id)
+    if not index_path.exists():
         print(f"Error: No index found for repo '{repo_id}'. Run ingest_repo.py first.")
         sys.exit(1)
 
-    faiss_store = FAISSStore(dim=get_embedding_dim())
-    faiss_store.load(index_path)
-    metadata_store = MetadataStore(db_path)
+    faiss_store = FAISSStore(dim=384)  # dim/backend overwritten by load
+    faiss_store.load(str(index_path))
+    metadata_store = MetadataStore(str(paths.db_path(repo_id)))
     graph = DependencyGraph()
-    if Path(graph_path).exists():
-        graph.load(graph_path)
+    graph_path = paths.graph_path(repo_id)
+    if graph_path.exists():
+        graph.load(str(graph_path))
     return faiss_store, metadata_store, graph
 
 
@@ -76,6 +74,29 @@ def mode_definition(repo_id: str, symbol: str):
         print("  No references found.")
 
 
+def _format_impact_line(f) -> str:
+    line = f"  [{f.confidence:.2f}] {f.file_path}  — {f.reason}"
+    triggered_by = getattr(f, "triggered_by", None)
+    if triggered_by:
+        line += f"  (via {', '.join(triggered_by)})"
+    return line
+
+
+def _print_impact_buckets(response):
+    if response.high_confidence:
+        print("HIGH CONFIDENCE (direct/transitive imports):")
+        for f in response.high_confidence:
+            print(_format_impact_line(f))
+    if response.medium_confidence:
+        print("\nMEDIUM CONFIDENCE:")
+        for f in response.medium_confidence:
+            print(_format_impact_line(f))
+    if response.related:
+        print("\nRELATED (semantic similarity):")
+        for f in response.related:
+            print(_format_impact_line(f))
+
+
 def mode_impact(repo_id: str, target: str, depth: int = 3):
     faiss_store, metadata_store, graph = load_state(repo_id)
     from app.core.impact import analyze_impact
@@ -90,18 +111,24 @@ def mode_impact(repo_id: str, target: str, depth: int = 3):
         depth=depth,
     )
     print(f"\nImpact analysis: {target}\n")
-    if response.high_confidence:
-        print("HIGH CONFIDENCE (direct/transitive imports):")
-        for f in response.high_confidence:
-            print(f"  [{f.confidence:.2f}] {f.file_path}  — {f.reason}")
-    if response.medium_confidence:
-        print("\nMEDIUM CONFIDENCE:")
-        for f in response.medium_confidence:
-            print(f"  [{f.confidence:.2f}] {f.file_path}  — {f.reason}")
-    if response.related:
-        print("\nRELATED (semantic similarity):")
-        for f in response.related:
-            print(f"  [{f.confidence:.2f}] {f.file_path}  — {f.reason}")
+    _print_impact_buckets(response)
+
+
+def mode_impact_batch(repo_id: str, targets: list[str], depth: int = 3):
+    faiss_store, metadata_store, graph = load_state(repo_id)
+    from app.core.impact import analyze_impact_batch
+    import app.core.embeddings as embeddings_module
+    response = analyze_impact_batch(
+        targets=targets,
+        repo_id=repo_id,
+        graph=graph,
+        faiss_store=faiss_store,
+        metadata_store=metadata_store,
+        embeddings_module=embeddings_module,
+        depth=depth,
+    )
+    print(f"\nBatch impact analysis: {', '.join(targets)}\n")
+    _print_impact_buckets(response)
 
 
 def mode_ask(repo_id: str, question: str, top_k: int = 8):
@@ -127,9 +154,12 @@ def mode_ask(repo_id: str, question: str, top_k: int = 8):
 def main():
     parser = argparse.ArgumentParser(description="Query a codebase-intel index.")
     parser.add_argument("--repo-id", required=True, help="Repository identifier")
-    parser.add_argument("--mode", choices=["search", "definition", "impact", "ask"], default="search")
+    parser.add_argument(
+        "--mode", choices=["search", "definition", "impact", "impact-batch", "ask"], default="search"
+    )
     parser.add_argument("--symbol", help="Symbol name (for --mode definition)")
     parser.add_argument("--target", help="File path or symbol (for --mode impact)")
+    parser.add_argument("--targets", help="Comma-separated file paths (for --mode impact-batch)")
     parser.add_argument("--depth", type=int, default=3, help="Graph traversal depth")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("query", nargs="?", help="Search query or question")
@@ -147,6 +177,10 @@ def main():
         if not args.target:
             parser.error("--target required for impact mode")
         mode_impact(args.repo_id, args.target, args.depth)
+    elif args.mode == "impact-batch":
+        if not args.targets:
+            parser.error("--targets required for impact-batch mode (comma-separated)")
+        mode_impact_batch(args.repo_id, [t.strip() for t in args.targets.split(",") if t.strip()], args.depth)
     elif args.mode == "ask":
         if not args.query:
             parser.error("Provide a question for ask mode")

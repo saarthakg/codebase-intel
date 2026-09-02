@@ -1,5 +1,5 @@
 from app.core.graph import DependencyGraph
-from app.models.schemas import ImpactedFile, ImpactResponse
+from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
 
@@ -71,7 +71,8 @@ def analyze_impact(
 
     # ── Signal 3: Semantic similarity ─────────────────────────────────────────
     try:
-        query_emb = embeddings_module.embed_query(target)
+        backend = getattr(faiss_store, "embedding_backend", None)
+        query_emb = embeddings_module.embed_query(target, backend=backend)
         hits = faiss_store.search(query_emb, top_k=5)
         for chunk_id, _score in hits:
             chunk = metadata_store.get_chunk(chunk_id)
@@ -109,6 +110,73 @@ def analyze_impact(
 
     return ImpactResponse(
         target=target,
+        high_confidence=high_confidence,
+        medium_confidence=medium_confidence,
+        related=related,
+    )
+
+
+def analyze_impact_batch(
+    targets: list[str],
+    repo_id: str,
+    graph: DependencyGraph,
+    faiss_store: FAISSStore,
+    metadata_store: MetadataStore,
+    embeddings_module,
+    depth: int = 3,
+) -> ImpactBatchResponse:
+    """Diff-aware impact analysis: merge impact across several changed targets.
+
+    Intended for a PR/diff workflow — pass the list of files changed in a
+    commit (e.g. `git diff --name-only`) and get back the union of everything
+    those changes are likely to affect, each impacted file annotated with
+    which of the changed targets triggered it. A file is excluded from its
+    own results (a target can't be "impacted by itself").
+    """
+    # file_path → (confidence, reason, depth, {triggering targets})
+    merged: dict[str, tuple[float, str, int, set[str]]] = {}
+
+    for target in targets:
+        single = analyze_impact(
+            target, repo_id, graph, faiss_store, metadata_store, embeddings_module, depth=depth
+        )
+        for item in single.high_confidence + single.medium_confidence + single.related:
+            if item.file_path == target:
+                continue  # a target can't be impacted by itself
+            existing = merged.get(item.file_path)
+            if existing is None:
+                merged[item.file_path] = (item.confidence, item.reason, item.depth, {target})
+            else:
+                conf, reason, hop, triggers = existing
+                triggers = triggers | {target}
+                if item.confidence > conf:
+                    merged[item.file_path] = (item.confidence, item.reason, item.depth, triggers)
+                else:
+                    merged[item.file_path] = (conf, reason, hop, triggers)
+
+    high_confidence: list[BatchImpactedFile] = []
+    medium_confidence: list[BatchImpactedFile] = []
+    related: list[BatchImpactedFile] = []
+
+    for file_path, (confidence, reason, hop, triggers) in sorted(
+        merged.items(), key=lambda x: -x[1][0]
+    ):
+        item = BatchImpactedFile(
+            file_path=file_path,
+            reason=reason,
+            confidence=confidence,
+            depth=hop,
+            triggered_by=sorted(triggers),
+        )
+        if confidence >= 0.7:
+            high_confidence.append(item)
+        elif confidence >= 0.4:
+            medium_confidence.append(item)
+        else:
+            related.append(item)
+
+    return ImpactBatchResponse(
+        targets=targets,
         high_confidence=high_confidence,
         medium_confidence=medium_confidence,
         related=related,

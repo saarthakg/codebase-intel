@@ -3,8 +3,9 @@ import re
 
 from app.models.schemas import AskResponse, Citation, ChunkMetadata
 
-ANTHROPIC_MODEL = "claude-sonnet-4-6"
-GEMINI_MODEL = "gemini-flash-latest"
+# Overridable via env so this doesn't need a code change when a new model ships.
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 
 SYSTEM_PROMPT = """You are a codebase assistant. You answer questions about source code \
 using ONLY the provided code excerpts. You must cite the specific files and line ranges \

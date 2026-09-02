@@ -44,7 +44,25 @@ class MetadataStore:
                 edge_type   TEXT NOT NULL,
                 PRIMARY KEY (repo_id, source_file, target_file, edge_type)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_chunks_repo_file ON chunks (repo_id, file_path);
+            CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols (repo_id, symbol_name);
+            CREATE INDEX IF NOT EXISTS idx_edges_repo_source ON edges (repo_id, source_file);
+            CREATE INDEX IF NOT EXISTS idx_edges_repo_target ON edges (repo_id, target_file);
         """)
+        self._conn.commit()
+
+    def clear_repo(self, repo_id: str) -> None:
+        """Delete all chunks/symbols/edges for a repo_id.
+
+        Must be called before re-ingesting an already-indexed repo_id — chunk_ids
+        are fresh UUIDs on every ingest, so without this, re-running /ingest on
+        the same repo_id accumulates orphaned rows from every previous run
+        instead of replacing them.
+        """
+        self._conn.execute("DELETE FROM chunks WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM symbols WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM edges WHERE repo_id = ?", (repo_id,))
         self._conn.commit()
 
     def upsert_chunk(self, chunk: ChunkMetadata, repo_id: str) -> None:
@@ -133,6 +151,12 @@ class MetadataStore:
             (repo_id, file_path),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def count_chunks(self, repo_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE repo_id = ?", (repo_id,)
+        ).fetchone()
+        return row[0]
 
     def count_symbols(self, repo_id: str) -> int:
         row = self._conn.execute(

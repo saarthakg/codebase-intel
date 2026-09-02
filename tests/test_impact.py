@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from app.core.graph import DependencyGraph
-from app.core.impact import analyze_impact
+from app.core.impact import analyze_impact, analyze_impact_batch
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
 from app.models.schemas import ChunkMetadata
@@ -54,7 +54,7 @@ def make_mock_faiss(chunk_file_map: dict[str, str]) -> tuple[MagicMock, MagicMoc
 
 
 class MockEmbeddings:
-    def embed_query(self, text: str) -> np.ndarray:
+    def embed_query(self, text: str, backend: str | None = None) -> np.ndarray:
         return np.zeros((1, 8), dtype=np.float32)
 
 
@@ -158,6 +158,41 @@ def test_buckets_thresholds():
         assert 0.4 <= f.confidence < 0.7
     for f in resp.related:
         assert f.confidence < 0.4
+
+
+def test_batch_merges_targets_and_excludes_self():
+    """D imports both B and C. Batch impact for [B.py, C.py] should surface D
+    once (not twice), with both targets recorded in triggered_by, and neither
+    B.py nor C.py should appear as impacted by itself."""
+    g = DependencyGraph()
+    for f in ["B.py", "C.py", "D.py"]:
+        g.add_file(f)
+    g.add_import_edge("D.py", "B.py")
+    g.add_import_edge("D.py", "C.py")
+    meta = make_mock_metadata()
+    faiss = MagicMock(spec=FAISSStore)
+    faiss.search.return_value = []
+
+    resp = analyze_impact_batch(["B.py", "C.py"], "repo1", g, faiss, meta, MockEmbeddings())
+    all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
+    assert "D.py" in all_files
+    assert set(all_files["D.py"].triggered_by) == {"B.py", "C.py"}
+    assert "B.py" not in all_files
+    assert "C.py" not in all_files
+
+
+def test_batch_keeps_highest_confidence_across_targets():
+    """A.py -> B.py -> C.py. Batch impact for [B.py, C.py]: A.py is a direct
+    dependent of B.py (0.95) and a transitive dependent of C.py (0.75) — the
+    merged result should keep 0.95."""
+    g = make_graph_abc()
+    meta = make_mock_metadata()
+    faiss = MagicMock(spec=FAISSStore)
+    faiss.search.return_value = []
+
+    resp = analyze_impact_batch(["B.py", "C.py"], "repo1", g, faiss, meta, MockEmbeddings())
+    all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
+    assert all_files["A.py"].confidence == 0.95
 
 
 def test_unknown_target_returns_empty():

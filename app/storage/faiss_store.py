@@ -1,15 +1,26 @@
 import json
 from pathlib import Path
+from typing import Optional
 
 import faiss
 import numpy as np
 
 
 class FAISSStore:
-    def __init__(self, dim: int):
+    def __init__(
+        self,
+        dim: int,
+        embedding_backend: Optional[str] = None,
+        embedding_model: Optional[str] = None,
+    ):
         self.dim = dim
         self.index = faiss.IndexFlatIP(dim)  # inner product = cosine if normalized
         self.id_map: list[str] = []          # position → chunk_id
+        # Which embedding backend/model built this index. Persisted so query-time
+        # code can embed with the *same* backend the index was built with, rather
+        # than trusting whatever EMBEDDING_BACKEND happens to be set to right now.
+        self.embedding_backend = embedding_backend
+        self.embedding_model = embedding_model
 
     def _normalize(self, vectors: np.ndarray) -> np.ndarray:
         """L2-normalize rows so inner product equals cosine similarity."""
@@ -30,6 +41,13 @@ class FAISSStore:
         """Return list of (chunk_id, score) pairs ordered by score descending."""
         if self.index.ntotal == 0:
             return []
+        if query_embedding.shape[-1] != self.dim:
+            raise ValueError(
+                f"Query embedding has dim {query_embedding.shape[-1]} but this index "
+                f"was built with dim {self.dim} (embedding_backend="
+                f"{self.embedding_backend!r}). Embed the query with the same backend "
+                f"the repo was ingested with."
+            )
         k = min(top_k, self.index.ntotal)
         normalized = self._normalize(query_embedding)
         scores, indices = self.index.search(normalized, k)
@@ -46,7 +64,15 @@ class FAISSStore:
         faiss.write_index(self.index, path)
         idmap_path = path.replace(".index", ".idmap.json")
         with open(idmap_path, "w") as f:
-            json.dump({"dim": self.dim, "id_map": self.id_map}, f)
+            json.dump(
+                {
+                    "dim": self.dim,
+                    "id_map": self.id_map,
+                    "embedding_backend": self.embedding_backend,
+                    "embedding_model": self.embedding_model,
+                },
+                f,
+            )
 
     def load(self, path: str) -> None:
         """Load index + id_map from disk."""
@@ -56,3 +82,5 @@ class FAISSStore:
             data = json.load(f)
         self.dim = data["dim"]
         self.id_map = data["id_map"]
+        self.embedding_backend = data.get("embedding_backend")
+        self.embedding_model = data.get("embedding_model")
