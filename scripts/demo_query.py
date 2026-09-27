@@ -136,17 +136,30 @@ def mode_impact_batch(repo_id: str, targets: list[str], depth: int = 3):
     _print_impact_buckets(response)
 
 
-def mode_ask(repo_id: str, question: str, top_k: int = 8, use_cache: bool = True):
+def mode_ask(repo_id: str, question: str, top_k: int = 8, use_cache: bool = True, stream: bool = False):
     faiss_store, metadata_store, _ = load_state(repo_id)
-    from app.core.answer import LLMCallError, LLMConfigError, answer_question
+    from app.core.answer import LLMCallError, LLMConfigError, answer_question, stream_answer_question
+    from app.models.schemas import AskResponse
+    print(f"\nQ: {question}\n")
     try:
-        response = answer_question(question, repo_id, faiss_store, metadata_store, top_k, use_cache)
+        if stream:
+            print("A: ", end="", flush=True)
+            response = None
+            for event in stream_answer_question(question, repo_id, faiss_store, metadata_store, top_k, use_cache):
+                if event["type"] == "delta":
+                    print(event["text"], end="", flush=True)
+                elif event["type"] == "answer":
+                    response = AskResponse(**event["response"])
+                    if response.cached:
+                        print(response.answer, end="")
+            print("\n")
+        else:
+            response = answer_question(question, repo_id, faiss_store, metadata_store, top_k, use_cache)
+            print(f"A: {response.answer}\n")
     except (LLMConfigError, LLMCallError) as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
     source = "cache" if response.cached else f"{response.backend}/{response.model}"
-    print(f"\nQ: {question}\n")
-    print(f"A: {response.answer}\n")
     if response.citations:
         print("Citations:")
         for c in response.citations:
@@ -169,6 +182,7 @@ def main():
     parser.add_argument("--depth", type=int, default=3, help="Graph traversal depth")
     parser.add_argument("--top-k", type=int, default=None, help="Results/chunks (default 10; 8 for ask)")
     parser.add_argument("--no-cache", action="store_true", help="Ask mode: bypass the answer cache")
+    parser.add_argument("--stream", action="store_true", help="Ask mode: print the answer as it's generated")
     parser.add_argument("query", nargs="?", help="Search query or question")
     args = parser.parse_args()
 
@@ -191,7 +205,7 @@ def main():
     elif args.mode == "ask":
         if not args.query:
             parser.error("Provide a question for ask mode")
-        mode_ask(args.repo_id, args.query, args.top_k or 8, use_cache=not args.no_cache)
+        mode_ask(args.repo_id, args.query, args.top_k or 8, use_cache=not args.no_cache, stream=args.stream)
 
 
 if __name__ == "__main__":

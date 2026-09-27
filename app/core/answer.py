@@ -12,7 +12,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 from app.core.text import looks_like_identifier
 from app.models.schemas import AskResponse, ChunkMetadata, Citation
@@ -261,11 +261,115 @@ def _call_ollama(prompt: str, model: str) -> str:
     return text
 
 
+def _stream_anthropic(prompt: str, model: str) -> Iterator[str]:
+    import anthropic
+    client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY"))
+    try:
+        with client.messages.stream(
+            model=model,
+            max_tokens=16000,
+            system=SYSTEM_PROMPT,
+            output_config={"effort": "low"},
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            yield from stream.text_stream
+            final = stream.get_final_message()
+    except anthropic.APIConnectionError as e:
+        raise LLMCallError("Could not reach the Anthropic API.") from e
+    except anthropic.APIStatusError as e:
+        raise LLMCallError(f"Anthropic API error: HTTP {e.status_code}: {e.message}") from e
+    if final.stop_reason == "refusal":
+        raise LLMCallError("The model declined to answer this question.")
+
+
+def _stream_gemini(prompt: str, model: str) -> Iterator[str]:
+    import httpx
+    gemini_key = _require_key("GEMINI_API_KEY")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
+    body = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 8192, "temperature": 0},
+    }
+    try:
+        with httpx.stream("POST", url, json=body, headers={"x-goog-api-key": gemini_key}, timeout=120) as resp:
+            if resp.status_code != 200:
+                raise LLMCallError(f"Gemini API error: HTTP {resp.status_code}")
+            for line in resp.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    parts = json.loads(line[5:])["candidates"][0]["content"]["parts"]
+                except (ValueError, KeyError, IndexError):
+                    continue  # e.g. a final chunk carrying only finishReason/usage
+                for part in parts:
+                    if part.get("text"):
+                        yield part["text"]
+    except httpx.HTTPError as e:
+        raise LLMCallError(f"Gemini request failed: {type(e).__name__}") from e
+
+
+def _stream_ollama(prompt: str, model: str) -> Iterator[str]:
+    import httpx
+    host = _ollama_host()
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": True,
+        "options": {"temperature": 0, "num_ctx": 8192},
+    }
+    try:
+        with httpx.stream("POST", f"{host}/api/chat", json=body, timeout=_ollama_timeout()) as resp:
+            if resp.status_code == 404:
+                raise LLMConfigError(f"Ollama model '{model}' isn't available. Run `ollama pull {model}`.")
+            if resp.status_code != 200:
+                raise LLMCallError(f"Ollama error: HTTP {resp.status_code}")
+            for line in resp.iter_lines():
+                if not line.strip():
+                    continue
+                event = json.loads(line)
+                if event.get("error"):
+                    raise LLMCallError(f"Ollama error: {event['error']}")
+                text = (event.get("message") or {}).get("content")
+                if text:
+                    yield text
+    except httpx.ConnectError as e:
+        raise LLMConfigError(
+            f"Can't reach Ollama at {host}. Start it with `ollama serve`, "
+            f"then `ollama pull {model}` (or set OLLAMA_HOST)."
+        ) from e
+    except httpx.TimeoutException as e:
+        raise LLMCallError(
+            f"Ollama model '{model}' stalled for {_ollama_timeout():.0f}s; it may be too large "
+            f"for this machine (see `ollama ps`), or raise OLLAMA_TIMEOUT."
+        ) from e
+    except httpx.HTTPError as e:
+        raise LLMCallError(f"Ollama request failed: {type(e).__name__}") from e
+
+
 _BACKENDS = {"anthropic": _call_anthropic, "gemini": _call_gemini, "ollama": _call_ollama}
+_STREAMING_BACKENDS = {"anthropic": _stream_anthropic, "gemini": _stream_gemini, "ollama": _stream_ollama}
+_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 
 def call_llm(prompt: str, backend: str, model: str) -> str:
     return _BACKENDS[backend](prompt, model)
+
+
+def stream_llm(prompt: str, backend: str, model: str) -> Iterator[str]:
+    return _STREAMING_BACKENDS[backend](prompt, model)
+
+
+def check_llm_config() -> tuple[str, str]:
+    """Fail fast (before any response is started) on config a request can't
+    recover from: unknown backend or a missing API key."""
+    backend, model = llm_settings()
+    if backend in _KEY_ENV:
+        _require_key(_KEY_ENV[backend])
+    return backend, model
 
 
 # ── Answer checks ─────────────────────────────────────────────────────────────
@@ -352,6 +456,73 @@ def _cache_key(backend: str, model: str, prompt: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+@dataclass
+class PreparedAsk:
+    question: str
+    backend: str
+    model: str
+    excerpts: list[Excerpt]
+    omitted: int
+    prompt: str
+    cache_key: str
+
+
+_NO_CODE = AskResponse(
+    answer="No relevant code was found for this question.",
+    citations=[],
+    uncertainty="No code chunks were retrieved to answer from.",
+)
+
+
+def _prepare(question: str, retrieved_chunks: list[ChunkMetadata]) -> PreparedAsk:
+    question = " ".join(question.split())
+    backend, model = llm_settings()
+    excerpts, omitted = assemble_context(retrieved_chunks)
+    prompt = build_prompt(question, excerpts)
+    return PreparedAsk(question, backend, model, excerpts, omitted, prompt,
+                       _cache_key(backend, model, prompt))
+
+
+def _finalize(
+    ask: PreparedAsk, answer_text: str, repo_id: str, metadata_store: Optional["MetadataStore"]
+) -> AskResponse:
+    """Parse citations, run the answer checks, and cache the result."""
+    cited, invalid = parse_citations(answer_text, len(ask.excerpts))
+    unknown = (
+        unverified_mentions(answer_text, ask.excerpts, metadata_store, repo_id)
+        if metadata_store is not None else []
+    )
+    response = AskResponse(
+        answer=answer_text,
+        citations=[
+            Citation(
+                file_path=ask.excerpts[n - 1].file_path,
+                start_line=ask.excerpts[n - 1].start_line,
+                end_line=ask.excerpts[n - 1].end_line,
+                relevance=f"Cited as [{n}] in the answer",
+            )
+            for n in cited
+        ],
+        uncertainty=_uncertainty(answer_text, cited, invalid, unknown),
+        unverified_mentions=unknown,
+        backend=ask.backend,
+        model=ask.model,
+        excerpts_used=len(ask.excerpts),
+        excerpts_omitted=ask.omitted,
+        context_chars=sum(len(e.content) for e in ask.excerpts),
+    )
+    if metadata_store is not None:
+        metadata_store.put_cached_answer(ask.cache_key, response.model_dump(exclude={"cached"}))
+    return response
+
+
+def _cached(ask: PreparedAsk, metadata_store: Optional["MetadataStore"], use_cache: bool) -> Optional[AskResponse]:
+    if not use_cache or metadata_store is None:
+        return None
+    hit = metadata_store.get_cached_answer(ask.cache_key)
+    return AskResponse(**{**hit, "cached": True}) if hit is not None else None
+
+
 def generate_answer(
     question: str,
     retrieved_chunks: list[ChunkMetadata],
@@ -360,53 +531,61 @@ def generate_answer(
     use_cache: bool = True,
 ) -> AskResponse:
     """Answer `question` from already-retrieved chunks (best-first)."""
-    question = " ".join(question.split())
     if not retrieved_chunks:
-        return AskResponse(
-            answer="No relevant code was found for this question.",
-            citations=[],
-            uncertainty="No code chunks were retrieved to answer from.",
-        )
+        return _NO_CODE
+    ask = _prepare(question, retrieved_chunks)
+    hit = _cached(ask, metadata_store, use_cache)
+    if hit is not None:
+        return hit
+    return _finalize(ask, call_llm(ask.prompt, ask.backend, ask.model), repo_id, metadata_store)
 
-    backend, model = llm_settings()
-    excerpts, omitted = assemble_context(retrieved_chunks)
-    prompt = build_prompt(question, excerpts)
 
-    key = _cache_key(backend, model, prompt)
-    if use_cache and metadata_store is not None:
-        hit = metadata_store.get_cached_answer(key)
-        if hit is not None:
-            return AskResponse(**{**hit, "cached": True})
+def stream_answer(
+    question: str,
+    retrieved_chunks: list[ChunkMetadata],
+    repo_id: str,
+    metadata_store: Optional["MetadataStore"] = None,
+    use_cache: bool = True,
+) -> Iterator[dict]:
+    """Streaming variant of generate_answer. Yields events:
 
-    answer_text = call_llm(prompt, backend, model)
-
-    cited, invalid = parse_citations(answer_text, len(excerpts))
-    unknown = (
-        unverified_mentions(answer_text, excerpts, metadata_store, repo_id)
-        if metadata_store is not None else []
-    )
-    response = AskResponse(
-        answer=answer_text,
-        citations=[
-            Citation(
-                file_path=excerpts[n - 1].file_path,
-                start_line=excerpts[n - 1].start_line,
-                end_line=excerpts[n - 1].end_line,
-                relevance=f"Cited as [{n}] in the answer",
-            )
-            for n in cited
+    {"type": "context", "excerpts": [...], "excerpts_omitted": n, "backend", "model"}
+    {"type": "delta", "text": "..."}          (zero or more; none on a cache hit)
+    {"type": "answer", "response": {...}}     (the full AskResponse, after checks)
+    """
+    if not retrieved_chunks:
+        yield {"type": "answer", "response": _NO_CODE.model_dump()}
+        return
+    ask = _prepare(question, retrieved_chunks)
+    yield {
+        "type": "context",
+        "backend": ask.backend,
+        "model": ask.model,
+        "excerpts": [
+            {"n": i, "file_path": e.file_path, "start_line": e.start_line, "end_line": e.end_line}
+            for i, e in enumerate(ask.excerpts, 1)
         ],
-        uncertainty=_uncertainty(answer_text, cited, invalid, unknown),
-        unverified_mentions=unknown,
-        backend=backend,
-        model=model,
-        excerpts_used=len(excerpts),
-        excerpts_omitted=omitted,
-        context_chars=sum(len(e.content) for e in excerpts),
-    )
-    if metadata_store is not None:
-        metadata_store.put_cached_answer(key, response.model_dump(exclude={"cached"}))
-    return response
+        "excerpts_omitted": ask.omitted,
+    }
+    hit = _cached(ask, metadata_store, use_cache)
+    if hit is not None:
+        yield {"type": "answer", "response": hit.model_dump()}
+        return
+    parts: list[str] = []
+    for text in stream_llm(ask.prompt, ask.backend, ask.model):
+        parts.append(text)
+        yield {"type": "delta", "text": text}
+    answer_text = "".join(parts)
+    if not answer_text.strip():
+        raise LLMCallError(f"{ask.backend} returned an empty answer.")
+    yield {"type": "answer", "response": _finalize(ask, answer_text, repo_id, metadata_store).model_dump()}
+
+
+def _retrieve(question, repo_id, faiss_store, metadata_store, top_k) -> list[ChunkMetadata]:
+    from app.core.search import search_chunks
+
+    results = search_chunks(question, repo_id, top_k, faiss_store, metadata_store)
+    return [c for c in (metadata_store.get_chunk(r.chunk_id) for r in results) if c is not None]
 
 
 def answer_question(
@@ -418,8 +597,18 @@ def answer_question(
     use_cache: bool = True,
 ) -> AskResponse:
     """Retrieve with hybrid search, then answer. Shared by POST /ask and the CLI."""
-    from app.core.search import search_chunks
-
-    results = search_chunks(question, repo_id, top_k, faiss_store, metadata_store)
-    chunks = [c for c in (metadata_store.get_chunk(r.chunk_id) for r in results) if c is not None]
+    chunks = _retrieve(question, repo_id, faiss_store, metadata_store, top_k)
     return generate_answer(question, chunks, repo_id, metadata_store, use_cache=use_cache)
+
+
+def stream_answer_question(
+    question: str,
+    repo_id: str,
+    faiss_store: "FAISSStore",
+    metadata_store: "MetadataStore",
+    top_k: int = 8,
+    use_cache: bool = True,
+) -> Iterator[dict]:
+    """Streaming answer_question; see stream_answer for the event format."""
+    chunks = _retrieve(question, repo_id, faiss_store, metadata_store, top_k)
+    yield from stream_answer(question, chunks, repo_id, metadata_store, use_cache=use_cache)

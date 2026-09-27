@@ -1,6 +1,15 @@
-from fastapi import APIRouter, HTTPException
+import json
 
-from app.core.answer import LLMCallError, LLMConfigError, answer_question
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+
+from app.core.answer import (
+    LLMCallError,
+    LLMConfigError,
+    answer_question,
+    check_llm_config,
+    stream_answer_question,
+)
 from app.models.schemas import AskRequest, AskResponse
 
 router = APIRouter()
@@ -23,3 +32,36 @@ def ask(request: AskRequest):
         raise HTTPException(status_code=503, detail=str(e))
     except LLMCallError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/ask/stream")
+def ask_stream(request: AskRequest):
+    """Like POST /ask, but streams newline-delimited JSON events as the answer
+    is generated: a `context` event (excerpts sent to the model), `delta`
+    events with answer text, then an `answer` event with the full, checked
+    AskResponse. Failures after the stream has started arrive as an `error`
+    event: {"type": "error", "status": 502|503, "detail": "..."}.
+    """
+    from app.main import get_repo_state
+    try:
+        state = get_repo_state(request.repo_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    try:
+        check_llm_config()  # a missing key is a plain 503, not a stream error
+    except LLMConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    def events():
+        try:
+            for event in stream_answer_question(
+                request.question, request.repo_id, state.faiss_store, state.metadata_store,
+                top_k=request.top_k, use_cache=request.use_cache,
+            ):
+                yield json.dumps(event) + "\n"
+        except LLMConfigError as e:
+            yield json.dumps({"type": "error", "status": 503, "detail": str(e)}) + "\n"
+        except LLMCallError as e:
+            yield json.dumps({"type": "error", "status": 502, "detail": str(e)}) + "\n"
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")

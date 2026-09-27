@@ -222,3 +222,145 @@ def test_ollama_timeout_explains_what_to_do(monkeypatch):
         with pytest.raises(LLMCallError, match="too large for this machine"):
             answer._call_ollama("prompt", "big-model")
     assert post.call_args.kwargs["timeout"] == 5.0
+
+
+# ── Streaming ─────────────────────────────────────────────────────────────────
+
+import contextlib
+import json as _json
+
+from app.core.answer import stream_answer
+
+
+def _fake_stream_response(lines, status=200):
+    resp = MagicMock(status_code=status)
+    resp.iter_lines.return_value = iter(lines)
+
+    @contextlib.contextmanager
+    def cm(*args, **kwargs):
+        cm.kwargs = kwargs
+        cm.args = args
+        yield resp
+    return cm
+
+
+def test_stream_answer_event_sequence_and_cache(tmp_path, monkeypatch):
+    from app.storage.metadata_store import MetadataStore
+    monkeypatch.setenv("LLM_BACKEND", "ollama")
+    store = MetadataStore(str(tmp_path / "m.db"))
+    chunk = _chunk_with("a.py", "def foo():\n    return 1\n")
+    with patch("app.core.answer.stream_llm", return_value=iter(["foo ", "returns 1 [1]."])) as llm:
+        events = list(stream_answer("what does foo return?", [chunk], "r", store))
+    assert [e["type"] for e in events] == ["context", "delta", "delta", "answer"]
+    assert events[0]["excerpts"][0]["file_path"] == "a.py"
+    final = events[-1]["response"]
+    assert final["answer"] == "foo returns 1 [1]." and final["citations"][0]["file_path"] == "a.py"
+
+    # Same question again: served from cache, no deltas, no LLM call
+    with patch("app.core.answer.stream_llm") as llm:
+        again = list(stream_answer("what does foo return?", [chunk], "r", store))
+    llm.assert_not_called()
+    assert [e["type"] for e in again] == ["context", "answer"]
+    assert again[-1]["response"]["cached"] is True
+    # non-streaming path shares the cache
+    assert generate_answer("what does foo return?", [chunk], "r", store).cached
+
+
+def test_ollama_stream_parses_ndjson():
+    lines = [
+        _json.dumps({"message": {"content": "Hel"}, "done": False}),
+        "",
+        _json.dumps({"message": {"content": "lo"}, "done": False}),
+        _json.dumps({"message": {"content": ""}, "done": True}),
+    ]
+    fake = _fake_stream_response(lines)
+    with patch("httpx.stream", fake):
+        assert "".join(answer._stream_ollama("p", "m")) == "Hello"
+    assert fake.kwargs["json"]["stream"] is True
+
+
+def test_ollama_stream_error_event_raises():
+    fake = _fake_stream_response([_json.dumps({"error": "out of memory"})])
+    with patch("httpx.stream", fake):
+        with pytest.raises(LLMCallError, match="out of memory"):
+            list(answer._stream_ollama("p", "m"))
+
+
+def test_gemini_stream_parses_sse(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "secret")
+    chunk = lambda t: "data: " + _json.dumps({"candidates": [{"content": {"parts": [{"text": t}]}}]})
+    lines = [chunk("Gem"), "", chunk("ini"), "data: " + _json.dumps({"candidates": [{"finishReason": "STOP"}]})]
+    fake = _fake_stream_response(lines)
+    with patch("httpx.stream", fake):
+        assert "".join(answer._stream_gemini("p", "gemini-flash-latest")) == "Gemini"
+    assert "secret" not in fake.args[1]
+    assert fake.kwargs["headers"]["x-goog-api-key"] == "secret"
+
+
+def test_anthropic_stream_yields_text_and_checks_refusal(monkeypatch):
+    import anthropic
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+    def fake_stream(stop_reason):
+        stream = MagicMock(text_stream=iter(["An", "swer"]))
+        stream.get_final_message.return_value = MagicMock(stop_reason=stop_reason)
+
+        @contextlib.contextmanager
+        def cm(self, **kwargs):
+            fake_stream.kwargs = kwargs
+            yield stream
+        return cm
+
+    with patch.object(anthropic.resources.messages.Messages, "stream", fake_stream("end_turn")):
+        assert "".join(answer._stream_anthropic("p", "claude-sonnet-5")) == "Answer"
+    assert "temperature" not in fake_stream.kwargs
+    assert fake_stream.kwargs["output_config"] == {"effort": "low"}
+    with patch.object(anthropic.resources.messages.Messages, "stream", fake_stream("refusal")):
+        with pytest.raises(LLMCallError, match="declined"):
+            list(answer._stream_anthropic("p", "claude-sonnet-5"))
+
+
+def _ask_client(tmp_path, monkeypatch):
+    import numpy as np
+    from fastapi.testclient import TestClient
+    from app.core import paths
+    from app.main import _loaded_repos, app
+
+    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
+    _loaded_repos.clear()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("def foo():\n    return 1\n")
+    fake = lambda texts, backend=None, **kw: np.ones((len(texts), 8), dtype=np.float32)
+    monkeypatch.setattr("app.core.pipeline.embed_texts", fake)
+    monkeypatch.setattr("app.core.search.embed_query", lambda q, backend=None, **kw: fake([q]))
+    client = TestClient(app)
+    assert client.post("/ingest", json={"repo_path": str(repo), "repo_id": "st"}).status_code == 200
+    return client
+
+
+def test_ask_stream_endpoint(tmp_path, monkeypatch):
+    client = _ask_client(tmp_path, monkeypatch)
+    monkeypatch.setenv("LLM_BACKEND", "ollama")
+    with patch("app.core.answer.stream_llm", return_value=iter(["foo returns 1 [1]"])):
+        r = client.post("/ask/stream", json={"repo_id": "st", "question": "what does foo return?"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/x-ndjson")
+    events = [_json.loads(line) for line in r.text.splitlines()]
+    assert [e["type"] for e in events] == ["context", "delta", "answer"]
+
+
+def test_ask_stream_config_errors(tmp_path, monkeypatch):
+    client = _ask_client(tmp_path, monkeypatch)
+    # missing key: rejected before streaming starts
+    monkeypatch.setenv("LLM_BACKEND", "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = client.post("/ask/stream", json={"repo_id": "st", "question": "q"})
+    assert r.status_code == 503
+    # Ollama unreachable: only discoverable mid-stream → error event
+    monkeypatch.setenv("LLM_BACKEND", "ollama")
+    with patch("app.core.answer.stream_llm", side_effect=LLMConfigError("Can't reach Ollama")):
+        r = client.post("/ask/stream", json={"repo_id": "st", "question": "q"})
+    events = [_json.loads(line) for line in r.text.splitlines()]
+    assert events[-1] == {"type": "error", "status": 503, "detail": "Can't reach Ollama"}
