@@ -1,3 +1,4 @@
+from app.core.definitions import best_definition
 from app.core.graph import DependencyGraph
 from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
 from app.storage.faiss_store import FAISSStore
@@ -41,15 +42,10 @@ def analyze_impact(
         root_file = target
     else:
         # Try treating as symbol → find defining file
-        symbol_hits = metadata_store.find_symbol(repo_id, target)
-        if symbol_hits:
-            defining_entry = next(
-                (h for h in symbol_hits if h["kind"] in ("function", "class", "method")),
-                None,
-            )
-            if defining_entry:
-                defining_file = defining_entry["file_path"]
-                root_file = defining_file
+        defining_entry = best_definition(target, metadata_store, repo_id)
+        if defining_entry and defining_entry.get("kind") in ("function", "class", "method"):
+            defining_file = defining_entry["file_path"]
+            root_file = defining_file
 
     if root_file:
         dependents = graph.dependents_of(root_file, depth=depth)
@@ -60,11 +56,11 @@ def analyze_impact(
             _add(entry["file"], conf, reason, d)
 
     # ── Signal 2: Symbol reference search ─────────────────────────────────────
-    # Only apply if target looks like a symbol name (not a file path)
-    if target not in graph.G.nodes:
-        symbol_refs = metadata_store.find_symbol(repo_id, target)
-        for ref in symbol_refs:
-            fp = ref["file_path"]
+    # Only apply if target looks like a symbol name (not a file path). Uses the
+    # identifier-usage index — previously this queried the *definitions* table,
+    # so it only ever found other files defining a same-named symbol.
+    if target not in graph.G.nodes and defining_file is not None:
+        for fp in {r["file_path"] for r in metadata_store.find_references(repo_id, target)}:
             if fp == defining_file:
                 continue  # skip the defining file itself
             _add(fp, _SYMBOL_CONFIDENCE, "references symbol", 0)

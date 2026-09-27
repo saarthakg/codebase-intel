@@ -64,9 +64,8 @@ class DependencyGraph:
     def files_referencing_symbol(
         self, symbol: str, metadata_store: "MetadataStore", repo_id: str
     ) -> list[str]:
-        """Return file paths that contain this symbol name in their chunks."""
-        results = metadata_store.find_symbol(repo_id, symbol)
-        return list({r["file_path"] for r in results})
+        """Return file paths that use this symbol (identifier usages, not definitions)."""
+        return sorted({r["file_path"] for r in metadata_store.find_references(repo_id, symbol)})
 
     def save(self, path: str) -> None:
         """Pickle the graph to disk."""

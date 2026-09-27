@@ -102,14 +102,23 @@ def test_symbol_target_resolves_through_defining_file():
 
 
 def test_symbol_reference_medium_confidence():
-    """Files that reference a symbol (but don't define it) get confidence 0.70."""
+    """Files that use a symbol (but don't define it) get confidence 0.70.
+
+    Usages come from the reference index (find_references). This test used to
+    feed "reference" rows through find_symbol, which mirrored a bug: Signal 2
+    queried the definitions table, so real usages were never found.
+    """
     g = DependencyGraph()
-    g.add_file("A.py")
+    g.add_file("lib.py")
     g.add_file("user.py")
     # No import edges — only symbol references
     meta = MagicMock(spec=MetadataStore)
     meta.find_symbol.return_value = [
-        {"file_path": "user.py", "kind": "reference", "start_line": 3}
+        {"file_path": "lib.py", "kind": "function", "start_line": 1, "qualified_name": "some_symbol"}
+    ]
+    meta.find_references.return_value = [
+        {"file_path": "user.py", "line": 3},
+        {"file_path": "lib.py", "line": 9},  # recursive call inside the definer: not an impact
     ]
     meta.get_chunk.return_value = None
     faiss = MagicMock(spec=FAISSStore)
@@ -119,6 +128,7 @@ def test_symbol_reference_medium_confidence():
     all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
     assert "user.py" in all_files
     assert all_files["user.py"].confidence == 0.70
+    assert "lib.py" not in all_files
 
 
 def test_semantic_similarity_low_confidence():

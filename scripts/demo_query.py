@@ -57,19 +57,24 @@ def mode_search(repo_id: str, query: str, top_k: int = 10):
 
 
 def mode_definition(repo_id: str, symbol: str):
-    _, metadata_store, graph = load_state(repo_id)
-    results = metadata_store.find_symbol(repo_id, symbol)
-    if not results:
+    _, metadata_store, _ = load_state(repo_id)
+    from app.core.definitions import lookup_definition
+    result = lookup_definition(symbol, metadata_store, repo_id)
+    if result is None:
         print(f"Symbol '{symbol}' not found in repo '{repo_id}'.")
         return
-    defining = next((r for r in results if r["kind"] in ("function", "class", "method")), results[0])
-    refs = graph.files_referencing_symbol(symbol, metadata_store, repo_id)
     print(f"\nDefinition: {symbol}")
-    print(f"  Defined in: {defining['file_path']}  line {defining['start_line']}  ({defining['kind']})")
-    if refs:
-        print(f"  Referenced in ({len(refs)} files):")
-        for ref in refs[:10]:
-            print(f"    - {ref}")
+    print(f"  {result.qualified_name} ({result.kind})  "
+          f"{result.defining_file}  lines {result.start_line}–{result.end_line}")
+    if result.other_definitions:
+        print(f"  Other matches ({len(result.other_definitions)}):")
+        for d in result.other_definitions[:5]:
+            print(f"    - {d.qualified_name} ({d.kind})  {d.file_path}:{d.start_line}")
+    if result.references:
+        print(f"  Used in {len(result.references)} files ({len(result.reference_locations)} places):")
+        for ref in result.references[:10]:
+            lines = [str(r.line) for r in result.reference_locations if r.file_path == ref]
+            print(f"    - {ref}: {', '.join(lines[:8])}{' …' if len(lines) > 8 else ''}")
     else:
         print("  No references found.")
 

@@ -88,3 +88,31 @@ def test_reingest_via_api_replaces_state(client, ingested_repo, tmp_path):
     r = client.get("/definition", params={"repo_id": "testrepo", "symbol": "bar"})
     assert r.status_code == 200
     assert r.json()["defining_file"] == "b.py"
+
+
+def test_definition_prefers_source_over_tests_and_returns_references(client, tmp_path):
+    """A same-named fixture in conftest.py must not win over the real method,
+    `references` must list files that *use* the symbol (it used to return
+    only the defining file), and qualified lookups must work."""
+    repo = tmp_path / "defrepo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "models.py").write_text(
+        "class Request:\n    def prepare_url(self):\n        pass\n\n"
+        "class Other:\n    def prepare_url(self):\n        pass\n"
+    )
+    (repo / "api.py").write_text("from models import Request\n\ndef go():\n    return Request().prepare_url()\n")
+    (repo / "tests" / "conftest.py").write_text("def prepare_url():\n    pass\n")
+    with patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts):
+        assert client.post("/ingest", json={"repo_path": str(repo), "repo_id": "defrepo"}).status_code == 200
+
+    body = client.get("/definition", params={"repo_id": "defrepo", "symbol": "prepare_url"}).json()
+    assert body["defining_file"] == "models.py"
+    assert body["qualified_name"] == "Request.prepare_url"
+    assert {d["file_path"] for d in body["other_definitions"]} == {"models.py", "tests/conftest.py"}
+
+    body = client.get("/definition", params={"repo_id": "defrepo", "symbol": "Request"}).json()
+    assert body["references"] == ["api.py"]
+    assert {(r["file_path"], r["line"]) for r in body["reference_locations"]} == {("api.py", 1), ("api.py", 4)}
+
+    body = client.get("/definition", params={"repo_id": "defrepo", "symbol": "Other.prepare_url"}).json()
+    assert (body["qualified_name"], body["start_line"]) == ("Other.prepare_url", 6)
