@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from app.core.text import expand_identifiers
 from app.models.schemas import ChunkMetadata
 
 if TYPE_CHECKING:
@@ -19,6 +20,20 @@ class MetadataStore:
 
     def _create_tables(self) -> None:
         self._migrate_legacy_symbols()
+        fts_existed = self._table_exists("chunks_fts")
+        self._conn.executescript("""
+            -- Keyword index over chunks. Columns are search text only (camelCase
+            -- identifiers expanded); the raw chunk lives in `chunks`.
+            -- porter: "redirects"/"redirecting" match "redirect".
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+                chunk_id UNINDEXED,
+                repo_id UNINDEXED,
+                path,
+                symbols,
+                content,
+                tokenize = "porter unicode61"
+            );
+        """)
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS chunks (
                 chunk_id    TEXT PRIMARY KEY,
@@ -67,6 +82,34 @@ class MetadataStore:
             CREATE INDEX IF NOT EXISTS idx_edges_repo_target ON edges (repo_id, target_file);
         """)
         self._conn.commit()
+        if not fts_existed:
+            self._backfill_fts()
+
+    def _table_exists(self, name: str) -> bool:
+        return self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = ?", (name,)
+        ).fetchone() is not None
+
+    def _backfill_fts(self) -> None:
+        """Index chunks from a DB created before keyword search existed."""
+        rows = self._conn.execute("SELECT * FROM chunks").fetchall()
+        if rows:
+            self._insert_fts([(r["repo_id"], self._row_to_chunk(r)) for r in rows])
+            self._conn.commit()
+
+    def _insert_fts(self, items: list[tuple[str, ChunkMetadata]]) -> None:
+        self._conn.executemany(
+            "INSERT INTO chunks_fts (chunk_id, repo_id, path, symbols, content) VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    c.chunk_id, repo_id,
+                    expand_identifiers(c.file_path),
+                    expand_identifiers(" ".join(c.symbols)),
+                    expand_identifiers(c.content),
+                )
+                for repo_id, c in items
+            ],
+        )
 
     def _migrate_legacy_symbols(self) -> None:
         """Upgrade a pre-qualified-name `symbols` table in place.
@@ -120,6 +163,7 @@ class MetadataStore:
         self._conn.execute("DELETE FROM symbols WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM edges WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM symbol_refs WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM chunks_fts WHERE repo_id = ?", (repo_id,))
         if commit:
             self._conn.commit()
 
@@ -154,6 +198,42 @@ class MetadataStore:
                 for c in chunks
             ],
         )
+        self._insert_fts([(repo_id, c) for c in chunks])
+
+    def keyword_search(self, repo_id: str, terms: list[str], limit: int) -> list[tuple[str, float]]:
+        """BM25 search: (chunk_id, score) best-first, score higher = better.
+
+        Terms are OR-ed: natural-language questions rarely have every word in
+        one chunk. Symbol-name matches weigh more than path, path more than body.
+        """
+        if not terms:
+            return []
+        match = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
+        rows = self._conn.execute(
+            """SELECT chunk_id, bm25(chunks_fts, 0, 0, 2.0, 3.0, 1.0) AS rank
+               FROM chunks_fts WHERE chunks_fts MATCH ? AND repo_id = ?
+               ORDER BY rank LIMIT ?""",
+            (match, repo_id, limit),
+        ).fetchall()
+        return [(r["chunk_id"], -r["rank"]) for r in rows]  # bm25() is lower-is-better
+
+    def chunks_defining(self, repo_id: str, names: list[str]) -> list[str]:
+        """chunk_ids of chunks that contain the definition of any of `names`
+        (bare or qualified), ordered source-before-tests then by path/line."""
+        if not names:
+            return []
+        marks = ",".join("?" * len(names))
+        rows = self._conn.execute(
+            f"""SELECT DISTINCT c.chunk_id, c.file_path, c.start_line FROM symbols s
+                JOIN chunks c ON c.repo_id = s.repo_id AND c.file_path = s.file_path
+                     AND s.start_line BETWEEN c.start_line AND c.end_line
+                WHERE s.repo_id = ? AND (s.symbol_name IN ({marks}) OR s.qualified_name IN ({marks}))
+                ORDER BY c.file_path, c.start_line""",
+            (repo_id, *names, *names),
+        ).fetchall()
+        from app.core.definitions import is_test_path
+        ids = sorted(rows, key=lambda r: is_test_path(r["file_path"]))
+        return list(dict.fromkeys(r["chunk_id"] for r in ids))
 
     def get_chunk(self, chunk_id: str) -> Optional[ChunkMetadata]:
         row = self._conn.execute(

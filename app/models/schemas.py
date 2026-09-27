@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import Literal, Optional
 
 from app.core.validation import validate_repo_id
 
@@ -47,6 +47,9 @@ class IngestResponse(BaseModel):
 class SearchRequest(_RepoScoped):
     query: str
     top_k: int = 10
+    # "hybrid" (default): semantic + keyword + exact-symbol, rank-fused.
+    # "semantic": embeddings only. "keyword": BM25 only.
+    mode: Literal["hybrid", "semantic", "keyword"] = "hybrid"
 
 
 class SearchResult(BaseModel):
@@ -54,7 +57,7 @@ class SearchResult(BaseModel):
     file_path: str
     start_line: int
     end_line: int
-    score: float            # cosine similarity
+    score: float            # cosine (semantic), BM25 (keyword) or fused RRF score (hybrid)
     snippet: str            # first 300 chars of chunk
 
 

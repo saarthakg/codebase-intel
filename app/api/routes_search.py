@@ -22,6 +22,7 @@ def search(request: SearchRequest):
         top_k=request.top_k,
         faiss_store=state.faiss_store,
         metadata_store=state.metadata_store,
+        mode=request.mode,
     )
     return SearchResponse(results=results)
 
