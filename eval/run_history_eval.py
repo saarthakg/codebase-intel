@@ -31,8 +31,12 @@ load_dotenv()
 
 import app.core.embeddings as embeddings_module
 from app.core.definitions import is_test_path
+import subprocess
+
+from app.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
 from app.core.history import CoChange, read_history
 from app.core.impact import analyze_impact
+from app.core.symbols import analyze_file
 from app.main import get_repo_state
 
 KS = (5, 10)
@@ -41,6 +45,32 @@ KS = (5, 10)
 def ranked_files(response) -> list[str]:
     items = response.high_confidence + response.medium_confidence + response.related
     return [i.file_path for i in items]
+
+
+def _git(repo: str, *args: str) -> str:
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def changed_symbols(repo: str, sha: str, path_then: str) -> list[str]:
+    """Qualified names of the innermost symbols a commit touched in one file,
+    using that commit's own versions of the file (line numbers match the diff)."""
+    diff = _git(repo, "show", "-U0", "--format=", "-M", sha, "--", path_then)
+    changes = [fc for fc in parse_unified_diff(diff) if fc.path == path_then] or parse_unified_diff(diff)[:1]
+    if not changes:
+        return []
+    fc = changes[0]
+    names: list[str] = []
+    for rev, ranges in ((sha, fc.new_ranges), (f"{sha}^", fc.old_ranges)):
+        source = _git(repo, "show", f"{rev}:{path_then}")
+        if not source or not ranges:
+            continue
+        rows = [
+            {"qualified_name": s.qualified_name, "start_line": s.start_line, "end_line": s.end_line}
+            for s in analyze_file(source, path_then, "python").symbols
+        ]
+        names += [s["qualified_name"] for s in symbols_touched(rows, ranges)]
+    return list(dict.fromkeys(names))
 
 
 def score(cases: list[tuple[str, set[str], list[str]]]) -> dict:
@@ -69,6 +99,8 @@ def main() -> None:
     parser.add_argument("--cutoff", default="2018-12-31", help="Co-change uses commits up to this date")
     parser.add_argument("--dev-until", default="2022-12-31", help="Test commits up to here are the dev set")
     parser.add_argument("--no-cochange", action="store_true", help="Score without the co-change signal")
+    parser.add_argument("--diff-level", action="store_true",
+                        help="Use each commit's diff (changed symbols) instead of just the file")
     parser.add_argument("--out", help="Write results JSON here")
     args = parser.parse_args()
 
@@ -90,14 +122,21 @@ def main() -> None:
             if is_test_path(query):
                 continue
             truth = set(changed) - {query}
-            response = analyze_impact(
-                query, args.repo_id, state.graph, state.faiss_store, state.metadata_store,
-                embeddings_module, depth=3, cochange=cochange,
-            )
+            if args.diff_level:
+                symbols = changed_symbols(args.git, commit.sha, commit.paths_then.get(query, query))
+                response = analyze_symbol_changes(
+                    {query: symbols}, args.repo_id, state.graph, state.faiss_store,
+                    state.metadata_store, embeddings_module, depth=3, cochange=cochange,
+                )
+            else:
+                response = analyze_impact(
+                    query, args.repo_id, state.graph, state.faiss_store, state.metadata_store,
+                    embeddings_module, depth=3, cochange=cochange,
+                )
             splits[split].append((query, truth, ranked_files(response)))
 
     results = {name: score(cases) for name, cases in splits.items() if cases}
-    label = "graph+semantic" if args.no_cochange else "with co-change"
+    label = ("graph+semantic" if args.no_cochange else "with co-change") + (", diff-level" if args.diff_level else "")
     print(f"\nHistory eval ({label}); co-change from commits ≤ {args.cutoff}, "
           f"{cochange.commits_used if cochange else 0} commits used\n")
     for name, metrics in results.items():

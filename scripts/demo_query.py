@@ -7,9 +7,10 @@ Usage:
   python scripts/demo_query.py --repo-id <id> --mode definition --symbol <name>
   python scripts/demo_query.py --repo-id <id> --mode impact --target <file_or_symbol>
   python scripts/demo_query.py --repo-id <id> --mode impact-batch --targets <f1,f2,...>
+  git diff HEAD | python scripts/demo_query.py --repo-id <id> --mode impact-diff --diff -
   python scripts/demo_query.py --repo-id <id> --mode ask "question"
 
-Modes: search (default), definition, impact, impact-batch, ask
+Modes: search (default), definition, impact, impact-batch, impact-diff, ask
 """
 import argparse
 import sys
@@ -142,6 +143,27 @@ def mode_impact_batch(repo_id: str, targets: list[str], depth: int = 3):
     _print_impact_buckets(response)
 
 
+def mode_impact_diff(repo_id: str, diff_path: str, depth: int = 3):
+    faiss_store, metadata_store, graph = load_state(repo_id)
+    from app.core.diff_impact import analyze_diff
+    import app.core.embeddings as embeddings_module
+    diff = sys.stdin.read() if diff_path == "-" else Path(diff_path).read_text()
+    response = analyze_diff(
+        diff, repo_id, graph, faiss_store, metadata_store, embeddings_module,
+        depth=depth, cochange=metadata_store.load_cochange(repo_id),
+    )
+    print(f"\nDiff impact: {', '.join(response.targets) or '(no indexed files changed)'}\n")
+    if response.changed_symbols:
+        print("CHANGED SYMBOLS:")
+        for s in response.changed_symbols:
+            used = f"  → used in {', '.join(s.used_in)}" if s.used_in else ""
+            print(f"  {s.file_path}::{s.qualified_name}{used}")
+        print()
+    _print_impact_buckets(response)
+    if response.unindexed_files:
+        print(f"\nNot in the index (skipped): {', '.join(response.unindexed_files)}")
+
+
 def mode_ask(repo_id: str, question: str, top_k: int = 8, use_cache: bool = True, stream: bool = False):
     faiss_store, metadata_store, _ = load_state(repo_id)
     from app.core.answer import LLMCallError, LLMConfigError, answer_question, stream_answer_question
@@ -182,11 +204,13 @@ def main():
     parser = argparse.ArgumentParser(description="Query a codebase-intel index.")
     parser.add_argument("--repo-id", required=True, help="Repository identifier")
     parser.add_argument(
-        "--mode", choices=["search", "definition", "impact", "impact-batch", "ask"], default="search"
+        "--mode", choices=["search", "definition", "impact", "impact-batch", "impact-diff", "ask"],
+        default="search"
     )
     parser.add_argument("--symbol", help="Symbol name (for --mode definition)")
     parser.add_argument("--target", help="File path or symbol (for --mode impact)")
     parser.add_argument("--targets", help="Comma-separated file paths (for --mode impact-batch)")
+    parser.add_argument("--diff", help="Unified diff file for --mode impact-diff ('-' for stdin)")
     parser.add_argument("--depth", type=int, default=3, help="Graph traversal depth")
     parser.add_argument("--top-k", type=int, default=None, help="Results/chunks (default 10; 8 for ask)")
     parser.add_argument("--no-cache", action="store_true", help="Ask mode: bypass the answer cache")
@@ -210,6 +234,10 @@ def main():
         if not args.targets:
             parser.error("--targets required for impact-batch mode (comma-separated)")
         mode_impact_batch(args.repo_id, [t.strip() for t in args.targets.split(",") if t.strip()], args.depth)
+    elif args.mode == "impact-diff":
+        if not args.diff:
+            parser.error("--diff required for impact-diff mode (e.g. git diff HEAD > d.patch; --diff d.patch)")
+        mode_impact_diff(args.repo_id, args.diff, args.depth)
     elif args.mode == "ask":
         if not args.query:
             parser.error("Provide a question for ask mode")

@@ -351,6 +351,13 @@ class MetadataStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def symbols_in_file(self, repo_id: str, file_path: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM symbols WHERE repo_id = ? AND file_path = ? ORDER BY start_line",
+            (repo_id, file_path),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def add_references(self, repo_id: str, file_path: str, references: list["ReferenceInfo"]) -> None:
         """Bulk insert identifier usages without committing."""
         self._conn.executemany(

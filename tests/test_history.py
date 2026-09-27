@@ -133,3 +133,10 @@ def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
 
     without = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed())
     assert "src/util.py" not in {f.file_path for f in without.high_confidence + without.medium_confidence + without.related}
+
+
+def test_commits_record_path_at_the_time(repo):
+    commits = read_history(str(repo))
+    oldest = commits[-1]
+    assert oldest.paths_then["src/core.py"] == "pkg/core.py"
+    assert commits[0].paths_then["src/core.py"] == "src/core.py"

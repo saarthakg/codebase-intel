@@ -22,6 +22,8 @@ class Commit:
     sha: str
     date: str               # ISO date, YYYY-MM-DD
     files: list[str]        # paths as they are named *today* (renames followed)
+    # today's path → the path it had in this commit (differs for renamed files)
+    paths_then: dict[str, str] = field(default_factory=dict)
 
 
 def read_history(
@@ -58,16 +60,18 @@ def read_history(
     commits: list[Commit] = []
     sha = date = None
     files: list[str] = []
+    then: dict[str, str] = {}
 
     def flush():
         if sha is not None:
-            commits.append(Commit(sha, date, list(dict.fromkeys(files))))
+            commits.append(Commit(sha, date, list(dict.fromkeys(files)), dict(then)))
 
     for line in out.splitlines():
         if line.startswith("@@"):
             flush()
             sha, date = line[2:].split(" ", 1)
             files = []
+            then = {}
         elif line.strip():
             parts = line.split("\t")
             status = parts[0]
@@ -77,8 +81,11 @@ def read_history(
                 if status.startswith("R"):
                     current[old] = now
                 files.append(now)
+                then[now] = new
             elif len(parts) >= 2:
-                files.append(current.get(parts[1], parts[1]))
+                now = current.get(parts[1], parts[1])
+                files.append(now)
+                then[now] = parts[1]
     flush()
     if until:
         commits = [c for c in commits if c.date <= until]

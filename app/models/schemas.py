@@ -136,6 +136,27 @@ class ImpactBatchResponse(BaseModel):
     tests: list[BatchImpactedFile] = []
 
 
+class ImpactDiffRequest(_RepoScoped):
+    diff: str               # unified diff, e.g. the output of `git diff`
+    depth: int = 3
+
+
+class ChangedSymbol(BaseModel):
+    file_path: str
+    qualified_name: str     # innermost symbol the diff touched, e.g. "HTTPAdapter.cert_verify"
+    used_in: list[str]      # files (depending on file_path) that use this symbol
+
+
+class DiffImpactResponse(BaseModel):
+    targets: list[str] = []                     # changed, indexed files
+    changed_symbols: list[ChangedSymbol] = []
+    high_confidence: list[BatchImpactedFile] = []
+    medium_confidence: list[BatchImpactedFile] = []
+    related: list[BatchImpactedFile] = []
+    tests: list[BatchImpactedFile] = []
+    unindexed_files: list[str] = []             # in the diff but not in the index (new, or not ingested)
+
+
 # --- Ask ---
 
 class AskRequest(_RepoScoped):
