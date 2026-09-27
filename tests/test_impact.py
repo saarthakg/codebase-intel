@@ -246,3 +246,32 @@ def test_semantic_signal_queries_with_the_target_files_own_vectors(tmp_path):
     related = [f.file_path for f in resp.related]
     assert related[0] == "similar.py"
     assert "target.py" not in related
+
+
+def test_test_named_for_target_ranks_first_and_tests_are_listed():
+    g = DependencyGraph()
+    for f in ["src/pkg/adapters.py", "src/pkg/models.py", "tests/test_adapters.py",
+              "tests/test_other.py", "tests/testserver/server.py"]:
+        g.add_file(f)
+    g.add_import_edge("src/pkg/models.py", "src/pkg/adapters.py")
+    g.add_import_edge("tests/test_other.py", "src/pkg/models.py")
+    meta = make_mock_metadata()
+    faiss = MagicMock(spec=FAISSStore)
+    faiss.search.return_value = []
+
+    resp = analyze_impact("src/pkg/adapters.py", "repo1", g, faiss, meta, MockEmbeddings())
+    assert resp.high_confidence[0].file_path == "tests/test_adapters.py"
+    assert resp.high_confidence[0].reason == "test named for this file"
+    assert [t.file_path for t in resp.tests] == ["tests/test_adapters.py", "tests/test_other.py"]
+
+
+def test_batch_lists_tests_too():
+    g = DependencyGraph()
+    for f in ["a.py", "tests/test_a.py"]:
+        g.add_file(f)
+    meta = make_mock_metadata()
+    faiss = MagicMock(spec=FAISSStore)
+    faiss.search.return_value = []
+    resp = analyze_impact_batch(["a.py"], "repo1", g, faiss, meta, MockEmbeddings())
+    assert [t.file_path for t in resp.tests] == ["tests/test_a.py"]
+    assert resp.tests[0].triggered_by == ["a.py"]

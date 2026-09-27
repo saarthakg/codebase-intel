@@ -21,6 +21,39 @@ def is_test_path(file_path: str) -> bool:
     )
 
 
+_TEST_NAME_RE = __import__("re").compile(
+    r"^(?P<prefix>test_)?(?P<stem>.+?)(?P<suffix>_test|_tests|\.test|\.spec|Test|Tests)?$"
+)
+
+
+def tested_module_stem(test_path: str) -> Optional[str]:
+    """For a test file, the module name it's named after: 'tests/test_utils.py' →
+    'utils', 'src/foo.spec.ts' → 'foo', 'FooTest.java' → 'Foo'. None otherwise."""
+    if not is_test_path(test_path):
+        return None
+    name = PurePosixPath(test_path).name
+    for ext in (".py", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"):
+        if name.endswith(ext):
+            name = name[: -len(ext)]
+            break
+    m = _TEST_NAME_RE.match(name)
+    if not (m.group("prefix") or m.group("suffix")):
+        return None  # a helper that lives in tests/ (e.g. tests/testserver/server.py)
+    stem = m.group("stem")
+    return stem if stem not in ("conftest", "test", "tests", "__init__") else None
+
+
+def tests_named_for(file_path: str, candidates) -> list[str]:
+    """Test files among `candidates` named after `file_path`'s module
+    (adapters.py → tests/test_adapters.py, foo.ts → foo.test.ts)."""
+    if is_test_path(file_path):
+        return []
+    stem = PurePosixPath(file_path).stem
+    if stem == "__init__":
+        stem = PurePosixPath(file_path).parent.name
+    return sorted(c for c in candidates if c != file_path and tested_module_stem(c) == stem)
+
+
 def rank_definitions(symbol: str, rows: list[dict]) -> list[dict]:
     """Order candidate definitions best-first.
 

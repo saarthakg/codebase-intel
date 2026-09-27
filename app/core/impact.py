@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 
-from app.core.definitions import best_definition
+from app.core.definitions import best_definition, is_test_path, tests_named_for
 from app.core.graph import DependencyGraph
 from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
 from app.storage.faiss_store import FAISSStore
@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 _GRAPH_CONFIDENCE = {1: 0.95, 2: 0.75, 3: 0.50}
 _SYMBOL_CONFIDENCE = 0.70
 _SEMANTIC_CONFIDENCE = 0.35
+# A test named after the target (adapters.py → tests/test_adapters.py) ranks
+# above even direct importers: it's the file most likely to change with it.
+# 0.97 vs 0.9 was chosen on the history eval's dev commits (MRR 0.654 → 0.679)
+# and held on held-out (0.592 → 0.603).
+_NAMED_TEST_CONFIDENCE = 0.97
 # Semantic neighbours: read this many chunks, keep up to this many new files.
 _SEMANTIC_POOL = 20
 _SEMANTIC_FILES = 5
@@ -81,6 +86,11 @@ def analyze_impact(
             if fp == defining_file:
                 continue  # skip the defining file itself
             _add(fp, _SYMBOL_CONFIDENCE, "references symbol", 0)
+
+    # ── Signal 5: Tests named after the target file ───────────────────────────
+    if root_file:
+        for test_file in tests_named_for(root_file, graph.G.nodes):
+            _add(test_file, _NAMED_TEST_CONFIDENCE, "test named for this file", 0)
 
     # ── Signal 4: Co-change history ───────────────────────────────────────────
     cochange_p: dict[str, float] = {}
@@ -153,6 +163,7 @@ def analyze_impact(
         high_confidence=high_confidence,
         medium_confidence=medium_confidence,
         related=related,
+        tests=[f for f in high_confidence + medium_confidence + related if is_test_path(f.file_path)],
     )
 
 
@@ -222,4 +233,5 @@ def analyze_impact_batch(
         high_confidence=high_confidence,
         medium_confidence=medium_confidence,
         related=related,
+        tests=[f for f in high_confidence + medium_confidence + related if is_test_path(f.file_path)],
     )

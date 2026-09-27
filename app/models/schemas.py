@@ -101,7 +101,7 @@ class ImpactRequest(_RepoScoped):
 
 class ImpactedFile(BaseModel):
     file_path: str
-    reason: str             # "direct import" | "symbol reference" | "semantic similarity"
+    reason: str             # e.g. "direct import", "test named for this file", "changed together in 5 of 12 commits"
     confidence: float       # 0.0–1.0
     depth: int              # hops from target in graph
 
@@ -111,6 +111,8 @@ class ImpactResponse(BaseModel):
     high_confidence: list[ImpactedFile]
     medium_confidence: list[ImpactedFile]
     related: list[ImpactedFile]
+    # The test files among the above, best-first: what to run for this change.
+    tests: list[ImpactedFile] = []
 
 
 class ImpactBatchRequest(_RepoScoped):
@@ -131,6 +133,7 @@ class ImpactBatchResponse(BaseModel):
     high_confidence: list[BatchImpactedFile]
     medium_confidence: list[BatchImpactedFile]
     related: list[BatchImpactedFile]
+    tests: list[BatchImpactedFile] = []
 
 
 # --- Ask ---

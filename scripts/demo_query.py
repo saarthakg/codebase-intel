@@ -89,7 +89,7 @@ def _format_impact_line(f) -> str:
 
 def _print_impact_buckets(response):
     if response.high_confidence:
-        print("HIGH CONFIDENCE (direct/transitive imports):")
+        print("HIGH CONFIDENCE:")
         for f in response.high_confidence:
             print(_format_impact_line(f))
     if response.medium_confidence:
@@ -97,9 +97,13 @@ def _print_impact_buckets(response):
         for f in response.medium_confidence:
             print(_format_impact_line(f))
     if response.related:
-        print("\nRELATED (semantic similarity):")
+        print("\nRELATED:")
         for f in response.related:
             print(_format_impact_line(f))
+    if response.tests:
+        print("\nTESTS TO RUN:")
+        for f in response.tests:
+            print(f"  {f.file_path}")
 
 
 def mode_impact(repo_id: str, target: str, depth: int = 3):

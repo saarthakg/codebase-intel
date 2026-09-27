@@ -125,10 +125,11 @@ def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
 
     resp = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed(), cochange=cochange)
     hits = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
-    # No import links between these files — only history ties the test to core.py
-    assert "tests/test_core.py" in hits
-    assert hits["tests/test_core.py"].reason.startswith("changed together in 4 of")
-    assert 0.4 < hits["tests/test_core.py"].confidence <= 0.9
+    # No import links between these files; only history ties util.py to core.py.
+    # (tests/test_core.py is found by its name, at higher confidence.)
+    assert hits["src/util.py"].reason == "changed together in 3 of 6 commits"
+    assert hits["src/util.py"].confidence == pytest.approx(0.4 + 0.5 * 3 / 6)
+    assert hits["tests/test_core.py"].reason == "test named for this file"
 
     without = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed())
-    assert not (without.high_confidence + without.medium_confidence + without.related)
+    assert "src/util.py" not in {f.file_path for f in without.high_confidence + without.medium_confidence + without.related}

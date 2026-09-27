@@ -272,3 +272,28 @@ def test_typescript_declarations_and_qualified_methods():
     assert syms["Size"] == "type"
     assert syms["Color"] == "enum"
     assert syms["lazy"] == "function"
+
+
+
+# ── Test-file naming ──────────────────────────────────────────────────────────
+
+# aliased: pytest would collect names starting with "test" as tests
+from app.core.definitions import tested_module_stem as module_stem, tests_named_for as named_tests
+
+
+def test_module_stem():
+    assert module_stem("tests/test_utils.py") == "utils"
+    assert module_stem("pkg/thing_test.py") == "thing"
+    assert module_stem("src/foo.spec.ts") == "foo"
+    assert module_stem("src/foo.test.tsx") == "foo"
+    assert module_stem("tests/testserver/server.py") is None   # helper, not a test of "server"
+    assert module_stem("tests/conftest.py") is None
+    assert module_stem("src/app.py") is None
+
+
+def test_named_tests():
+    files = ["tests/test_adapters.py", "tests/test_requests.py", "src/foo.test.ts", "src/requests/models.py"]
+    assert named_tests("src/requests/adapters.py", files) == ["tests/test_adapters.py"]
+    assert named_tests("src/requests/__init__.py", files) == ["tests/test_requests.py"]  # package name
+    assert named_tests("src/foo.ts", files) == ["src/foo.test.ts"]
+    assert named_tests("tests/test_adapters.py", files) == []
