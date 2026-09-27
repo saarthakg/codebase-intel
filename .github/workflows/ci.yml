@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies (CPU-only torch)
+        # Without the CPU index, pip on Linux pulls ~2 GB of CUDA libraries.
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
+
+  eval:
+    # Re-runs the benchmark against psf/requests and fails on regressions
+    # (floors in eval/thresholds.yaml). No LLM or API key involved.
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-en-v1.5
+      - name: Clone psf/requests at the benchmark commit (full history, for the history eval)
+        run: |
+          COMMIT=$(python -c "import yaml; print(yaml.safe_load(open('eval/requests_bench.yaml'))['repo_commit'])")
+          git clone --quiet https://github.com/psf/requests "$RUNNER_TEMP/requests-full"
+          git -C "$RUNNER_TEMP/requests-full" checkout --quiet "$COMMIT"
+      - name: Search, definition, references, impact and graph eval
+        run: python eval/run_eval.py --repo-id requests --ingest "$RUNNER_TEMP/requests-full" --out eval-out/main.json
+      - name: Impact eval against real commits
+        run: python eval/run_history_eval.py --git "$RUNNER_TEMP/requests-full" --repo-id requests --out eval-out/history.json
+      - name: Check thresholds
+        run: python eval/check_thresholds.py --main eval-out/main.json --history eval-out/history.json
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: eval-out/
