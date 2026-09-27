@@ -275,3 +275,21 @@ def test_batch_lists_tests_too():
     resp = analyze_impact_batch(["a.py"], "repo1", g, faiss, meta, MockEmbeddings())
     assert [t.file_path for t in resp.tests] == ["tests/test_a.py"]
     assert resp.tests[0].triggered_by == ["a.py"]
+
+
+
+def test_equal_confidence_ties_prefer_frequently_changed_files_then_path():
+    """Ranking must not depend on graph insertion order; among equal evidence,
+    files that change more often (base rate) come first."""
+    from app.core.history import CoChange, Commit
+    g = DependencyGraph()
+    for f in ["t.py", "z_busy.py", "a_quiet.py", "m_quiet.py"]:
+        g.add_file(f)
+    for f in ["z_busy.py", "m_quiet.py", "a_quiet.py"]:  # insertion order deliberately scrambled
+        g.add_import_edge(f, "t.py")
+    history = CoChange.from_commits([Commit(str(i), "d", ["z_busy.py", "x.py"]) for i in range(5)])
+    meta = make_mock_metadata()
+    faiss = MagicMock(spec=FAISSStore)
+    faiss.search.return_value = []
+    resp = analyze_impact("t.py", "repo1", g, faiss, meta, MockEmbeddings(), cochange=history)
+    assert [f.file_path for f in resp.high_confidence] == ["z_busy.py", "a_quiet.py", "m_quiet.py"]

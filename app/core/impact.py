@@ -31,6 +31,20 @@ _COCHANGE_SCALE = 0.5
 _COCHANGE_CAP = 0.9
 
 
+def _rank_key(file_path, confidence, hop, cochange=None, cochange_p=None):
+    """Sort key for impacted files, best first.
+
+    1. confidence
+    2. co-change strength with the target (how often they changed together)
+    3. base rate: how often the file changes at all. Among files with equal
+       evidence, one touched by most commits is likelier to change again.
+    4. fewest hops, then path, so ties never depend on graph storage order.
+    """
+    p = (cochange_p or {}).get(file_path, 0.0)
+    base = cochange.file_commits.get(file_path, 0) if cochange is not None else 0
+    return (-confidence, -p, -base, hop, file_path)
+
+
 def analyze_impact(
     target: str,
     repo_id: str,
@@ -143,7 +157,7 @@ def analyze_impact(
     related: list[ImpactedFile] = []
 
     for file_path, (confidence, reason, hop) in sorted(
-        results.items(), key=lambda x: (-x[1][0], -cochange_p.get(x[0], 0.0))
+        results.items(), key=lambda x: _rank_key(x[0], x[1][0], x[1][2], cochange, cochange_p)
     ):
         item = ImpactedFile(
             file_path=file_path,
@@ -212,7 +226,7 @@ def analyze_impact_batch(
     related: list[BatchImpactedFile] = []
 
     for file_path, (confidence, reason, hop, triggers) in sorted(
-        merged.items(), key=lambda x: -x[1][0]
+        merged.items(), key=lambda x: _rank_key(x[0], x[1][0], x[1][2], cochange)
     ):
         item = BatchImpactedFile(
             file_path=file_path,

@@ -61,8 +61,9 @@ def test_cochange_confidence_and_min_support(repo):
     related = {other: (round(p, 2), n) for other, p, n in cc.related("src/core.py")}
     # core.py appears in all 6 commits (the pkg/ → src/ move counts: renamed
     # files changed together); the test changed with it in 4, util.py in 3.
+    # Rates are shrunk by 3 prior commits: 4/(6+3), 3/(6+3).
     assert cc.file_commits["src/core.py"] == 6
-    assert related == {"tests/test_core.py": (0.67, 4), "src/util.py": (0.5, 3)}
+    assert related == {"tests/test_core.py": (0.44, 4), "src/util.py": (0.33, 3)}
     assert cc.related("missing.py") == []
 
 
@@ -71,7 +72,7 @@ def test_large_commits_are_ignored():
     small = Commit("y", "2020-01-02", ["a.py", "b.py"])
     cc = CoChange.from_commits([big, small, small])
     assert cc.commits_used == 2
-    assert cc.related("a.py", min_support=2) == [("b.py", 1.0, 2)]
+    assert cc.related("a.py", min_support=2) == [("b.py", 2 / (2 + 3), 2)]
     assert "f1.py" not in cc.file_commits
 
 
@@ -128,7 +129,7 @@ def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
     # No import links between these files; only history ties util.py to core.py.
     # (tests/test_core.py is found by its name, at higher confidence.)
     assert hits["src/util.py"].reason == "changed together in 3 of 6 commits"
-    assert hits["src/util.py"].confidence == pytest.approx(0.4 + 0.5 * 3 / 6)
+    assert hits["src/util.py"].confidence == pytest.approx(0.4 + 0.5 * 3 / (6 + 3))
     assert hits["tests/test_core.py"].reason == "test named for this file"
 
     without = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed())
@@ -140,3 +141,14 @@ def test_commits_record_path_at_the_time(repo):
     oldest = commits[-1]
     assert oldest.paths_then["src/core.py"] == "pkg/core.py"
     assert commits[0].paths_then["src/core.py"] == "src/core.py"
+
+
+
+def test_sparse_history_is_not_high_confidence():
+    """3-of-3 commits (a shallow clone) must not look like near-certain coupling."""
+    from app.core.history import CONFIDENCE_PRIOR_COMMITS
+    cc = CoChange.from_commits([Commit(str(i), "d", ["a.py", "b.py"]) for i in range(3)])
+    [(other, p, n)] = cc.related("a.py")
+    assert (other, n) == ("b.py", 3) and p == 3 / (3 + CONFIDENCE_PRIOR_COMMITS) == 0.5
+    many = CoChange.from_commits([Commit(str(i), "d", ["a.py", "b.py"]) for i in range(60)])
+    assert many.related("a.py")[0][1] > 0.95  # plenty of evidence: barely shrunk

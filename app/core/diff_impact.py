@@ -152,7 +152,8 @@ def analyze_symbol_changes(
                 else:
                     existing.triggered_by = sorted(set(existing.triggered_by) | {file_path})
 
-    ordered = sorted(merged.values(), key=lambda f: -f.confidence)  # stable: keeps base tie-breaks
+    from app.core.impact import _rank_key
+    ordered = sorted(merged.values(), key=lambda f: _rank_key(f.file_path, f.confidence, f.depth, cochange))
     high = [f for f in ordered if f.confidence >= 0.7]
     medium = [f for f in ordered if 0.4 <= f.confidence < 0.7]
     related = [f for f in ordered if f.confidence < 0.4]

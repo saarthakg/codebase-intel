@@ -209,11 +209,12 @@ reason in the output:
 | A test named after the target (`test_adapters.py`, `foo.test.ts`) | 0.97 | `test named for this file` |
 | Import graph, direct / 2 hops / 3 hops | 0.95 / 0.75 / 0.50 | `direct import` … |
 | Files using the target symbol (symbol targets) | 0.70 | `references symbol` |
-| Git history: changed together in a fraction p of the target's commits | 0.4 + 0.5·p, max 0.9 | `changed together in N of M commits` |
+| Git history: changed together in N of the target's M commits, p = N / (M + 3) | 0.4 + 0.5·p, max 0.9 | `changed together in N of M commits` |
 | Nearest chunks to the target's own code | 0.35 | `semantically related` |
 
 Results are bucketed into `high_confidence` (≥ 0.7), `medium_confidence` (≥ 0.4) and
-`related`, with co-change strength breaking ties within a confidence level. `tests` lists the
+`related`. Ties within a confidence level go to stronger co-change, then to files that
+change more often overall, then fewer hops, then path. `tests` lists the
 test files among them, best-first: the tests to run. Co-change comes from the last 5,000
 commits of the ingested repo's git history (none if it isn't a git repo).
 
@@ -325,8 +326,8 @@ HIGH CONFIDENCE:
   ... 7 more at 2 hops
 
 MEDIUM CONFIDENCE:
-  [0.65] pyproject.toml            — changed together in 2 of 4 commits
-  [0.65] src/requests/compat.py    — changed together in 2 of 4 commits
+  [0.54] pyproject.toml            — changed together in 2 of 4 commits
+  [0.54] src/requests/compat.py    — changed together in 2 of 4 commits
   ... 
 
 TESTS TO RUN:
@@ -472,8 +473,9 @@ on 2023+.
 **Why diff-level impact matches methods by name:** A diff that only changes `cert_verify`
 shouldn't rank every importer of `adapters.py` equally. Callers are found by name among files
 that import the changed module. That over-matches generic names like `read`, but requiring
-the class name too was tested and threw away every gain on real commits, because methods are
-mostly called on instances obtained elsewhere (`r.connection.send(...)`).
+the class name too gave up diff-level's recall gain on real commits (dev recall@5 0.52 → 0.46,
+held-out unchanged), because methods are mostly called on instances obtained elsewhere
+(`r.connection.send(...)`).
 
 **Why the dependency-graph traversal explicitly excludes its own starting file:** Real
 codebases have import cycles (`requests`' own `adapters.py` and `models.py` import each
@@ -612,16 +614,23 @@ held out. It needs a full clone at the indexed commit (see the script's docstrin
 
 | Impact ranking | Dev: recall@5 / @10 / MRR | Held-out: recall@5 / @10 / MRR |
 |---|---|---|
-| Import graph + semantic (before) | 0.35 / 0.47 / 0.40 | 0.43 / 0.66 / 0.46 |
-| + git co-change | 0.45 / 0.65 / 0.65 | 0.50 / 0.68 / 0.59 |
-| + semantic query from the file's own code | 0.46 / 0.66 / 0.65 | 0.50 / 0.70 / 0.59 |
-| + named tests ranked first | 0.46 / 0.66 / 0.68 | 0.50 / 0.70 / 0.60 |
-| `/impact/diff` (uses each commit's diff) | **0.51 / 0.73 / 0.69** | 0.50 / 0.70 / **0.62** |
+| Without git history (imports, usages, named tests, semantic) | 0.35 / 0.49 / 0.42 | 0.39 / 0.58 / 0.45 |
+| `/impact`, with git co-change | 0.46 / 0.67 / **0.69** | 0.52 / **0.70** / **0.64** |
+| `/impact/diff` (uses each commit's diff) | **0.52 / 0.74** / 0.67 | **0.53** / **0.70** / 0.63 |
 
-Recall@k is the share of the commit's other changed files in the top k. The graph numbers
-are slightly optimistic, since today's import graph is used for past commits. Diff-level
-impact helps less on held-out because many 2023+ commits are typing passes that touch most
-symbols in a file.
+Recall@k is the share of the commit's other changed files in the top k. Git co-change is the
+biggest single gain. Diff-level impact adds recall on dev but is roughly even with `/impact`
+on held-out, where many commits are typing passes that touch most symbols in a file. The graph
+numbers are slightly optimistic, since today's import graph is used for past commits.
+
+**Correction.** An earlier version of this table reported numbers (e.g. `/impact/diff` at
+dev 0.51 / 0.73 / 0.69, held-out 0.50 / 0.70 / 0.62) that partly depended on the order
+equal-confidence files happened to come out of the graph. Ties are now broken
+deterministically: by co-change strength, then by how often each file changes at all (its
+base rate), then hops and path. The numbers above are re-measured under that ranking. Co-change
+rates are also shrunk toward zero when backed by few commits (`n / (commits + 3)`), which
+changes nothing on full history but stops a shallow clone's "3 of 3 commits" from scoring as
+near-certain.
 
 ---
 

@@ -65,37 +65,37 @@ Impact analysis: src/requests/adapters.py
 
 HIGH CONFIDENCE:
   [0.97] tests/test_adapters.py  — test named for this file
-  [0.95] tests/test_requests.py  — direct import
   [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
-  [0.75] src/requests/cookies.py  — transitive import (2 hops)
-  [0.75] src/requests/utils.py  — transitive import (2 hops)
+  [0.95] tests/test_requests.py  — direct import
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.75] src/requests/utils.py  — transitive import (2 hops)
   [0.75] src/requests/auth.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
-  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.75] src/requests/cookies.py  — transitive import (2 hops)
   [0.75] src/requests/_types.py  — transitive import (2 hops)
   [0.75] src/requests/api.py  — transitive import (2 hops)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.65] pyproject.toml  — changed together in 2 of 4 commits
-  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits
-  [0.65] src/requests/help.py  — changed together in 2 of 4 commits
+  [0.54] pyproject.toml  — changed together in 2 of 4 commits
+  [0.54] src/requests/compat.py  — changed together in 2 of 4 commits
+  [0.54] src/requests/help.py  — changed together in 2 of 4 commits
   [0.50] tests/test_utils.py  — transitive import (3 hops)
-  [0.50] tests/test_packages.py  — transitive import (3 hops)
-  [0.50] tests/test_testserver.py  — transitive import (3 hops)
-  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)
   [0.50] docs/conf.py  — transitive import (3 hops)
   [0.50] tests/test_hooks.py  — transitive import (3 hops)
+  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)
+  [0.50] tests/test_packages.py  — transitive import (3 hops)
+  [0.50] tests/test_testserver.py  — transitive import (3 hops)
 
 TESTS TO RUN:
   tests/test_adapters.py
   tests/test_requests.py
   tests/test_utils.py
+  tests/test_hooks.py
+  tests/test_lowlevel.py
   tests/test_packages.py
   tests/test_testserver.py
-  tests/test_lowlevel.py
-  tests/test_hooks.py
 ```
 
 Five signals are at work here:
@@ -103,7 +103,8 @@ Five signals are at work here:
 - Direct and transitive importers come from the import graph. The test files that exercise
   `adapters.py` used to be missing entirely: `requests` uses a `src/` layout, so
   `import requests.adapters` from `tests/` never resolved.
-- "changed together in 2 of 4 commits" comes from git history.
+- "changed together in 2 of 4 commits" comes from git history (confidence 0.54: with so few
+  commits the rate is shrunk, 2 / (4 + 3)).
 - References to the file's symbols (not shown, since the target here is a file).
 - Semantic neighbours, which add nothing new for this file.
 
@@ -190,17 +191,24 @@ Impact analysis: HTTPAdapter.send
 
 HIGH CONFIDENCE:
   [0.97] tests/test_adapters.py  — test named for this file
-  [0.95] tests/test_requests.py  — direct import
   [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
+  [0.95] tests/test_requests.py  — direct import
+  [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.75] src/requests/utils.py  — transitive import (2 hops)
+  [0.75] src/requests/auth.py  — transitive import (2 hops)
   [0.75] src/requests/cookies.py  — transitive import (2 hops)
-  ...
+  [0.75] src/requests/_types.py  — transitive import (2 hops)
+  [0.75] src/requests/api.py  — transitive import (2 hops)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
   [0.70] tests/test_lowlevel.py  — references symbol
   [0.70] tests/testserver/server.py  — references symbol
 
 MEDIUM CONFIDENCE:
-  [0.65] pyproject.toml  — changed together in 2 of 4 commits
-  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits
+  [0.54] pyproject.toml  — changed together in 2 of 4 commits
+  [0.54] src/requests/compat.py  — changed together in 2 of 4 commits
+  [0.54] src/requests/help.py  — changed together in 2 of 4 commits
   ...
 ```
 
@@ -302,29 +310,29 @@ Batch impact analysis: src/requests/adapters.py, src/requests/certs.py
 
 HIGH CONFIDENCE:
   [0.97] tests/test_adapters.py  — test named for this file  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.95] tests/test_requests.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
   [0.95] src/requests/models.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
   [0.95] src/requests/sessions.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] tests/test_requests.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
   [0.95] src/requests/utils.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/cookies.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/__init__.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/auth.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/exceptions.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
   [0.75] src/requests/_types.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/api.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] tests/test_utils.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/__init__.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
   [0.75] src/requests/adapters.py  — transitive import (2 hops)  (via src/requests/certs.py)
+  [0.75] src/requests/auth.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/cookies.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/api.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] tests/test_utils.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
 
 MEDIUM CONFIDENCE:
-  [0.65] pyproject.toml  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
-  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
-  [0.65] src/requests/help.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.50] tests/test_packages.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.50] tests/test_testserver.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.54] pyproject.toml  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
+  [0.54] src/requests/compat.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
+  [0.54] src/requests/help.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py, src/requests/certs.py)
   [0.50] docs/conf.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
   [0.50] tests/test_hooks.py  — transitive import (3 hops)  (via src/requests/adapters.py)
+  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_packages.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_testserver.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
 
 RELATED:
   [0.35] HISTORY.md  — semantically related  (via src/requests/certs.py)
@@ -360,18 +368,18 @@ CHANGED SYMBOLS:
 
 HIGH CONFIDENCE:
   [0.96] src/requests/sessions.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
-  [0.96] src/requests/utils.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
-  [0.96] src/requests/adapters.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
   [0.96] tests/test_requests.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] src/requests/adapters.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] src/requests/utils.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
   [0.96] tests/test_utils.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
   [0.95] src/requests/models.py  — direct import  (via src/requests/_types.py)
-  [0.95] src/requests/cookies.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
-  [0.95] src/requests/hooks.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
-  [0.95] src/requests/api.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
-  [0.95] src/requests/auth.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
-  [0.95] src/requests/__init__.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
-  [0.95] src/requests/exceptions.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
   [0.95] src/requests/_types.py  — direct import  (via src/requests/models.py)
+  [0.95] src/requests/__init__.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/auth.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/cookies.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/api.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/exceptions.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/hooks.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
   ...
 ```
 
@@ -379,8 +387,8 @@ The diff's changed lines are mapped to the innermost functions they touch, and f
 those functions rank above other importers. Usages are matched by name within files that
 import the changed module, which is why a generic method name like `read` (from the
 `SupportsRead` protocol) pulls in every dependent that calls `.read()`. Requiring the class
-name as well was tested and removed: it threw away every gain on real commits, because
-methods are usually called on instances obtained elsewhere.
+name as well was tested and removed: it gave up diff-level's recall gain on real commits,
+because methods are usually called on instances obtained elsewhere.
 
 ---
 

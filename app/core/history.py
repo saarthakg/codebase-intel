@@ -15,6 +15,11 @@ from typing import Optional
 MAX_FILES_PER_COMMIT = 30
 # Pairs seen fewer times than this are noise, not coupling.
 MIN_SUPPORT = 2
+# Shrinks co-change rates toward 0 when a file has few commits: with sparse
+# history (a shallow clone), "changed together in 3 of 3 commits" would
+# otherwise score 1.0. With k=3 that's 0.5. Full-history results on the
+# history eval are identical for k in 0..10; it only bites on thin evidence.
+CONFIDENCE_PRIOR_COMMITS = 3
 
 
 @dataclass
@@ -126,13 +131,14 @@ class CoChange:
     def related(self, file: str, min_support: int = MIN_SUPPORT, limit: int = 50) -> list[tuple[str, float, int]]:
         """Files that co-changed with `file`: (other, confidence, support) best-first.
 
-        confidence = P(other changed | file changed) = together / commits(file).
+        confidence ≈ P(other changed | file changed) = together / (commits(file) + k),
+        with k = CONFIDENCE_PRIOR_COMMITS shrinking rates backed by few commits.
         """
         total = self.file_commits.get(file, 0)
         if not total:
             return []
         out = [
-            (other, n / total, n)
+            (other, n / (total + CONFIDENCE_PRIOR_COMMITS), n)
             for other, n in self.pairs.get(file, {}).items()
             if n >= min_support
         ]
