@@ -27,7 +27,7 @@ from app.core.graph import (
     resolve_ts_import,
 )
 from app.core.history import cochange_for_repo
-from app.core.ingest import detect_language, load_file, walk_repo
+from app.core.ingest import RepoScan, detect_language, load_file, scan_repo
 from app.core.symbols import analyze_file
 from app.core.validation import validate_repo_id
 from app.storage.faiss_store import FAISSStore
@@ -63,7 +63,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     backend = os.environ.get("EMBEDDING_BACKEND", "local").lower()
     model_name = get_embedding_model_name(backend)
     try:
-        graph, all_chunks, embed_inputs, file_count = _index_files(
+        graph, all_chunks, embed_inputs, scan = _index_files(
             resolved_repo_path, repo_id, metadata_store, _report
         )
         embedded = reused = 0
@@ -101,7 +101,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
 
     summary = {
         "repo_id": repo_id,
-        "files_indexed": file_count,
+        "files_indexed": len(graph.G.nodes),
+        "files_skipped": dict(scan.skipped),
         "chunks_indexed": len(all_chunks),
         "symbols_extracted": total_symbols,
         "references_indexed": total_references,
@@ -145,15 +146,18 @@ def _embed_with_cache(
 
 def _index_files(
     repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None]
-) -> tuple[DependencyGraph, list, list[str], int]:
+) -> tuple[DependencyGraph, list, list[str], "RepoScan"]:
     """Walk, parse, chunk and link every file. Writes to `metadata_store`
-    without committing; returns (graph, chunks, embedding inputs, files_walked)."""
+    without committing; returns (graph, chunks, embedding inputs, scan)."""
     metadata_store.clear_repo(repo_id, commit=False)  # replace, don't accumulate, on re-ingest
     graph = DependencyGraph()
 
     report(f"Walking repo: {repo_path}")
-    file_paths = walk_repo(repo_path)
-    report(f"Found {len(file_paths)} files")
+    scan = scan_repo(repo_path)
+    file_paths = scan.files
+    skipped = ", ".join(f"{n} {reason.replace('_', ' ')}" for reason, n in sorted(scan.skipped.items()))
+    report(f"Found {len(file_paths)} files" + (" (.gitignore applied)" if scan.used_git else "")
+           + (f"; skipped {skipped}" if skipped else ""))
     python_roots = find_python_source_roots(repo_path)
     ts_config = load_ts_config(repo_path)
 
@@ -201,4 +205,7 @@ def _index_files(
     metadata_store.save_cochange(repo_id, cochange)
     if cochange.commits_used:
         report(f"Co-change history: {cochange.commits_used} commits")
-    return graph, all_chunks, embed_inputs, len(file_paths)
+    unreadable = len(file_paths) - len(graph.G.nodes)
+    if unreadable:
+        scan.skipped["binary_or_unreadable"] += unreadable
+    return graph, all_chunks, embed_inputs, scan

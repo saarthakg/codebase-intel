@@ -31,4 +31,7 @@ def ingest(request: IngestRequest):
         chunks_indexed=summary["chunks_indexed"],
         symbols_extracted=summary["symbols_extracted"],
         edges_in_graph=summary["edges_in_graph"],
+        files_skipped=summary["files_skipped"],
+        chunks_embedded=summary["chunks_embedded"],
+        chunks_reused=summary["chunks_reused"],
     )

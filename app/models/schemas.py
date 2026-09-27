@@ -40,6 +40,9 @@ class IngestResponse(BaseModel):
     chunks_indexed: int
     symbols_extracted: int
     edges_in_graph: int
+    files_skipped: dict[str, int] = {}   # reason ("too_large", "minified", "lockfile", ...) → count
+    chunks_embedded: int = 0             # newly embedded this run
+    chunks_reused: int = 0               # unchanged since the last ingest; vectors reused
 
 
 # --- Search ---

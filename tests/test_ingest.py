@@ -150,3 +150,68 @@ def test_load_file_binary_returns_none(tmp_path):
 def test_load_file_missing_returns_none():
     content = load_file("/nonexistent/path/file.py")
     assert content is None
+
+
+# ── scan_repo: .gitignore, lockfiles, minified, size ──────────────────────────
+
+import os
+import subprocess
+
+from app.core.ingest import scan_repo
+
+
+def _rel(scan, root):
+    return sorted(os.path.relpath(f, root) for f in scan.files)
+
+
+def _git_init(repo):
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+
+
+def test_scan_respects_gitignore_including_nested(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "src" / "gen").mkdir(parents=True)
+    (repo / "build_out").mkdir()
+    (repo / ".gitignore").write_text("build_out/\n*.generated.py\n")
+    (repo / "src" / ".gitignore").write_text("gen/\n")
+    (repo / "src" / "app.py").write_text("x = 1\n")
+    (repo / "src" / "schema.generated.py").write_text("x = 1\n")
+    (repo / "src" / "gen" / "stub.py").write_text("x = 1\n")
+    (repo / "build_out" / "bundle.js").write_text("x = 1\n")
+    (repo / "untracked_but_not_ignored.py").write_text("x = 1\n")
+    _git_init(repo)
+    scan = scan_repo(str(repo))
+    assert scan.used_git
+    assert _rel(scan, repo) == ["src/app.py", "untracked_but_not_ignored.py"]
+
+
+def test_scan_without_git_falls_back_to_walk(tmp_path):
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "dep.js").write_text("x\n")
+    (tmp_path / "main.py").write_text("x = 1\n")
+    scan = scan_repo(str(tmp_path))
+    assert not scan.used_git
+    assert _rel(scan, tmp_path) == ["main.py"]
+
+
+def test_scan_skips_lockfiles_minified_and_large_files(tmp_path, monkeypatch):
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion": 3}\n')
+    (tmp_path / "vendor.min.js").write_text("var a=1;\n")
+    (tmp_path / "bundle.js").write_text("var a=1;" * 2000 + "\n")        # one 16 KB line
+    (tmp_path / "normal.js").write_text("const a = 1;\n" * 200)
+    (tmp_path / "huge.py").write_text("x = 1\n" * 50_000)                 # ~300 KB
+    monkeypatch.setenv("INGEST_MAX_FILE_BYTES", "100000")
+    scan = scan_repo(str(tmp_path))
+    assert _rel(scan, tmp_path) == ["normal.js"]
+    assert dict(scan.skipped) == {"lockfile": 1, "minified": 2, "too_large": 1}
+
+
+def test_scan_of_git_subdirectory_lists_only_that_subtree(tmp_path):
+    repo = tmp_path / "mono"
+    (repo / "svc_a").mkdir(parents=True)
+    (repo / "svc_b").mkdir()
+    (repo / "svc_a" / "a.py").write_text("x = 1\n")
+    (repo / "svc_b" / "b.py").write_text("x = 1\n")
+    _git_init(repo)
+    scan = scan_repo(str(repo / "svc_a"))
+    assert _rel(scan, repo / "svc_a") == ["a.py"]
