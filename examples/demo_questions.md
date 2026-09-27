@@ -7,8 +7,7 @@ python scripts/ingest_repo.py --repo ../requests-demo --repo-id requests
 ```
 
 All output below is real, regenerated against the current `requests-demo` source (post the
-2026-09 upstream pull that added the `_types.py` typing pass). The one exception is the
-`/ask` answer in Q7, which is marked as such.
+2026-09 upstream pull that added the `_types.py` typing pass).
 
 ---
 
@@ -260,41 +259,55 @@ Top 5 results:
 
 ## Q7: Where is SSL certificate verification handled? (grounded Q&A)
 
-> This answer was generated before hybrid search and structure-aware chunking; it hasn't been
-> re-run since, because `/ask` calls a paid/rate-limited LLM API. Retrieval for the same
-> question now returns the chunks shown in Q1, and `/ask` now sends full chunks rather than
-> the first 800 characters of each, so a fresh run will differ.
-
 ```
-python scripts/demo_query.py --repo-id requests --mode ask \
-  "Where is SSL certificate verification handled?"
+# .env: LLM_BACKEND=ollama  (qwen2.5-coder:7b, fully local, no API key)
+python scripts/demo_query.py --repo-id requests --mode ask "Where is SSL certificate verification handled?"
 ```
 
 ```
 Q: Where is SSL certificate verification handled?
 
-A: Based on the provided excerpts, SSL/TLS certificate verification is handled in
-the following places:
-* HTTPAdapter.cert_verify method in src/requests/adapters.py: Specifically
-  dedicated to verifying an SSL certificate (exposed for subclassing
-  HTTPAdapter) [1]. Adapter methods also accept and process verify (a boolean
-  to control TLS certificate verification or a path string to a CA bundle)
-  and client cert parameters [3, 10].
-* Session in src/requests/sessions.py: Manages the self.verify configuration
-  (defaulting to True) and the verify parameter on session requests to
-  determine whether to verify the server's TLS certificate or specify a CA
-  bundle path [6, 7].
-* src/requests/certs.py: Provides the preferred default CA certificate bundle
-  used for verification via certifi.where() [5].
-* Test Server in tests/testserver/server.py: Configures server-side
-  verification using ssl.SSLContext (verify_mode and load_verify_locations)
-  for mutual TLS tests [9].
+
+A: SSL certificate verification is handled in the `cert_verify` method of the `HTTPAdapter` class, which is defined in `src/requests/adapters.py`. This method checks if the URL starts with "https" and if SSL verification is enabled (`verify=True`). If so, it sets up the connection to use a CA bundle for certificate verification. The specific code snippet is:
+
+```python
+if url.lower().startswith("https") and verify:
+    cert_loc = None
+
+    # Allow self-specified cert location.
+    if verify is not True:
+        cert_loc = verify
+
+    if not cert_loc:
+        cert_loc = DEFAULT_CA_BUNDLE_PATH
+
+    if not cert_loc or not os.path.exists(cert_loc):
+        raise OSError(
+            f"Could not find a suitable TLS CA certificate bundle, "
+            f"invalid path: {cert_loc}"
+        )
+
+    conn.cert_reqs = "CERT_REQUIRED"
+
+    if not os.path.isdir(cert_loc):
+        conn.ca_certs = cert_loc
+    else:
+        conn.ca_cert_dir = cert_loc
+```
+
+This method is called when making a request using the `requests` library, and it ensures that SSL certificates are verified according to the specified settings.
 
 Citations:
-  src/requests/adapters.py    lines 296–337  (cited as [1])
-  src/requests/certs.py       lines 1–19     (cited as [5])
-  tests/testserver/server.py  lines 153–177  (cited as [9])
+  src/requests/adapters.py  lines 307–348  (Referenced by file path in the answer)
+  src/requests/adapters.py  lines 428–453  (Referenced by file path in the answer)
+
+[ollama/qwen2.5-coder:7b; 8 excerpts, 10173 chars]
 ```
+
+Every line of code the answer quotes is verbatim from `src/requests/adapters.py` (lines
+321–342, inside `cert_verify`). The model cited by file path rather than `[N]`, which the
+citation parser resolves to the matching excerpts. It ran on the GPU of a 16 GB M2 Pro,
+and asking again is answered from the cache without calling the model.
 
 ---
 
