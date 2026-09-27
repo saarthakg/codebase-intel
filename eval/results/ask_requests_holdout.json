@@ -4,15 +4,15 @@
     "model": "qwen2.5-coder:7b",
     "n": 25,
     "context_has_answer": 0.96,
-    "cites_answer_file": 0.92,
-    "cites_answer_span": 0.88,
+    "cites_answer_file": 1.0,
+    "cites_answer_span": 0.96,
     "names_answer": 0.96,
-    "flagged_rate": 0.24,
+    "flagged_rate": 0.04,
     "answered_well": 0.96,
     "flag_precision": 0.0,
     "flag_recall": 0.0,
-    "unverified_rate": 0.2,
-    "median_seconds": 19.1
+    "unverified_rate": 0.0,
+    "median_seconds": 15.7
   },
   "rows": [
     {
@@ -24,19 +24,17 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 20.3
+      "seconds": 20.5
     },
     {
       "query": "build the path used in the request line when going through a proxy",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
-      "unverified": [
-        "section"
-      ],
+      "flagged": false,
+      "n_citations": 1,
+      "unverified": [],
       "seconds": 16.6
     },
     {
@@ -59,7 +57,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 28.7
+      "seconds": 23.5
     },
     {
       "query": "re-quote a URI so it is fully quoted",
@@ -70,7 +68,7 @@
       "flagged": false,
       "n_citations": 3,
       "unverified": [],
-      "seconds": 15.0
+      "seconds": 11.9
     },
     {
       "query": "check whether an IP address belongs to a CIDR network",
@@ -81,7 +79,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 26.3
+      "seconds": 18.7
     },
     {
       "query": "temporarily set an environment variable",
@@ -89,13 +87,10 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
+      "flagged": false,
       "n_citations": 1,
-      "unverified": [
-        "MY_ENV_VAR",
-        "my_value"
-      ],
-      "seconds": 14.3
+      "unverified": [],
+      "seconds": 11.1
     },
     {
       "query": "parse a comma-separated list header",
@@ -106,7 +101,7 @@
       "flagged": false,
       "n_citations": 5,
       "unverified": [],
-      "seconds": 19.3
+      "seconds": 13.5
     },
     {
       "query": "load a CA bundle that lives inside a zip archive",
@@ -117,7 +112,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 25.9
+      "seconds": 16.9
     },
     {
       "query": "guess the filename of a file object",
@@ -128,7 +123,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 15.4
+      "seconds": 13.1
     },
     {
       "query": "detect the UTF encoding of JSON bytes",
@@ -150,7 +145,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 13.6
+      "seconds": 13.4
     },
     {
       "query": "get the username and password embedded in a URL",
@@ -161,7 +156,7 @@
       "flagged": false,
       "n_citations": 2,
       "unverified": [],
-      "seconds": 19.1
+      "seconds": 19.0
     },
     {
       "query": "remove the fragment and credentials from a URL",
@@ -172,7 +167,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 415.4
+      "seconds": 14.4
     },
     {
       "query": "create a cookie object from a name and value",
@@ -180,12 +175,10 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 1,
-      "unverified": [
-        "session_id"
-      ],
-      "seconds": 413.5
+      "flagged": false,
+      "n_citations": 2,
+      "unverified": [],
+      "seconds": 15.6
     },
     {
       "query": "convert a Morsel into a cookie",
@@ -196,7 +189,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 79.7
+      "seconds": 12.9
     },
     {
       "query": "remove a cookie by its name",
@@ -207,7 +200,7 @@
       "flagged": false,
       "n_citations": 8,
       "unverified": [],
-      "seconds": 50.3
+      "seconds": 18.2
     },
     {
       "query": "register and deregister hooks on a request",
@@ -215,12 +208,10 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 1,
-      "unverified": [
-        "my_hook_function"
-      ],
-      "seconds": 18.3
+      "flagged": false,
+      "n_citations": 2,
+      "unverified": [],
+      "seconds": 18.0
     },
     {
       "query": "attach authentication to a prepared request",
@@ -228,12 +219,10 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 3,
-      "unverified": [
-        "MyAuth"
-      ],
-      "seconds": 22.1
+      "flagged": false,
+      "n_citations": 4,
+      "unverified": [],
+      "seconds": 21.8
     },
     {
       "query": "generate the Cookie header for a prepared request",
@@ -242,7 +231,7 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 3,
+      "n_citations": 4,
       "unverified": [],
       "seconds": 17.5
     },
@@ -255,7 +244,7 @@
       "flagged": true,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 19.9
+      "seconds": 19.4
     },
     {
       "query": "use a session as a context manager",
@@ -266,7 +255,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 12.9
+      "seconds": 12.4
     },
     {
       "query": "error for a URL with an invalid or missing scheme",
@@ -277,7 +266,7 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 13.6
+      "seconds": 13.3
     },
     {
       "query": "convert bytes or str to the native string type",
@@ -288,18 +277,18 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 15.2
+      "seconds": 14.9
     },
     {
       "query": "check if a string contains only ASCII characters",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 2,
       "unverified": [],
-      "seconds": 15.8
+      "seconds": 15.7
     }
   ]
 }

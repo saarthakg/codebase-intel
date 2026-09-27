@@ -599,6 +599,12 @@ class MetadataStore:
             (repo_id, name, name),
         ).fetchone() is not None
 
+    def code_mentions(self, repo_id: str, token: str) -> bool:
+        """True if `token` appears anywhere in the repo's indexed text."""
+        return self._conn.execute(
+            "SELECT 1 FROM chunks WHERE repo_id = ? AND instr(content, ?) > 0 LIMIT 1", (repo_id, token)
+        ).fetchone() is not None
+
     def file_exists(self, repo_id: str, path: str) -> bool:
         """True if an indexed file is `path` or ends with it ("adapters.py" matches
         "src/requests/adapters.py")."""

@@ -407,3 +407,56 @@ def test_answer_citing_by_path_is_not_flagged(tmp_path, monkeypatch):
         ("src/pkg/auth.py", "Referenced by file path in the answer")
     ]
     assert response.uncertainty is None
+
+
+# ── Answer checks: fewer false alarms (from the /ask eval) ────────────────────
+
+from app.core.answer import symbol_citations
+
+
+def _store_with(tmp_path, path, content):
+    from app.storage.metadata_store import MetadataStore
+    store = MetadataStore(str(tmp_path / "m.db"))
+    store.add_chunks([_chunk_with(path, content)], "r")
+    return store
+
+
+def test_example_code_placeholders_are_not_unverified(tmp_path):
+    """Seen in the eval: an answer's own example defined `my_hook_function`,
+    `MY_ENV_VAR` and `class MyAuth`, and the prose then referred to them."""
+    store = _store_with(tmp_path, "src/pkg/hooks.py", "def register_hook(event, hook):\n    pass\n")
+    excerpts, _ = assemble_context(store.get_chunks_by_file("r", "src/pkg/hooks.py"))
+    answer = (
+        "Use `register_hook` [1]:\n\n```python\nclass MyAuth(AuthBase):\n    pass\n\n"
+        "def my_hook_function(r):\n    os.environ['MY_ENV_VAR'] = 'x'\n\nregister_hook('response', my_hook_function)\n```\n\n"
+        "Here `my_hook_function` runs after `MyAuth` and reads `MY_ENV_VAR`. "
+        "See https://github.com/pallets/flask/blob/main/src/flask/templating.py for more."
+    )
+    assert unverified_mentions(answer, excerpts, store, "r") == []
+
+
+def test_names_used_elsewhere_in_repo_code_are_known(tmp_path):
+    store = _store_with(tmp_path, "src/pkg/url.py", "def url_for(endpoint, _external=False, section=None):\n    pass\n")
+    other = _chunk_with("src/pkg/other.py", "x = 1\n")
+    excerpts, _ = assemble_context([other])
+    assert unverified_mentions("Pass `section` to `url_for` [1].", excerpts, store, "r") == []
+    assert unverified_mentions("Then call `retry_with_backoff` [1].", excerpts, store, "r") == ["retry_with_backoff"]
+
+
+def test_naming_a_defined_symbol_cites_its_excerpt():
+    a = Excerpt("src/app.py", 1, 40, "...", symbols=["Scaffold.add_url_rule", "Scaffold.route"])
+    b = Excerpt("src/views.py", 1, 20, "...", symbols=["View.dispatch_request", "View.send"])
+    c = Excerpt("src/net.py", 1, 20, "...", symbols=["Conn.send"])
+    assert symbol_citations("It's handled by `Scaffold.add_url_rule`.", [a, b, c]) == [1]
+    assert symbol_citations("The dispatch_request method does it.", [a, b, c]) == [2]
+    assert symbol_citations("It calls `send`.", [a, b, c]) == []            # ambiguous: b and c
+    assert symbol_citations("```python\nScaffold.route\n```", [a, b, c]) == []  # only inside example code
+
+
+def test_hedges_count_only_when_about_the_evidence():
+    from app.core.answer import _uncertainty
+
+    describes_code = "It returns True when the Location header is not present and the status is 308 [1]."
+    assert _uncertainty(describes_code, [1], [], []) is None
+    hedge = "The provided excerpts are insufficient to say where retries happen [1]."
+    assert "insufficient" in _uncertainty(hedge, [1], [], [])

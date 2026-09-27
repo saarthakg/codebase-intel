@@ -28,7 +28,7 @@ Never invent code, function names, or behavior not present in the excerpts."""
 
 # Bump whenever SYSTEM_PROMPT, the prompt layout or answer post-processing
 # changes, so cached answers produced under the old format aren't served.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 # Total characters of code excerpts per prompt (~3-4K tokens). Excerpts are
 # added best-first until the next one no longer fits.
@@ -70,6 +70,7 @@ class Excerpt:
     end_line: int
     content: str
     chunk_ids: list[str] = field(default_factory=list)
+    symbols: list[str] = field(default_factory=list)  # qualified names defined in this excerpt
 
 
 def _merge_file_chunks(chunks: list[ChunkMetadata]) -> list[Excerpt]:
@@ -92,6 +93,7 @@ def _merge_file_chunks(chunks: list[ChunkMetadata]) -> list[Excerpt]:
             file_path=group[0].file_path, start_line=start, end_line=end,
             content="".join(lines[i] for i in range(start, end + 1) if i in lines),
             chunk_ids=[c.chunk_id for c in group],
+            symbols=list(dict.fromkeys(s for c in group for s in c.symbols)),
         ))
     return excerpts
 
@@ -380,6 +382,10 @@ _UNCERTAINTY_PHRASES = (
     "insufficient", "unclear", "cannot determine", "not enough",
     "don't have enough", "no evidence", "not shown", "not present",
 )
+# A hedge counts only in a sentence about the evidence itself: "the header is
+# not present" describes code, "not present in the excerpts" is a hedge.
+_EVIDENCE_WORDS = ("excerpt", "context", "provided", "snippet", "code shown", "given code")
+_SENTENCE_RE = re.compile(r"[^.!?\n]+")
 _BACKTICK_RE = re.compile(r"`([^`\n]{1,80})`")
 _PATH_RE = re.compile(r"\b[\w./-]+\.(?:py|pyi|ts|tsx|js|jsx|mjs|cjs|md|json|toml|ya?ml|txt)\b")
 _NAME_RE = re.compile(r"[A-Za-z_][\w.]*[\w]")
@@ -430,17 +436,63 @@ def path_citations(answer: str, excerpts: list) -> list[int]:
     return sorted(cited)
 
 
+_FENCE_RE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+_URL_RE = re.compile(r"\bhttps?://\S+|\b(?:www\.)?github\.com/\S+")
+
+
+def _example_names(answer: str) -> set[str]:
+    """Every identifier or string word in the answer's own example code: names
+    the prose may refer back to (`my_hook_function`, `MY_ENV_VAR`) that are the
+    example's, not claims about the repo."""
+    names: set[str] = set()
+    for block in _FENCE_RE.findall(answer):
+        names.update(_NAME_RE.findall(block))
+    return names
+
+
+def symbol_citations(answer: str, excerpts: list) -> list[int]:
+    """Excerpts the answer points at by naming a symbol they define.
+
+    Local models often explain `Scaffold.add_url_rule` without writing [N] or a
+    path. A qualified name (`Class.method`) matches the excerpt defining it; a
+    bare name counts only if exactly one excerpt defines something by that
+    name, so a generic `send` or `get` doesn't cite everything.
+    """
+    prose = _FENCE_RE.sub(" ", answer)
+    tokens = set(_NAME_RE.findall(prose))
+    cited: set[int] = set()
+    by_bare: dict[str, set[int]] = {}
+    for i, e in enumerate(excerpts, 1):
+        for qual in getattr(e, "symbols", []) or []:
+            if "." in qual and qual in tokens:
+                cited.add(i)
+            by_bare.setdefault(qual.rsplit(".", 1)[-1], set()).add(i)
+    for name, where in by_bare.items():
+        if len(where) == 1 and len(name) > 3 and name in tokens and not name.startswith("__"):
+            cited |= where
+    return sorted(cited)
+
+
 def _mentions(answer: str) -> list[str]:
-    """Code names and file paths the answer asserts exist: identifiers in
-    backticks, code-looking identifiers anywhere, and file paths."""
+    """Code names and file paths the answer asserts exist in the repo.
+
+    Example code is excluded: fenced blocks are skipped, and names that appear
+    in them (`def my_hook_function`, `MY_ENV_VAR`) don't count when the prose
+    refers back to them. URLs are removed before looking for file paths.
+    """
+    prose = _URL_RE.sub(" ", _FENCE_RE.sub(" ", answer))
+    in_examples = _example_names(answer)
     found: list[str] = []
-    for span in _BACKTICK_RE.findall(answer):
+    for span in _BACKTICK_RE.findall(prose):
         if _PATH_RE.fullmatch(span.strip()):
             continue  # collected with the other paths below
         found += [n for n in _NAME_RE.findall(span.split("(")[0]) if len(n) > 1]
-    found += [t for t in _NAME_RE.findall(_PATH_RE.sub(" ", answer)) if looks_like_identifier(t)]
-    found += _PATH_RE.findall(answer)
-    return [m for m in dict.fromkeys(found) if m not in _IGNORED_NAMES]
+    found += [t for t in _NAME_RE.findall(_PATH_RE.sub(" ", prose)) if looks_like_identifier(t)]
+    names = [
+        m for m in dict.fromkeys(found)
+        if m not in _IGNORED_NAMES and m.split(".")[0] not in in_examples
+    ]
+    return names + list(dict.fromkeys(_PATH_RE.findall(prose)))
 
 
 def unverified_mentions(
@@ -459,7 +511,12 @@ def unverified_mentions(
                 continue
         else:
             parts = [p for p in mention.split(".") if p and p not in _IGNORED_NAMES]
-            if parts and all(p in context or metadata_store.symbol_exists(repo_id, p) for p in parts):
+            # Known if each part is in the excerpts, a repo symbol, or anywhere
+            # in the repo's code (parameters, attributes, config keys).
+            if parts and all(
+                p in context or metadata_store.symbol_exists(repo_id, p) or metadata_store.code_mentions(repo_id, p)
+                for p in parts
+            ):
                 continue
         unknown.append(mention)
     return unknown
@@ -467,8 +524,11 @@ def unverified_mentions(
 
 def _uncertainty(answer: str, cited: list[int], invalid: list[int], unknown: list[str]) -> Optional[str]:
     notes = []
-    lower = answer.lower()
-    if any(p in lower for p in _UNCERTAINTY_PHRASES):
+    prose = _FENCE_RE.sub(" ", answer).lower()
+    if any(
+        any(p in sent for p in _UNCERTAINTY_PHRASES) and any(w in sent for w in _EVIDENCE_WORDS)
+        for sent in _SENTENCE_RE.findall(prose)
+    ):
         notes.append("the model says the evidence may be insufficient")
     if not cited:
         notes.append("the answer cites none of the excerpts")
@@ -524,6 +584,7 @@ def _finalize(
     """Parse citations, run the answer checks, and cache the result."""
     cited, invalid = parse_citations(answer_text, len(ask.excerpts))
     by_path = [n for n in path_citations(answer_text, ask.excerpts) if n not in cited]
+    by_symbol = [n for n in symbol_citations(answer_text, ask.excerpts) if n not in cited and n not in by_path]
     unknown = (
         unverified_mentions(answer_text, ask.excerpts, metadata_store, repo_id)
         if metadata_store is not None else []
@@ -537,12 +598,13 @@ def _finalize(
                 end_line=ask.excerpts[n - 1].end_line,
                 relevance=(
                     f"Cited as [{n}] in the answer" if n in cited
-                    else "Referenced by file path in the answer"
+                    else "Referenced by file path in the answer" if n in by_path
+                    else "Names a symbol defined in this excerpt"
                 ),
             )
-            for n in sorted(set(cited) | set(by_path))
+            for n in sorted(set(cited) | set(by_path) | set(by_symbol))
         ],
-        uncertainty=_uncertainty(answer_text, cited + by_path, invalid, unknown),
+        uncertainty=_uncertainty(answer_text, cited + by_path + by_symbol, invalid, unknown),
         unverified_mentions=unknown,
         backend=ask.backend,
         model=ask.model,

@@ -4,15 +4,15 @@
     "model": "qwen2.5-coder:7b",
     "n": 25,
     "context_has_answer": 0.96,
-    "cites_answer_file": 0.64,
-    "cites_answer_span": 0.64,
+    "cites_answer_file": 0.92,
+    "cites_answer_span": 0.88,
     "names_answer": 0.92,
-    "flagged_rate": 0.36,
+    "flagged_rate": 0.0,
     "answered_well": 0.96,
-    "flag_precision": 0.0,
+    "flag_precision": null,
     "flag_recall": 0.0,
-    "unverified_rate": 0.16,
-    "median_seconds": 16.6
+    "unverified_rate": 0.0,
+    "median_seconds": 16.8
   },
   "rows": [
     {
@@ -22,7 +22,7 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 2,
       "unverified": [],
       "seconds": 9.4
     },
@@ -33,9 +33,9 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 3,
+      "n_citations": 4,
       "unverified": [],
-      "seconds": 19.7
+      "seconds": 19.8
     },
     {
       "query": "convert a view's return value into a response object",
@@ -43,11 +43,9 @@
       "cites_answer_file": false,
       "cites_answer_span": false,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 1,
-      "unverified": [
-        "data"
-      ],
+      "flagged": false,
+      "n_citations": 2,
+      "unverified": [],
       "seconds": 23.8
     },
     {
@@ -57,7 +55,7 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 2,
+      "n_citations": 3,
       "unverified": [],
       "seconds": 18.5
     },
@@ -68,7 +66,7 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 3,
+      "n_citations": 4,
       "unverified": [],
       "seconds": 11.6
     },
@@ -81,18 +79,18 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 14.4
+      "seconds": 14.7
     },
     {
       "query": "handle HTTP errors like 404 with registered error handlers",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 2,
+      "n_citations": 4,
       "unverified": [],
-      "seconds": 29.5
+      "seconds": 30.3
     },
     {
       "query": "build a URL for an endpoint",
@@ -100,11 +98,9 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
+      "flagged": false,
       "n_citations": 2,
-      "unverified": [
-        "external_url"
-      ],
+      "unverified": [],
       "seconds": 21.0
     },
     {
@@ -113,21 +109,19 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
+      "flagged": false,
       "n_citations": 6,
-      "unverified": [
-        "my_blueprint"
-      ],
-      "seconds": 17.6
+      "unverified": [],
+      "seconds": 18.2
     },
     {
       "query": "add a URL rule that maps a path to a view function",
       "context_has_answer": true,
-      "cites_answer_file": false,
+      "cites_answer_file": true,
       "cites_answer_span": false,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
+      "flagged": false,
+      "n_citations": 1,
       "unverified": [],
       "seconds": 16.3
     },
@@ -138,18 +132,18 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 3,
       "unverified": [],
       "seconds": 16.6
     },
     {
       "query": "register an error handler for an exception type or status code",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
+      "flagged": false,
+      "n_citations": 1,
       "unverified": [],
       "seconds": 17.4
     },
@@ -160,9 +154,9 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 6,
+      "n_citations": 7,
       "unverified": [],
-      "seconds": 21.0
+      "seconds": 21.2
     },
     {
       "query": "load configuration from environment variables with a prefix",
@@ -178,11 +172,11 @@
     {
       "query": "load configuration from an object or import string",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
+      "flagged": false,
+      "n_citations": 2,
       "unverified": [],
       "seconds": 14.4
     },
@@ -193,9 +187,9 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 2,
       "unverified": [],
-      "seconds": 17.2
+      "seconds": 17.3
     },
     {
       "query": "decide whether the session cookie should be set on the response",
@@ -217,18 +211,18 @@
       "flagged": false,
       "n_citations": 3,
       "unverified": [],
-      "seconds": 15.3
+      "seconds": 15.4
     },
     {
       "query": "push and pop the application context",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
+      "flagged": false,
+      "n_citations": 2,
       "unverified": [],
-      "seconds": 16.1
+      "seconds": 16.8
     },
     {
       "query": "check whether a request context is active",
@@ -239,18 +233,18 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 13.0
+      "seconds": 13.1
     },
     {
       "query": "run a function after the current request finishes",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 2,
       "unverified": [],
-      "seconds": 13.4
+      "seconds": 13.6
     },
     {
       "query": "keep the request context available inside a streaming generator",
@@ -259,9 +253,9 @@
       "cites_answer_span": true,
       "names_answer": true,
       "flagged": false,
-      "n_citations": 1,
+      "n_citations": 3,
       "unverified": [],
-      "seconds": 18.9
+      "seconds": 20.1
     },
     {
       "query": "render a Jinja template with context variables",
@@ -269,16 +263,10 @@
       "cites_answer_file": true,
       "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
+      "flagged": false,
       "n_citations": 1,
-      "unverified": [
-        "variable1",
-        "value1",
-        "variable2",
-        "value2",
-        "github.com/pallets/flask/blob/main/src/flask/templating.py"
-      ],
-      "seconds": 16.8
+      "unverified": [],
+      "seconds": 18.1
     },
     {
       "query": "look up templates across the app and blueprints",
@@ -289,18 +277,18 @@
       "flagged": false,
       "n_citations": 1,
       "unverified": [],
-      "seconds": 16.1
+      "seconds": 16.4
     },
     {
       "query": "flash a message to show on the next request",
       "context_has_answer": true,
-      "cites_answer_file": false,
-      "cites_answer_span": false,
+      "cites_answer_file": true,
+      "cites_answer_span": true,
       "names_answer": true,
-      "flagged": true,
-      "n_citations": 0,
+      "flagged": false,
+      "n_citations": 2,
       "unverified": [],
-      "seconds": 12.3
+      "seconds": 12.9
     }
   ]
 }
