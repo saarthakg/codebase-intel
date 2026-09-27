@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING, Optional
+
 from app.core.definitions import best_definition
 from app.core.graph import DependencyGraph
 from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
+
+if TYPE_CHECKING:
+    from app.core.history import CoChange
 
 # Confidence scores by depth
 _GRAPH_CONFIDENCE = {1: 0.95, 2: 0.75, 3: 0.50}
@@ -18,6 +23,7 @@ def analyze_impact(
     metadata_store: MetadataStore,
     embeddings_module,
     depth: int = 3,
+    cochange: Optional["CoChange"] = None,
 ) -> ImpactResponse:
     """Rank files by likelihood of being affected by a change to `target`.
 
