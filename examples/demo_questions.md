@@ -264,7 +264,7 @@ Top 5 results:
 python scripts/demo_query.py --repo-id requests --mode ask "Where is SSL certificate verification handled?"
 ```
 
-```
+````
 Q: Where is SSL certificate verification handled?
 
 
@@ -302,7 +302,7 @@ Citations:
   src/requests/adapters.py  lines 428–453  (Referenced by file path in the answer)
 
 [ollama/qwen2.5-coder:7b; 8 excerpts, 10173 chars]
-```
+````
 
 Every line of code the answer quotes is verbatim from `src/requests/adapters.py` (lines
 321–342, inside `cert_verify`). The model cited by file path rather than `[N]`, which the
