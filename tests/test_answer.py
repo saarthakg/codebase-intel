@@ -364,3 +364,46 @@ def test_ask_stream_config_errors(tmp_path, monkeypatch):
         r = client.post("/ask/stream", json={"repo_id": "st", "question": "q"})
     events = [_json.loads(line) for line in r.text.splitlines()]
     assert events[-1] == {"type": "error", "status": 503, "detail": "Can't reach Ollama"}
+
+
+
+# ── Citations by file path (local models often skip [N]) ─────────────────────
+
+from app.core.answer import Excerpt, path_citations
+
+
+def _ex(path, start, end):
+    return Excerpt(file_path=path, start_line=start, end_line=end, content="x\n")
+
+
+def test_path_citations_match_file_and_lines():
+    excerpts = [
+        _ex("src/requests/sessions.py", 140, 190),   # 1
+        _ex("src/requests/sessions.py", 300, 340),   # 2
+        _ex("HISTORY.md", 1, 50),                    # 3
+        _ex("src/requests/adapters.py", 1, 40),      # 4
+    ]
+    # Verbatim shape of a qwen2.5-coder:7b answer that the [N]-only parser missed
+    answer = (
+        "It happens in the `should_strip_auth` method, which is defined in "
+        "`src/requests/sessions.py` (lines 154–184). This is described in the `HISTORY.md` file."
+    )
+    assert path_citations(answer, excerpts) == [1, 3]      # lines pick excerpt 1, not 2
+    assert path_citations("see sessions.py:310-320", excerpts) == [2]  # suffix + colon form
+    assert path_citations("see sessions.py", excerpts) == [1, 2]       # no lines: whole file
+    assert path_citations("see sessions.py (line 999)", excerpts) == []  # lines outside every excerpt
+    assert path_citations("see src/other.py", excerpts) == []
+
+
+def test_answer_citing_by_path_is_not_flagged(tmp_path, monkeypatch):
+    from app.storage.metadata_store import MetadataStore
+    monkeypatch.setenv("LLM_BACKEND", "ollama")
+    store = MetadataStore(str(tmp_path / "m.db"))
+    chunk = _chunk_with("src/pkg/auth.py", "def strip():\n    return True\n")
+    answer_text = "`strip` in `src/pkg/auth.py` (lines 1–2) returns True."
+    with patch("app.core.answer.call_llm", return_value=answer_text):
+        response = generate_answer("what does strip return?", [chunk], "r", store)
+    assert [(c.file_path, c.relevance) for c in response.citations] == [
+        ("src/pkg/auth.py", "Referenced by file path in the answer")
+    ]
+    assert response.uncertainty is None

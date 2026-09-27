@@ -28,7 +28,7 @@ Never invent code, function names, or behavior not present in the excerpts."""
 
 # Bump whenever SYSTEM_PROMPT, the prompt layout or answer post-processing
 # changes, so cached answers produced under the old format aren't served.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 # Total characters of code excerpts per prompt (~3-4K tokens). Excerpts are
 # added best-first until the next one no longer fits.
@@ -395,6 +395,41 @@ def parse_citations(answer: str, n_excerpts: int) -> tuple[list[int], list[int]]
     return sorted(valid), sorted(invalid)
 
 
+# Line numbers written right after a path: "(lines 154–184)", "line 12", ":154-160"
+_LINES_AFTER_PATH_RE = re.compile(r"^[`'\")\s]*(?:\(?\s*(?:lines?|L)\s*|:)(\d+)(?:\s*[-–—]\s*(\d+))?")
+
+
+def path_citations(answer: str, excerpts: list) -> list[int]:
+    """Excerpt numbers the answer cites by file path instead of by [N].
+
+    Smaller local models often ignore the [N] instruction and write
+    "`src/requests/sessions.py` (lines 154–184)". A path matching an excerpt's
+    file (full path or a unique-enough suffix like "sessions.py") counts; if
+    line numbers follow the path, only excerpts overlapping them count.
+    """
+    cited: set[int] = set()
+    for m in _PATH_RE.finditer(answer):
+        mention = m.group(0)
+        candidates = [
+            i for i, e in enumerate(excerpts, 1)
+            if e.file_path == mention or e.file_path.endswith("/" + mention)
+        ]
+        if not candidates:
+            continue
+        lines = _LINES_AFTER_PATH_RE.match(answer[m.end():m.end() + 40])
+        if lines:
+            start = int(lines.group(1))
+            end = int(lines.group(2) or start)
+            overlapping = [
+                i for i in candidates
+                if excerpts[i - 1].start_line <= end and start <= excerpts[i - 1].end_line
+            ]
+            cited.update(overlapping)
+        else:
+            cited.update(candidates)
+    return sorted(cited)
+
+
 def _mentions(answer: str) -> list[str]:
     """Code names and file paths the answer asserts exist: identifiers in
     backticks, code-looking identifiers anywhere, and file paths."""
@@ -488,6 +523,7 @@ def _finalize(
 ) -> AskResponse:
     """Parse citations, run the answer checks, and cache the result."""
     cited, invalid = parse_citations(answer_text, len(ask.excerpts))
+    by_path = [n for n in path_citations(answer_text, ask.excerpts) if n not in cited]
     unknown = (
         unverified_mentions(answer_text, ask.excerpts, metadata_store, repo_id)
         if metadata_store is not None else []
@@ -499,11 +535,14 @@ def _finalize(
                 file_path=ask.excerpts[n - 1].file_path,
                 start_line=ask.excerpts[n - 1].start_line,
                 end_line=ask.excerpts[n - 1].end_line,
-                relevance=f"Cited as [{n}] in the answer",
+                relevance=(
+                    f"Cited as [{n}] in the answer" if n in cited
+                    else "Referenced by file path in the answer"
+                ),
             )
-            for n in cited
+            for n in sorted(set(cited) | set(by_path))
         ],
-        uncertainty=_uncertainty(answer_text, cited, invalid, unknown),
+        uncertainty=_uncertainty(answer_text, cited + by_path, invalid, unknown),
         unverified_mentions=unknown,
         backend=ask.backend,
         model=ask.model,
