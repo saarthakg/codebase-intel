@@ -143,10 +143,12 @@ def mode_ask(repo_id: str, question: str, top_k: int = 8, use_cache: bool = True
     print(f"\nQ: {question}\n")
     try:
         if stream:
-            print("A: ", end="", flush=True)
             response = None
             for event in stream_answer_question(question, repo_id, faiss_store, metadata_store, top_k, use_cache):
-                if event["type"] == "delta":
+                if event["type"] == "context":
+                    # printed only now: retrieval (and model loading, which logs) happens first
+                    print("A: ", end="", flush=True)
+                elif event["type"] == "delta":
                     print(event["text"], end="", flush=True)
                 elif event["type"] == "answer":
                     response = AskResponse(**event["response"])
