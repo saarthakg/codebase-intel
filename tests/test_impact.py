@@ -220,3 +220,29 @@ def test_unknown_target_returns_empty():
     assert resp.medium_confidence == []
     # related may have semantic hits (empty in this mock)
     assert resp.related == []
+
+
+def test_semantic_signal_queries_with_the_target_files_own_vectors(tmp_path):
+    """The semantic query is the target file's content (its chunk vectors), not
+    an embedding of the path string — embed_query must not be needed."""
+    g = DependencyGraph()
+    for f in ["target.py", "similar.py", "unrelated.py"]:
+        g.add_file(f)
+    store = MetadataStore(str(tmp_path / "m.db"))
+    chunks = [
+        ChunkMetadata(chunk_id=cid, file_path=fp, language="python", start_line=1, end_line=1,
+                      symbols=[], imports=[], content="x\n")
+        for cid, fp in [("t", "target.py"), ("s", "similar.py"), ("u", "unrelated.py")]
+    ]
+    store.add_chunks(chunks, "r")
+    faiss = FAISSStore(dim=3)
+    faiss.add(np.array([[1, 0, 0], [0.9, 0.1, 0], [0, 0, 1]], dtype=np.float32), ["t", "s", "u"])
+
+    class NoTextEmbedding:
+        def index_embedding_settings(self, s): return None, None
+        def embed_query(self, *a, **k): raise AssertionError("should use stored vectors")
+
+    resp = analyze_impact("target.py", "r", g, faiss, store, NoTextEmbedding())
+    related = [f.file_path for f in resp.related]
+    assert related[0] == "similar.py"
+    assert "target.py" not in related

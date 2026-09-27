@@ -103,3 +103,13 @@ def test_normalization_consistency():
     results = store.search(q, top_k=1)
     assert results[0][0] == "chunk-2"
     assert abs(results[0][1] - 1.0) < 1e-5
+
+
+def test_vectors_for_returns_stored_normalized_rows():
+    store = FAISSStore(dim=DIM)
+    store.add(unit_vector(0) * 3, ["a"])
+    store.add(unit_vector(2), ["b"])
+    rows = store.vectors_for(["b", "missing", "a"])
+    assert rows.shape == (2, DIM)
+    assert np.allclose(rows[0], unit_vector(2)[0]) and np.allclose(rows[1], unit_vector(0)[0])
+    assert store.vectors_for([]).shape == (0, DIM)

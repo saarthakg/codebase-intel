@@ -58,6 +58,13 @@ class FAISSStore:
             results.append((self.id_map[idx], float(score)))
         return results
 
+    def vectors_for(self, chunk_ids: list[str]) -> np.ndarray:
+        """Stored (normalized) vectors for these chunk ids, (N, dim); unknown ids skipped."""
+        if not hasattr(self, "_positions") or len(self._positions) != len(self.id_map):
+            self._positions = {cid: i for i, cid in enumerate(self.id_map)}
+        rows = [self.index.reconstruct(self._positions[c]) for c in chunk_ids if c in self._positions]
+        return np.vstack(rows).astype(np.float32) if rows else np.zeros((0, self.dim), dtype=np.float32)
+
     def save(self, path: str) -> None:
         """Save index + id_map to disk."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
