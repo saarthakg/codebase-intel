@@ -37,7 +37,8 @@ def main() -> None:
 
     state = get_repo_state(args.repo_id)
     calls = json.loads(Path(args.calls).read_text())
-    groups: dict[str, list[tuple[str, float, float, set, set]]] = {"methods": [], "functions": []}
+    groups: dict[str, list[tuple[str, float, float, set, set]]] = {
+        "methods": [], "dunder_methods": [], "functions": []}
 
     for key, callers in calls.items():
         defining_file, qualified = key.split("::", 1)
@@ -50,7 +51,13 @@ def main() -> None:
         found.discard(defining_file)
         recall = len(found & truth) / len(truth)
         precision = len(found & truth) / len(found) if found else 0.0
-        group = "methods" if "." in qualified else "functions"
+        method = qualified.rsplit(".", 1)[-1]
+        if "." not in qualified:
+            group = "functions"
+        elif method.startswith("__") and method.endswith("__"):
+            group = "dunder_methods"  # mostly invoked implicitly: X(...), with, for, pickle
+        else:
+            group = "methods"
         groups[group].append((qualified, recall, precision, found - truth, truth - found))
 
     results = {}
@@ -67,12 +74,12 @@ def main() -> None:
         if args.verbose:
             worst = sorted(rows, key=lambda r: (r[2], r[1]))[:8]
             for q, rec, prec, extra, missed in worst:
-                print(f"  {group[:-1]} {q:<45} recall={rec:.2f} precision>={prec:.2f} "
+                print(f"  {group.rstrip('s')} {q:<45} recall={rec:.2f} precision>={prec:.2f} "
                       f"extra={sorted(extra)[:3]} missed={sorted(missed)[:3]}")
 
     print(f"\nSymbol-usage eval ({args.repo_id}) vs runtime calls from the test suite")
     for group, m in results.items():
-        print(f"  {group:<10} recall={m['recall']:.3f}  precision>={m['precision_lower_bound']:.3f}  n={m['n']}")
+        print(f"  {group:<15} recall={m['recall']:.3f}  precision>={m['precision_lower_bound']:.3f}  n={m['n']}")
     if args.out:
         Path(args.out).write_text(json.dumps(results, indent=2))
 

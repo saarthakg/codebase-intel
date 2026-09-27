@@ -28,7 +28,7 @@ from app.core.graph import (
 )
 from app.core.history import cochange_for_repo
 from app.core.ingest import RepoScan, detect_language, load_file, scan_repo
-from app.core.symbols import analyze_file
+from app.core.symbols import analyze_file, python_parser
 from app.core.validation import validate_repo_id
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
@@ -145,6 +145,24 @@ def _embed_with_cache(
     return vectors, len(to_embed), reused
 
 
+def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: MetadataStore) -> None:
+    """Two passes over the Python files: collect class/return/attribute facts
+    repo-wide, then infer each method reference's receiver type."""
+    from app.core.typeinfer import TypeIndex, attribute_refs, collect_facts
+    parser = python_parser()
+    if parser is None or not sources:
+        return
+    trees = {rel: (parser.parse(src.encode("utf-8")), src.encode("utf-8")) for rel, src in sources.items()}
+    facts = [collect_facts(tree.root_node, raw, rel) for rel, (tree, raw) in trees.items()]
+    index = TypeIndex.build(facts)
+    method_names = {m for cs in index.classes.values() for c in cs for m in c.methods}
+    metadata_store.add_class_bases(
+        repo_id, [(c.name, b) for ff in facts for c in ff.classes for b in c.bases]
+    )
+    for rel, (tree, raw) in trees.items():
+        metadata_store.add_method_refs(repo_id, rel, attribute_refs(tree.root_node, raw, rel, index, method_names))
+
+
 def _index_files(
     repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None]
 ) -> tuple[DependencyGraph, list, list[str], "RepoScan"]:
@@ -166,6 +184,7 @@ def _index_files(
     embed_inputs: list[str] = []  # parallel to all_chunks: header + content
     scanned = {os.path.relpath(f, repo_path) for f in file_paths}
     indexed = 0
+    python_sources: dict[str, str] = {}  # rel path → content, for typed method refs
     for file_path in file_paths:
         content = load_file(file_path)
         if content is None:
@@ -176,6 +195,8 @@ def _index_files(
         indexed += 1
 
         analysis = analyze_file(content, rel_path, language)
+        if language == "python":
+            python_sources[rel_path] = content
         metadata_store.add_symbols(repo_id, analysis.symbols)
         metadata_store.add_references(repo_id, rel_path, analysis.references)
 
@@ -206,6 +227,7 @@ def _index_files(
                 metadata_store.add_edge(repo_id, rel_path, rel_target, "import")
 
     metadata_store.prune_references(repo_id)
+    _index_method_refs(repo_id, python_sources, metadata_store)
 
     cochange = cochange_for_repo(repo_path, keep=set(graph.G.nodes))
     metadata_store.save_cochange(repo_id, cochange)

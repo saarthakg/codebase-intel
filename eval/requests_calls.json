@@ -325,19 +325,10 @@
  "<frozen importlib._bootstrap_external>::PathFinder.find_spec": [
   "<frozen importlib._bootstrap>"
  ],
- "<frozen importlib._bootstrap_external>::SourceFileLoader._cache_bytecode": [
-  "<frozen importlib._bootstrap_external>"
- ],
  "<frozen importlib._bootstrap_external>::SourceFileLoader.path_stats": [
   "<frozen importlib._bootstrap_external>"
  ],
- "<frozen importlib._bootstrap_external>::SourceFileLoader.set_data": [
-  "<frozen importlib._bootstrap_external>"
- ],
  "<frozen importlib._bootstrap_external>::SourceLoader.get_code": [
-  "<frozen importlib._bootstrap_external>"
- ],
- "<frozen importlib._bootstrap_external>::SourceLoader.source_to_code": [
   "<frozen importlib._bootstrap_external>"
  ],
  "<frozen importlib._bootstrap_external>::_LoaderBasics.create_module": [
@@ -346,13 +337,7 @@
  "<frozen importlib._bootstrap_external>::_LoaderBasics.exec_module": [
   "<frozen importlib._bootstrap>"
  ],
- "<frozen importlib._bootstrap_external>::_calc_mode": [
-  "<frozen importlib._bootstrap_external>"
- ],
  "<frozen importlib._bootstrap_external>::_classify_pyc": [
-  "<frozen importlib._bootstrap_external>"
- ],
- "<frozen importlib._bootstrap_external>::_code_to_timestamp_pyc": [
   "<frozen importlib._bootstrap_external>"
  ],
  "<frozen importlib._bootstrap_external>::_compile_bytecode": [
@@ -360,9 +345,6 @@
  ],
  "<frozen importlib._bootstrap_external>::_get_cached": [
   "<frozen importlib._bootstrap>"
- ],
- "<frozen importlib._bootstrap_external>::_pack_uint32": [
-  "<frozen importlib._bootstrap_external>"
  ],
  "<frozen importlib._bootstrap_external>::_path_abspath": [
   "<frozen importlib._bootstrap_external>"
@@ -393,9 +375,6 @@
   "<frozen importlib._bootstrap_external>"
  ],
  "<frozen importlib._bootstrap_external>::_validate_timestamp_pyc": [
-  "<frozen importlib._bootstrap_external>"
- ],
- "<frozen importlib._bootstrap_external>::_write_atomic": [
   "<frozen importlib._bootstrap_external>"
  ],
  "<frozen importlib._bootstrap_external>::cache_from_source": [
@@ -501,8 +480,7 @@
   "src/requests/adapters.py"
  ],
  "src/requests/adapters.py::HTTPAdapter.build_response": [
-  "src/requests/adapters.py",
-  "tests/test_requests.py"
+  "src/requests/adapters.py"
  ],
  "src/requests/adapters.py::HTTPAdapter.cert_verify": [
   "src/requests/adapters.py"

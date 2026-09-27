@@ -3,7 +3,8 @@
 Runtime ground truth for "who calls HTTPAdapter.send?": a profile hook sees
 every call into the repo's own code, with the callee's qualified name straight
 from its code object (co_qualname) and the caller's file from the calling
-frame. Every recorded caller really made the call; calls on paths the test
+frame. Decorator wrappers are seen through, so a call via a decorator is
+credited to the file that made it. Every recorded caller really made the call; calls on paths the test
 suite never exercises are missing, so it gives a trustworthy recall target and
 a lower bound on precision.
 
@@ -35,6 +36,17 @@ def _rel(filename: str) -> str | None:
     return _rel_cache[filename]
 
 
+def _is_wrapper_of(frame, callee_code) -> bool:
+    if "<locals>" not in frame.f_code.co_qualname or not frame.f_code.co_freevars:
+        return False
+    for name in frame.f_code.co_freevars:
+        value = frame.f_locals.get(name)
+        func = getattr(value, "__func__", value)  # bound method → function
+        if getattr(func, "__code__", None) is callee_code:
+            return True
+    return False
+
+
 def _profile(frame, event, arg):
     if event != "call":
         return
@@ -43,6 +55,11 @@ def _profile(frame, event, arg):
     if callee is None or "<" in code.co_qualname:  # skip lambdas, comprehensions, closures
         return
     caller_frame = frame.f_back
+    # See through decorator wrappers: a nested function that calls the very
+    # function it closed over (functools.wraps-style `wrapper(*a, **kw)`) isn't
+    # the real caller; whoever called the wrapper is.
+    while caller_frame is not None and _is_wrapper_of(caller_frame, code):
+        caller_frame = caller_frame.f_back
     if caller_frame is None:
         return
     caller = _rel(caller_frame.f_code.co_filename)

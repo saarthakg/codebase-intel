@@ -1,0 +1,20 @@
+{
+  "methods": {
+    "recall": 0.9468085106382979,
+    "precision_lower_bound": 0.7587148076509779,
+    "claimed_files_per_symbol": 1.9361702127659575,
+    "n": 47
+  },
+  "dunder_methods": {
+    "recall": 0.4767195767195767,
+    "precision_lower_bound": 0.5018518518518518,
+    "claimed_files_per_symbol": 1.0888888888888888,
+    "n": 45
+  },
+  "functions": {
+    "recall": 0.9351851851851852,
+    "precision_lower_bound": 0.8626543209876544,
+    "claimed_files_per_symbol": 1.2407407407407407,
+    "n": 54
+  }
+}

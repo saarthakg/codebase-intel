@@ -339,6 +339,16 @@ def _regex_analyze(content: str, file_path: str, language: str) -> FileAnalysis:
     return FileAnalysis(symbols, imports, references)
 
 
+def python_parser():
+    """The tree-sitter Python parser, or None if tree-sitter isn't available."""
+    if not _TS_AVAILABLE:
+        return None
+    try:
+        return _get_parser("python")
+    except Exception:
+        return None
+
+
 def analyze_file(content: str, file_path: str, language: str) -> FileAnalysis:
     """Extract symbols, imports and identifier references from one parse of a file.
 

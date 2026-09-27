@@ -111,3 +111,45 @@ def test_impact_diff_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
 def test_impact_diff_rejects_empty_diff(tmp_path, monkeypatch):
     client = _ingest(tmp_path, monkeypatch)
     assert client.post("/impact/diff", json={"repo_id": "dif", "diff": "  "}).status_code == 400
+
+
+def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
+    """Callers of Adapter.send: a file calling it via the base type counts
+    (dispatch), a file calling a *different* class's send doesn't, and an
+    untyped receiver in an importing file falls back to name matching."""
+    from fastapi.testclient import TestClient
+    from app.core import paths
+    from app.core.usages import symbol_users
+    from app.main import _loaded_repos, app, get_repo_state
+
+    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
+    _loaded_repos.clear()
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("")
+    (repo / "pkg" / "adapters.py").write_text(
+        "class Base:\n    def send(self, r): ...\n\n"
+        "class Adapter(Base):\n    def send(self, r): ...\n\n"
+        "def get_adapter() -> Base: ...\n"
+    )
+    (repo / "pkg" / "mail.py").write_text("class Mailer:\n    def send(self, m): ...\n")
+    (repo / "pkg" / "via_base.py").write_text(
+        "from pkg.adapters import get_adapter\n\ndef go():\n    get_adapter().send(1)\n")
+    (repo / "pkg" / "other.py").write_text(
+        "from pkg.adapters import Adapter\nfrom pkg.mail import Mailer\n\n"
+        "def go(m: Mailer):\n    m.send(1)\n")
+    (repo / "pkg" / "untyped.py").write_text(
+        "from pkg import adapters\n\ndef go(x):\n    x.send(1)\n")
+    fake = lambda texts, backend=None, **kw: np.random.rand(len(texts), 8).astype(np.float32)
+    monkeypatch.setattr("app.core.pipeline.embed_texts", fake)
+    assert TestClient(app).post("/ingest", json={"repo_path": str(repo), "repo_id": "typed"}).status_code == 200
+
+    state = get_repo_state("typed")
+    users = symbol_users("typed", "Adapter.send", "pkg/adapters.py", state.graph, state.metadata_store)
+    assert "pkg/via_base.py" in users       # Base.send can dispatch to Adapter.send
+    assert "pkg/untyped.py" in users        # unknown receiver, importer: name fallback
+    assert "pkg/other.py" not in users      # m is a Mailer: known to be another class
+    mail_users = symbol_users("typed", "Mailer.send", "pkg/mail.py", state.graph, state.metadata_store)
+    assert mail_users == ["pkg/other.py"]
+    _loaded_repos.clear()

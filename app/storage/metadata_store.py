@@ -62,6 +62,24 @@ class MetadataStore:
             );
 
             -- Identifier usages (not definition sites). One row per name per line.
+            -- Method references with the receiver's inferred type (app/core/typeinfer.py):
+            -- receiver is a repo class name, '' (external type) or '?' (unknown).
+            -- One row per (file, method name, receiver).
+            CREATE TABLE IF NOT EXISTS method_refs (
+                repo_id     TEXT NOT NULL,
+                file_path   TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                receiver    TEXT NOT NULL,
+                PRIMARY KEY (repo_id, name, receiver, file_path)
+            );
+            -- Class inheritance, for resolving method dispatch.
+            CREATE TABLE IF NOT EXISTS class_bases (
+                repo_id     TEXT NOT NULL,
+                class_name  TEXT NOT NULL,
+                base_name   TEXT NOT NULL,
+                PRIMARY KEY (repo_id, class_name, base_name)
+            );
+
             CREATE TABLE IF NOT EXISTS symbol_refs (
                 repo_id     TEXT NOT NULL,
                 symbol_name TEXT NOT NULL,
@@ -202,6 +220,8 @@ class MetadataStore:
         self._conn.execute("DELETE FROM symbols WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM edges WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM symbol_refs WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM method_refs WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM class_bases WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM chunks_fts WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM cochange_files WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM cochange_pairs WHERE repo_id = ?", (repo_id,))
@@ -363,6 +383,42 @@ class MetadataStore:
                 (repo_id, name),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def add_method_refs(self, repo_id: str, file_path: str, refs) -> None:
+        """Store typed method references (typeinfer.AttrRef) without committing."""
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO method_refs (repo_id, file_path, name, receiver) VALUES (?, ?, ?, ?)",
+            [(repo_id, file_path, r.name, r.receiver) for r in refs],
+        )
+
+    def add_class_bases(self, repo_id: str, pairs: list[tuple[str, str]]) -> None:
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO class_bases (repo_id, class_name, base_name) VALUES (?, ?, ?)",
+            [(repo_id, c, b) for c, b in pairs],
+        )
+
+    def has_method_refs(self, repo_id: str) -> bool:
+        return self._conn.execute(
+            "SELECT 1 FROM method_refs WHERE repo_id = ? LIMIT 1", (repo_id,)
+        ).fetchone() is not None
+
+    def method_ref_files(self, repo_id: str, name: str, receivers: list[str]) -> set[str]:
+        if not receivers:
+            return set()
+        marks = ",".join("?" * len(receivers))
+        rows = self._conn.execute(
+            f"SELECT DISTINCT file_path FROM method_refs WHERE repo_id = ? AND name = ? AND receiver IN ({marks})",
+            (repo_id, name, *receivers),
+        ).fetchall()
+        return {r[0] for r in rows}
+
+    def class_bases_map(self, repo_id: str) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for c, b in self._conn.execute(
+            "SELECT class_name, base_name FROM class_bases WHERE repo_id = ?", (repo_id,)
+        ).fetchall():
+            out.setdefault(c, []).append(b)
+        return out
 
     def indexed_files(self, repo_id: str) -> list[str]:
         rows = self._conn.execute(
