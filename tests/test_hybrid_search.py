@@ -69,6 +69,18 @@ def test_keyword_search_handles_quotes_and_empty_terms(store):
     assert store.keyword_search("r1", ['say "hi"'], 10) == []  # no crash on FTS syntax
 
 
+def test_keyword_search_per_file_cap(tmp_path):
+    """One long changelog must not fill the whole keyword list."""
+    s = MetadataStore(str(tmp_path / "m.db"))
+    s.add_chunks([_chunk(f"h{i}", "HISTORY.md", f"auth fix {i}\n", start=i * 10) for i in range(6)], "r")
+    s.add_chunks([_chunk("code", "auth.py", "def authenticate(): auth\n")], "r")
+    uncapped = [cid for cid, _ in s.keyword_search("r", ["auth"], 10)]
+    capped = [cid for cid, _ in s.keyword_search("r", ["auth"], 10, per_file_cap=2)]
+    assert len(uncapped) == 7
+    assert len(capped) == 3 and "code" in capped
+    assert sum(cid.startswith("h") for cid in capped) == 2
+
+
 def test_clear_repo_clears_keyword_index(store):
     store.clear_repo("r1")
     assert store.keyword_search("r1", ["adapter"], 10) == []

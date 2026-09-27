@@ -13,6 +13,11 @@ SEARCH_MODES = ("hybrid", "semantic", "keyword")
 RRF_K = 60
 # How deep to read each ranked list before fusing.
 CANDIDATE_POOL = 50
+# Max chunks one file may place in the keyword list. Long prose files (a
+# 2,000-line changelog) split into dozens of term-dense chunks that would
+# otherwise fill the whole BM25 list. 2 was chosen on the main eval set
+# (1 and 3 were worse) and confirmed on the held-out set.
+KEYWORD_PER_FILE_CAP = 2
 
 
 def reciprocal_rank_fusion(ranked_lists: list[list[str]], k: int = RRF_K) -> list[tuple[str, float]]:
@@ -65,7 +70,10 @@ def search_chunks(
 
     keyword: list[tuple[str, float]] = []
     if mode in ("keyword", "hybrid"):
-        keyword = metadata_store.keyword_search(repo_id, keyword_query_terms(query), pool)
+        keyword = metadata_store.keyword_search(
+            repo_id, keyword_query_terms(query), pool,
+            per_file_cap=KEYWORD_PER_FILE_CAP if mode == "hybrid" else None,
+        )
 
     if mode == "semantic":
         ranked = semantic

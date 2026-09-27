@@ -200,22 +200,38 @@ class MetadataStore:
         )
         self._insert_fts([(repo_id, c) for c in chunks])
 
-    def keyword_search(self, repo_id: str, terms: list[str], limit: int) -> list[tuple[str, float]]:
+    def keyword_search(
+        self, repo_id: str, terms: list[str], limit: int, per_file_cap: Optional[int] = None
+    ) -> list[tuple[str, float]]:
         """BM25 search: (chunk_id, score) best-first, score higher = better.
 
         Terms are OR-ed: natural-language questions rarely have every word in
         one chunk. Symbol-name matches weigh more than path, path more than body.
+        `per_file_cap` keeps at most that many chunks from any one file.
         """
         if not terms:
             return []
         match = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
+        # Over-fetch when capping so the list can still fill up to `limit`.
+        fetch = limit * 4 if per_file_cap else limit
         rows = self._conn.execute(
-            """SELECT chunk_id, bm25(chunks_fts, 0, 0, 2.0, 3.0, 1.0) AS rank
-               FROM chunks_fts WHERE chunks_fts MATCH ? AND repo_id = ?
+            """SELECT f.chunk_id, c.file_path, bm25(chunks_fts, 0, 0, 2.0, 3.0, 1.0) AS rank
+               FROM chunks_fts f JOIN chunks c ON c.chunk_id = f.chunk_id
+               WHERE chunks_fts MATCH ? AND f.repo_id = ?
                ORDER BY rank LIMIT ?""",
-            (match, repo_id, limit),
+            (match, repo_id, fetch),
         ).fetchall()
-        return [(r["chunk_id"], -r["rank"]) for r in rows]  # bm25() is lower-is-better
+        results: list[tuple[str, float]] = []
+        per_file: dict[str, int] = {}
+        for r in rows:
+            if per_file_cap:
+                if per_file.get(r["file_path"], 0) >= per_file_cap:
+                    continue
+                per_file[r["file_path"]] = per_file.get(r["file_path"], 0) + 1
+            results.append((r["chunk_id"], -r["rank"]))  # bm25() is lower-is-better
+            if len(results) >= limit:
+                break
+        return results
 
     def chunks_defining(self, repo_id: str, names: list[str]) -> list[str]:
         """chunk_ids of chunks that contain the definition of any of `names`
