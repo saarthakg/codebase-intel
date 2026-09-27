@@ -2,12 +2,12 @@
 # values measured when each was last improved, so a real regression fails but
 # float differences between machines (e.g. macOS vs Linux embeddings) don't.
 # Raise a floor when a change genuinely improves a metric.
-main:                       # eval/run_eval.py
-  search.span_mrr: 0.76             # measured 0.788
+requests:                   # eval/run_eval.py, psf/requests
+  search.span_mrr: 0.78             # measured 0.804
   search.span_hit@5: 0.92           # 0.952
-  search_holdout.span_mrr: 0.84     # 0.877
-  search_holdout.span_hit@5: 0.88   # 0.920
-  search_identifier.span_mrr: 0.89  # 0.929
+  search_holdout.span_mrr: 0.86     # 0.898
+  search_holdout.span_hit@5: 0.92   # 0.960
+  search_identifier.span_mrr: 0.91  # 0.946
   definition.line_acc: 1.0
   references.recall: 1.0
   references.precision: 1.0
@@ -15,8 +15,24 @@ main:                       # eval/run_eval.py
   impact.high_precision: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
-history:                    # eval/run_history_eval.py (file-level /impact)
+requests_history:           # eval/run_history_eval.py (file-level /impact)
   dev.recall@10: 0.64               # 0.666
   dev.mrr: 0.66                     # 0.693
   heldout.recall@10: 0.67           # 0.696
   heldout.mrr: 0.61                 # 0.636
+flask:                      # eval/run_eval.py --bench eval/flask_bench.yaml (never tuned on)
+  search.span_mrr: 0.75             # 0.781
+  search.span_hit@5: 0.92           # 0.953
+  search_identifier.span_mrr: 0.95  # 1.000
+  definition.line_acc: 1.0
+  references.recall: 1.0
+  references.precision: 1.0
+  impact.direct_recall_high: 1.0
+  impact.high_precision: 1.0
+  graph.edge_recall: 1.0
+  graph.edge_precision: 1.0
+flask_history:
+  dev.recall@10: 0.51               # 0.533
+  dev.mrr: 0.54                     # 0.567
+  heldout.recall@10: 0.54           # 0.567
+  heldout.mrr: 0.43                 # 0.454

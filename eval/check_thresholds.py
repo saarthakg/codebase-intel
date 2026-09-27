@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Fail (exit 1) if any eval result is below its floor in eval/thresholds.yaml.
 
-  python eval/check_thresholds.py --main results/main.json --history results/history.json
+  python eval/check_thresholds.py requests=out/requests.json requests_history=out/history.json ...
+
+Each argument is LABEL=PATH, where LABEL is a section of thresholds.yaml.
 """
 import argparse
 import json
@@ -16,25 +18,27 @@ def check(results: dict, floors: dict, label: str) -> list[str]:
     for key, floor in floors.items():
         section, metric = key.split(".", 1)
         value = results.get(section, {}).get(metric)
-        status = "ok  " if value is not None and value >= floor else "FAIL"
-        print(f"  {status} {label}.{key:<32} {value if value is not None else 'missing'!s:<8} (floor {floor})")
-        if status == "FAIL":
+        ok = value is not None and value >= floor
+        shown = f"{value:.3f}" if isinstance(value, float) else str(value)
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}.{key:<32} {shown:<8} (floor {floor})")
+        if not ok:
             failures.append(f"{label}.{key}")
     return failures
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--main", help="run_eval.py --out JSON")
-    parser.add_argument("--history", help="run_history_eval.py --out JSON")
+    parser.add_argument("results", nargs="+", help="LABEL=PATH pairs, e.g. requests=out/requests.json")
     parser.add_argument("--thresholds", default=str(Path(__file__).parent / "thresholds.yaml"))
     args = parser.parse_args()
 
     floors = yaml.safe_load(Path(args.thresholds).read_text())
     failures = []
-    for label, path in (("main", args.main), ("history", args.history)):
-        if path:
-            failures += check(json.loads(Path(path).read_text()), floors[label], label)
+    for pair in args.results:
+        label, _, path = pair.partition("=")
+        if label not in floors or not path:
+            parser.error(f"{pair!r}: expected LABEL=PATH with LABEL one of {', '.join(floors)}")
+        failures += check(json.loads(Path(path).read_text()), floors[label], label)
     if failures:
         print(f"\n{len(failures)} metric(s) below threshold: {', '.join(failures)}")
         sys.exit(1)
