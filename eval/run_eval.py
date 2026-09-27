@@ -58,7 +58,7 @@ def _overlaps(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
     return a_start <= b_end and b_start <= a_end
 
 
-def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bool) -> dict:
+def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bool, mode: str = "hybrid") -> dict:
     file_hits = {k: [] for k in KS}
     span_hits = {k: [] for k in KS}
     rr: list[float] = []
@@ -66,7 +66,7 @@ def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bo
     top5_lines: list[int] = []
     misses: list[str] = []
     for case in cases:
-        resp = client.post("/search", json={"repo_id": repo_id, "query": case["query"], "top_k": max(KS)})
+        resp = client.post("/search", json={"repo_id": repo_id, "query": case["query"], "top_k": max(KS), "mode": mode})
         resp.raise_for_status()
         results = resp.json()["results"]
         expected_files = {e["file"] for e in case["expected"]}
@@ -209,6 +209,7 @@ def main() -> None:
     parser.add_argument("--bench", default=str(Path(__file__).parent / "requests_bench.yaml"))
     parser.add_argument("--ingest", metavar="REPO_PATH", help="(Re-)ingest this path under --repo-id first")
     parser.add_argument("--out", help="Write results JSON here (e.g. eval/results/baseline.json)")
+    parser.add_argument("--search-mode", default="hybrid", choices=["hybrid", "semantic", "keyword"])
     parser.add_argument("-v", "--verbose", action="store_true", help="Print individual misses")
     args = parser.parse_args()
 
@@ -223,7 +224,11 @@ def main() -> None:
 
     gt_graph = bench["import_graph"]
     results = {
-        "search": eval_search(client, args.repo_id, bench["search"], args.verbose),
+        "search": eval_search(client, args.repo_id, bench["search"], args.verbose, args.search_mode),
+        # Never tune on these two: holdout checks that search gains transfer,
+        # identifier covers queries typed as code.
+        "search_holdout": eval_search(client, args.repo_id, bench.get("search_holdout", []), args.verbose, args.search_mode),
+        "search_identifier": eval_search(client, args.repo_id, bench.get("search_identifier", []), args.verbose, args.search_mode),
         "definition": eval_definition(client, args.repo_id, bench["definition"], args.verbose),
         "references": eval_references(client, args.repo_id, bench["references"], args.verbose),
         "impact": eval_impact(client, args.repo_id, bench["impact"], gt_graph, args.verbose),
@@ -235,7 +240,7 @@ def main() -> None:
         cells = []
         for key, val in metrics.items():
             cells.append(f"{key}={val:.3f}" if isinstance(val, float) else f"{key}={val}")
-        print(f"  {section:<11} " + "  ".join(cells))
+        print(f"  {section:<17} " + "  ".join(cells))
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

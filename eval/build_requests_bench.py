@@ -75,6 +75,58 @@ SEARCH = [
     ("requests.get convenience function", [(S + "api.py", "get"), (S + "api.py", "request")]),
 ]
 
+# Held-out natural-language questions, written before any search tuning and
+# never used to choose parameters — only to check that gains on SEARCH transfer.
+SEARCH_HOLDOUT = [
+    ("proxy authorization header for proxy URLs",
+     [(S + "adapters.py", "HTTPAdapter.proxy_headers"), (S + "auth.py", "HTTPProxyAuth")]),
+    ("build the path used in the request line when going through a proxy", [(S + "adapters.py", "HTTPAdapter.request_url")]),
+    ("close all pooled connections", [(S + "adapters.py", "HTTPAdapter.close"), (S + "sessions.py", "Session.close")]),
+    ("unquote percent-encoded characters that are unreserved", [(S + "utils.py", "unquote_unreserved")]),
+    ("re-quote a URI so it is fully quoted", [(S + "utils.py", "requote_uri")]),
+    ("check whether an IP address belongs to a CIDR network",
+     [(S + "utils.py", "address_in_network"), (S + "utils.py", "is_valid_cidr")]),
+    ("temporarily set an environment variable", [(S + "utils.py", "set_environ")]),
+    ("parse a comma-separated list header", [(S + "utils.py", "parse_list_header")]),
+    ("load a CA bundle that lives inside a zip archive", [(S + "utils.py", "extract_zipped_paths")]),
+    ("guess the filename of a file object", [(S + "utils.py", "guess_filename")]),
+    ("detect the UTF encoding of JSON bytes", [(S + "utils.py", "guess_json_utf")]),
+    ("add a scheme to URLs that lack one", [(S + "utils.py", "prepend_scheme_if_needed")]),
+    ("get the username and password embedded in a URL", [(S + "utils.py", "get_auth_from_url")]),
+    ("remove the fragment and credentials from a URL", [(S + "utils.py", "urldefragauth")]),
+    ("create a cookie object from a name and value", [(S + "cookies.py", "create_cookie")]),
+    ("convert a Morsel into a cookie", [(S + "cookies.py", "morsel_to_cookie")]),
+    ("remove a cookie by its name", [(S + "cookies.py", "remove_cookie_by_name")]),
+    ("register and deregister hooks on a request",
+     [(S + "models.py", "RequestHooksMixin.register_hook"), (S + "models.py", "RequestHooksMixin.deregister_hook")]),
+    ("attach authentication to a prepared request", [(S + "models.py", "PreparedRequest.prepare_auth")]),
+    ("generate the Cookie header for a prepared request", [(S + "models.py", "PreparedRequest.prepare_cookies")]),
+    ("check whether the response is a permanent redirect", [(S + "models.py", "Response.is_permanent_redirect")]),
+    ("use a session as a context manager", [(S + "sessions.py", "Session.__enter__"), (S + "sessions.py", "Session.__exit__")]),
+    ("error for a URL with an invalid or missing scheme",
+     [(S + "exceptions.py", "InvalidSchema"), (S + "exceptions.py", "MissingSchema")]),
+    ("convert bytes or str to the native string type", [(S + "_internal_utils.py", "to_native_string")]),
+    ("check if a string contains only ASCII characters", [(S + "_internal_utils.py", "unicode_is_ascii")]),
+]
+
+# Queries phrased the way developers type them: containing identifiers.
+SEARCH_IDENTIFIER = [
+    ("get_netrc_auth", [(S + "utils.py", "get_netrc_auth")]),
+    ("HTTPAdapter.send timeout handling", [(S + "adapters.py", "HTTPAdapter.send")]),
+    ("resolve_redirects implementation", [(S + "sessions.py", "SessionRedirectMixin.resolve_redirects")]),
+    ("RequestsCookieJar set", [(S + "cookies.py", "RequestsCookieJar.set")]),
+    ("super_len for file objects", [(S + "utils.py", "super_len")]),
+    ("PreparedRequest.prepare_body", [(S + "models.py", "PreparedRequest.prepare_body")]),
+    ("should_bypass_proxies", [(S + "utils.py", "should_bypass_proxies")]),
+    ("CaseInsensitiveDict lower_items", [(S + "structures.py", "CaseInsensitiveDict.lower_items")]),
+    ("merge_environment_settings verify", [(S + "sessions.py", "Session.merge_environment_settings")]),
+    ("iter_content chunk_size", [(S + "models.py", "Response.iter_content")]),
+    ("build_digest_header qop", [(S + "auth.py", "HTTPDigestAuth.build_digest_header")]),
+    ("rebuild_proxies", [(S + "sessions.py", "SessionRedirectMixin.rebuild_proxies")]),
+    ("dispatch_hook", [(S + "hooks.py", "dispatch_hook")]),
+    ("cert_verify", [(S + "adapters.py", "HTTPAdapter.cert_verify")]),
+]
+
 # symbol (bare or Class.method) → defining file
 DEFINITIONS = [
     ("HTTPAdapter", "adapters.py"), ("Session", "sessions.py"), ("PreparedRequest", "models.py"),
@@ -238,6 +290,20 @@ def main() -> None:
             }
             for q, expected in SEARCH
         ],
+        "search_holdout": [
+            {
+                "query": q,
+                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
+            }
+            for q, expected in SEARCH_HOLDOUT
+        ],
+        "search_identifier": [
+            {
+                "query": q,
+                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
+            }
+            for q, expected in SEARCH_IDENTIFIER
+        ],
         "definition": [
             {"symbol": s, "file": S + f, "line": span(S + f, s)[0]} for s, f in DEFINITIONS
         ],
@@ -253,7 +319,8 @@ def main() -> None:
     with open(args.out, "w") as f:
         yaml.safe_dump(bench, f, sort_keys=False, width=110)
     print(
-        f"Wrote {args.out}: {len(bench['search'])} search, {len(bench['definition'])} definition, "
+        f"Wrote {args.out}: {len(bench['search'])} search, {len(bench['search_holdout'])} holdout, "
+        f"{len(bench['search_identifier'])} identifier, {len(bench['definition'])} definition, "
         f"{len(bench['references'])} references, {len(bench['impact'])} impact cases, "
         f"{sum(len(v) for v in edges.values())} ground-truth import edges"
     )

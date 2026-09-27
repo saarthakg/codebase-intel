@@ -8,14 +8,14 @@ search:
   expected:
   - file: src/requests/adapters.py
     symbol: HTTPAdapter.cert_verify
-    lines:
+    lines: &id012
     - 307
     - 363
 - query: how are HTTP redirects followed?
   expected:
   - file: src/requests/sessions.py
     symbol: SessionRedirectMixin.resolve_redirects
-    lines:
+    lines: &id005
     - 186
     - 307
 - query: strip the Authorization header when redirecting to a different host
@@ -41,7 +41,7 @@ search:
   expected:
   - file: src/requests/auth.py
     symbol: HTTPDigestAuth.build_digest_header
-    lines:
+    lines: &id010
     - 157
     - 266
   - file: src/requests/auth.py
@@ -60,7 +60,7 @@ search:
   expected:
   - file: src/requests/utils.py
     symbol: get_netrc_auth
-    lines:
+    lines: &id003
     - 231
     - 280
 - query: which proxy should be used for a given URL
@@ -79,14 +79,14 @@ search:
   expected:
   - file: src/requests/utils.py
     symbol: should_bypass_proxies
-    lines:
+    lines: &id007
     - 810
     - 870
 - query: merge proxy and verify settings from environment variables into the request
   expected:
   - file: src/requests/sessions.py
     symbol: Session.merge_environment_settings
-    lines:
+    lines: &id008
     - 831
     - 868
 - query: connection pooling and pool manager setup
@@ -122,7 +122,7 @@ search:
   expected:
   - file: src/requests/adapters.py
     symbol: HTTPAdapter.send
-    lines:
+    lines: &id004
     - 634
     - 748
 - query: convert a urllib3 response into a Response object
@@ -191,7 +191,7 @@ search:
   expected:
   - file: src/requests/models.py
     symbol: Response.iter_content
-    lines:
+    lines: &id009
     - 906
     - 977
 - query: iterate over the response one line at a time
@@ -267,7 +267,7 @@ search:
   expected:
   - file: src/requests/utils.py
     symbol: super_len
-    lines:
+    lines: &id006
     - 160
     - 228
 - query: default User-Agent string
@@ -319,7 +319,7 @@ search:
   expected:
   - file: src/requests/hooks.py
     symbol: dispatch_hook
-    lines:
+    lines: &id011
     - 32
     - 48
 - query: merge session-level and request-level settings
@@ -374,6 +374,289 @@ search:
     lines:
     - 24
     - 71
+search_holdout:
+- query: proxy authorization header for proxy URLs
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.proxy_headers
+    lines:
+    - 613
+    - 632
+  - file: src/requests/auth.py
+    symbol: HTTPProxyAuth
+    lines:
+    - 116
+    - 121
+- query: build the path used in the request line when going through a proxy
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.request_url
+    lines:
+    - 565
+    - 597
+- query: close all pooled connections
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.close
+    lines:
+    - 555
+    - 563
+  - file: src/requests/sessions.py
+    symbol: Session.close
+    lines:
+    - 883
+    - 886
+- query: unquote percent-encoded characters that are unreserved
+  expected:
+  - file: src/requests/utils.py
+    symbol: unquote_unreserved
+    lines:
+    - 680
+    - 701
+- query: re-quote a URI so it is fully quoted
+  expected:
+  - file: src/requests/utils.py
+    symbol: requote_uri
+    lines:
+    - 704
+    - 723
+- query: check whether an IP address belongs to a CIDR network
+  expected:
+  - file: src/requests/utils.py
+    symbol: address_in_network
+    lines:
+    - 726
+    - 738
+  - file: src/requests/utils.py
+    symbol: is_valid_cidr
+    lines:
+    - 763
+    - 784
+- query: temporarily set an environment variable
+  expected:
+  - file: src/requests/utils.py
+    symbol: set_environ
+    lines:
+    - 787
+    - 807
+- query: parse a comma-separated list header
+  expected:
+  - file: src/requests/utils.py
+    symbol: parse_list_header
+    lines:
+    - 408
+    - 436
+- query: load a CA bundle that lives inside a zip archive
+  expected:
+  - file: src/requests/utils.py
+    symbol: extract_zipped_paths
+    lines:
+    - 290
+    - 325
+- query: guess the filename of a file object
+  expected:
+  - file: src/requests/utils.py
+    symbol: guess_filename
+    lines:
+    - 283
+    - 287
+- query: detect the UTF encoding of JSON bytes
+  expected:
+  - file: src/requests/utils.py
+    symbol: guess_json_utf
+    lines:
+    - 1008
+    - 1037
+- query: add a scheme to URLs that lack one
+  expected:
+  - file: src/requests/utils.py
+    symbol: prepend_scheme_if_needed
+    lines:
+    - 1040
+    - 1067
+- query: get the username and password embedded in a URL
+  expected:
+  - file: src/requests/utils.py
+    symbol: get_auth_from_url
+    lines:
+    - 1070
+    - 1084
+- query: remove the fragment and credentials from a URL
+  expected:
+  - file: src/requests/utils.py
+    symbol: urldefragauth
+    lines:
+    - 1122
+    - 1136
+- query: create a cookie object from a name and value
+  expected:
+  - file: src/requests/cookies.py
+    symbol: create_cookie
+    lines:
+    - 494
+    - 528
+- query: convert a Morsel into a cookie
+  expected:
+  - file: src/requests/cookies.py
+    symbol: morsel_to_cookie
+    lines:
+    - 531
+    - 557
+- query: remove a cookie by its name
+  expected:
+  - file: src/requests/cookies.py
+    symbol: remove_cookie_by_name
+    lines:
+    - 164
+    - 182
+- query: register and deregister hooks on a request
+  expected:
+  - file: src/requests/models.py
+    symbol: RequestHooksMixin.register_hook
+    lines:
+    - 257
+    - 270
+  - file: src/requests/models.py
+    symbol: RequestHooksMixin.deregister_hook
+    lines:
+    - 272
+    - 281
+- query: attach authentication to a prepared request
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_auth
+    lines:
+    - 670
+    - 697
+- query: generate the Cookie header for a prepared request
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_cookies
+    lines:
+    - 699
+    - 720
+- query: check whether the response is a permanent redirect
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.is_permanent_redirect
+    lines:
+    - 883
+    - 889
+- query: use a session as a context manager
+  expected:
+  - file: src/requests/sessions.py
+    symbol: Session.__enter__
+    lines:
+    - 505
+    - 506
+  - file: src/requests/sessions.py
+    symbol: Session.__exit__
+    lines:
+    - 508
+    - 509
+- query: error for a URL with an invalid or missing scheme
+  expected:
+  - file: src/requests/exceptions.py
+    symbol: InvalidSchema
+    lines:
+    - 114
+    - 115
+  - file: src/requests/exceptions.py
+    symbol: MissingSchema
+    lines:
+    - 110
+    - 111
+- query: convert bytes or str to the native string type
+  expected:
+  - file: src/requests/_internal_utils.py
+    symbol: to_native_string
+    lines:
+    - 26
+    - 36
+- query: check if a string contains only ASCII characters
+  expected:
+  - file: src/requests/_internal_utils.py
+    symbol: unicode_is_ascii
+    lines:
+    - 39
+    - 51
+search_identifier:
+- query: get_netrc_auth
+  expected:
+  - file: src/requests/utils.py
+    symbol: get_netrc_auth
+    lines: *id003
+- query: HTTPAdapter.send timeout handling
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.send
+    lines: *id004
+- query: resolve_redirects implementation
+  expected:
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.resolve_redirects
+    lines: *id005
+- query: RequestsCookieJar set
+  expected:
+  - file: src/requests/cookies.py
+    symbol: RequestsCookieJar.set
+    lines:
+    - 229
+    - 248
+- query: super_len for file objects
+  expected:
+  - file: src/requests/utils.py
+    symbol: super_len
+    lines: *id006
+- query: PreparedRequest.prepare_body
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_body
+    lines: *id002
+- query: should_bypass_proxies
+  expected:
+  - file: src/requests/utils.py
+    symbol: should_bypass_proxies
+    lines: *id007
+- query: CaseInsensitiveDict lower_items
+  expected:
+  - file: src/requests/structures.py
+    symbol: CaseInsensitiveDict.lower_items
+    lines:
+    - 76
+    - 78
+- query: merge_environment_settings verify
+  expected:
+  - file: src/requests/sessions.py
+    symbol: Session.merge_environment_settings
+    lines: *id008
+- query: iter_content chunk_size
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.iter_content
+    lines: *id009
+- query: build_digest_header qop
+  expected:
+  - file: src/requests/auth.py
+    symbol: HTTPDigestAuth.build_digest_header
+    lines: *id010
+- query: rebuild_proxies
+  expected:
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.rebuild_proxies
+    lines:
+    - 334
+    - 368
+- query: dispatch_hook
+  expected:
+  - file: src/requests/hooks.py
+    symbol: dispatch_hook
+    lines: *id011
+- query: cert_verify
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.cert_verify
+    lines: *id012
 definition:
 - symbol: HTTPAdapter
   file: src/requests/adapters.py
