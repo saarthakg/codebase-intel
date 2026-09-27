@@ -152,7 +152,7 @@ def find_definition(symbol: str, repo_id: Optional[str] = None) -> dict[str, Any
     the rest are listed in other_definitions. Usages are matched by name.
     """
     rid, state = _state(repo_id)
-    found = lookup_definition(symbol, state.metadata_store, rid)
+    found = lookup_definition(symbol, state.metadata_store, rid, state.graph)
     if found is None:
         raise ToolInputError(f"No definition of '{symbol}' in '{rid}'. Try search_code instead.")
     lines_by_file: dict[str, list[int]] = {}

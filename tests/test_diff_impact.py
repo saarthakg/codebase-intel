@@ -134,6 +134,11 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
         "def get_adapter() -> Base: ...\n"
     )
     (repo / "pkg" / "mail.py").write_text("class Mailer:\n    def send(self, m): ...\n")
+    (repo / "pkg" / "proto.py").write_text(
+        "from typing import Protocol\n\nclass Reader(Protocol):\n    def read(self): ...\n\n"
+        "def consume(r: Reader):\n    return r.read()\n")
+    (repo / "pkg" / "files.py").write_text(
+        "from pkg import proto\n\ndef load(fp):\n    return fp.read()\n")
     (repo / "pkg" / "via_base.py").write_text(
         "from pkg.adapters import get_adapter\n\ndef go():\n    get_adapter().send(1)\n")
     (repo / "pkg" / "other.py").write_text(
@@ -152,4 +157,7 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     assert "pkg/other.py" not in users      # m is a Mailer: known to be another class
     mail_users = symbol_users("typed", "Mailer.send", "pkg/mail.py", state.graph, state.metadata_store)
     assert mail_users == ["pkg/other.py"]
+    # Protocol method: only code typed against the protocol, never untyped .read() calls
+    reader_users = symbol_users("typed", "Reader.read", "pkg/proto.py", state.graph, state.metadata_store)
+    assert reader_users == ["pkg/proto.py"]
     _loaded_repos.clear()

@@ -56,6 +56,10 @@ def symbol_users(
         # recorded only with a known receiver type; no call site spells them
         # out, so there's no name to fall back on.
         return sorted(typed)
+    if "Protocol" in _mro(owner, bases):
+        # A typing.Protocol method never runs: calls land on the concrete object
+        # (a file, BytesIO, ...). Only code typed against the protocol uses it.
+        return sorted(typed)
     fallback = metadata_store.method_ref_files(repo_id, method, [UNKNOWN]) & dependents
     return sorted(typed | fallback)
 

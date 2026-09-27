@@ -47,9 +47,9 @@ def mode_search(repo_id: str, query: str, top_k: int = 10):
 
 
 def mode_definition(repo_id: str, symbol: str):
-    _, metadata_store, _ = load_state(repo_id)
+    _, metadata_store, graph = load_state(repo_id)
     from app.core.definitions import lookup_definition
-    result = lookup_definition(symbol, metadata_store, repo_id)
+    result = lookup_definition(symbol, metadata_store, repo_id, graph)
     if result is None:
         print(f"Symbol '{symbol}' not found in repo '{repo_id}'.")
         return

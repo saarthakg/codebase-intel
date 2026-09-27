@@ -82,22 +82,32 @@ def best_definition(symbol: str, metadata_store: MetadataStore, repo_id: str) ->
 
 
 def lookup_definition(
-    symbol: str, metadata_store: MetadataStore, repo_id: str
+    symbol: str, metadata_store: MetadataStore, repo_id: str, graph=None
 ) -> Optional[DefinitionResponse]:
     """Resolve `symbol` (bare "send" or qualified "HTTPAdapter.send") to its
-    best definition, the other candidates, and every usage in the repo."""
+    best definition, the other candidates, and every usage in the repo.
+
+    With `graph`, a method's usages are narrowed to files whose references can
+    reach that method by inferred receiver type (see app/core/usages.py), so
+    `Session.send` no longer lists every `.send(...)` in the repo."""
     ranked = rank_definitions(symbol, metadata_store.find_symbol(repo_id, symbol))
     if not ranked:
         return None
     best = ranked[0]
 
     # Usages are recorded by identifier, so a dotted query matches on its last
-    # component (`Session.send` → every `.send` usage). The definition site
-    # itself is never a usage; drop any hit on the definition's own line.
+    # component. The definition site itself is never a usage; drop any hit on
+    # the definition's own line.
     refs = [
         r for r in metadata_store.find_references(repo_id, symbol)
         if not (r["file_path"] == best["file_path"] and r["line"] == best.get("start_line"))
     ]
+    qualified = best.get("qualified_name") or ""
+    if graph is not None and best.get("kind") == "method" and "." in qualified:
+        from app.core.usages import symbol_users
+        users = set(symbol_users(repo_id, qualified, best["file_path"], graph, metadata_store))
+        users.add(best["file_path"])  # calls within the defining file stay listed
+        refs = [r for r in refs if r["file_path"] in users]
     return DefinitionResponse(
         symbol=symbol,
         qualified_name=best.get("qualified_name") or best.get("symbol_name") or symbol,

@@ -43,7 +43,7 @@ def definition(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    response = lookup_definition(symbol, state.metadata_store, repo_id)
+    response = lookup_definition(symbol, state.metadata_store, repo_id, state.graph)
     if response is None:
         raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found in repo '{repo_id}'")
     return response

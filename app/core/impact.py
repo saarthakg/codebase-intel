@@ -96,7 +96,13 @@ def analyze_impact(
     # identifier-usage index — previously this queried the *definitions* table,
     # so it only ever found other files defining a same-named symbol.
     if target not in graph.G.nodes and defining_file is not None:
-        for fp in {r["file_path"] for r in metadata_store.find_references(repo_id, target)}:
+        if defining_entry.get("kind") == "method" and "." in (defining_entry.get("qualified_name") or ""):
+            # Methods: callers by inferred receiver type (app/core/usages.py)
+            from app.core.usages import symbol_users
+            users = set(symbol_users(repo_id, defining_entry["qualified_name"], defining_file, graph, metadata_store))
+        else:
+            users = {r["file_path"] for r in metadata_store.find_references(repo_id, target)}
+        for fp in users:
             if fp == defining_file:
                 continue  # skip the defining file itself
             _add(fp, _SYMBOL_CONFIDENCE, "references symbol", 0)
