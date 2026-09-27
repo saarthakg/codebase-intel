@@ -168,10 +168,13 @@ def resolve_python_import(
         bases = [package.joinpath(*parts)]
     else:
         roots = source_roots if source_roots is not None else [Path(repo_root).resolve()]
-        # The importing file's own directory is a last resort: it only works for
-        # script-style imports (sys.path[0]), and checking it first could let a
-        # local file shadow a same-named top-level package.
-        bases = [root.joinpath(*parts) for root in roots] + [source_dir.joinpath(*parts)]
+        bases = [root.joinpath(*parts) for root in roots]
+        # A file's own directory is on sys.path only when that file runs as a
+        # script, i.e. it isn't inside a package. Inside a package, `import
+        # typing` or `import json` means the stdlib even if the package has
+        # its own typing.py or json/ (Flask has both), so don't look there.
+        if not (source_dir / "__init__.py").exists():
+            bases.append(source_dir.joinpath(*parts))
 
     for base in bases:
         module_file = _python_module_file(base) if parts else base / "__init__.py"

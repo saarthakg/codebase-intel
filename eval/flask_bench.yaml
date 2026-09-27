@@ -658,6 +658,8 @@ impact:
   - tests/test_cli.py
   - tests/test_testing.py
 import_graph:
+  examples/celery/make_celery.py:
+  - examples/celery/src/task_app/__init__.py
   examples/celery/src/task_app/__init__.py:
   - examples/celery/src/task_app/views.py
   - src/flask/__init__.py
@@ -665,10 +667,13 @@ import_graph:
   - examples/celery/src/task_app/tasks.py
   - src/flask/__init__.py
   examples/javascript/js_example/__init__.py:
+  - examples/javascript/js_example/views.py
   - src/flask/__init__.py
   examples/javascript/js_example/views.py:
   - examples/javascript/js_example/__init__.py
   - src/flask/__init__.py
+  examples/javascript/tests/conftest.py:
+  - examples/javascript/js_example/__init__.py
   examples/javascript/tests/test_js_example.py:
   - src/flask/__init__.py
   examples/tutorial/flaskr/__init__.py:
@@ -685,8 +690,18 @@ import_graph:
   - src/flask/__init__.py
   examples/tutorial/flaskr/db.py:
   - src/flask/__init__.py
+  examples/tutorial/tests/conftest.py:
+  - examples/tutorial/flaskr/__init__.py
+  - examples/tutorial/flaskr/db.py
   examples/tutorial/tests/test_auth.py:
+  - examples/tutorial/flaskr/db.py
   - src/flask/__init__.py
+  examples/tutorial/tests/test_blog.py:
+  - examples/tutorial/flaskr/db.py
+  examples/tutorial/tests/test_db.py:
+  - examples/tutorial/flaskr/db.py
+  examples/tutorial/tests/test_factory.py:
+  - examples/tutorial/flaskr/__init__.py
   src/flask/__init__.py:
   - src/flask/app.py
   - src/flask/blueprints.py
@@ -813,6 +828,8 @@ import_graph:
   - src/flask/testing.py
   tests/test_apps/blueprintapp/__init__.py:
   - src/flask/__init__.py
+  - tests/test_apps/blueprintapp/apps/admin/__init__.py
+  - tests/test_apps/blueprintapp/apps/frontend/__init__.py
   tests/test_apps/blueprintapp/apps/admin/__init__.py:
   - src/flask/__init__.py
   tests/test_apps/blueprintapp/apps/frontend/__init__.py:
@@ -831,6 +848,8 @@ import_graph:
   - src/flask/__init__.py
   tests/test_apps/helloworld/hello.py:
   - src/flask/__init__.py
+  tests/test_apps/helloworld/wsgi.py:
+  - tests/test_apps/helloworld/hello.py
   tests/test_apps/subdomaintestmodule/__init__.py:
   - src/flask/__init__.py
   tests/test_async.py:
@@ -843,9 +862,11 @@ import_graph:
   - src/flask/testing.py
   tests/test_blueprints.py:
   - src/flask/__init__.py
+  - tests/test_apps/blueprintapp/__init__.py
   tests/test_cli.py:
   - src/flask/__init__.py
   - src/flask/cli.py
+  - tests/test_apps/cliapp/app.py
   tests/test_config.py:
   - src/flask/__init__.py
   tests/test_converters.py:
@@ -883,6 +904,7 @@ import_graph:
   - src/flask/__init__.py
   tests/test_templating.py:
   - src/flask/__init__.py
+  - tests/test_apps/blueprintapp/__init__.py
   tests/test_testing.py:
   - src/flask/__init__.py
   - src/flask/cli.py

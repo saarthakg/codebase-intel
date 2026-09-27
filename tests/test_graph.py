@@ -272,3 +272,22 @@ def test_legacy_index_graph_is_rebuilt_from_sqlite_not_unpickled(tmp_path, monke
     graph = load_graph("old", store)
     assert set(graph.G.edges) == {("a.py", "b.py")}
     assert set(graph.G.nodes) == {"a.py", "b.py", "c.py"}
+
+
+
+def test_package_module_does_not_shadow_stdlib(tmp_path):
+    """Inside a package, `import typing` / `import json` are the stdlib even if
+    the package has its own typing.py and json/ (Flask has both)."""
+    for f in ["src/pkg/__init__.py", "src/pkg/typing.py", "src/pkg/json/__init__.py",
+              "src/pkg/helpers.py", "scripts/run.py", "scripts/util.py"]:
+        _touch(tmp_path, f)
+    roots = find_python_source_roots(str(tmp_path))
+    helpers = str(tmp_path / "src/pkg/helpers.py")
+    assert resolve_python_import("typing", helpers, str(tmp_path), source_roots=roots) == []
+    assert resolve_python_import("json", helpers, str(tmp_path), source_roots=roots) == []
+    # ...but the package's own modules are still reachable the right way
+    assert _rel(resolve_python_import(".typing", helpers, str(tmp_path), names=["x"]), tmp_path) == ["src/pkg/typing.py"]
+    assert _rel(resolve_python_import("pkg.json", helpers, str(tmp_path), source_roots=roots), tmp_path) == ["src/pkg/json/__init__.py"]
+    # A script outside any package can still import its sibling
+    script = str(tmp_path / "scripts/run.py")
+    assert _rel(resolve_python_import("util", script, str(tmp_path), source_roots=roots), tmp_path) == ["scripts/util.py"]

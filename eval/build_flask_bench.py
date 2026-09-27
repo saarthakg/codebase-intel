@@ -128,6 +128,12 @@ REF_SYMBOLS = [
     "DispatchingJinjaLoader", "NullSession", "BlueprintSetupState",
 ]
 
+# Directories Flask makes importable beyond the repo root and src/, each checked
+# by hand: the example apps are separate projects (own pyproject.toml) whose
+# tests import them by their own names, and tests/conftest.py prepends
+# tests/test_apps to sys.path for the test_apps fixture.
+EXTRA_ROOTS = ("examples/celery/src", "examples/javascript", "examples/tutorial", "tests/test_apps")
+
 IMPACT_TARGETS = [
     "config.py", "ctx.py", "helpers.py", "sessions.py", "templating.py", "json/tag.py",
     "views.py", "testing.py", "sansio/scaffold.py", "cli.py",
@@ -148,6 +154,7 @@ def main() -> None:
         definitions=DEFINITIONS,
         ref_symbols=REF_SYMBOLS,
         impact_targets=IMPACT_TARGETS,
+        extra_roots=EXTRA_ROOTS,
     )
     write_bench(bench, args.out)
 
