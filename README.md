@@ -25,18 +25,19 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                        Ingest Pipeline                      │
 │                                                             │
-│  walk_repo → load_file → detect_language → analyze_file     │
+│  scan_repo (git ls-files) → load_file → analyze_file        │
 │       │          (tree-sitter: symbols, imports, usages)    │
 │       │                                        │            │
 │  chunk_file (definition-aligned)      embed_texts (local    │
 │       │                               sentence-transformers │
-│       ▼                               or OpenAI)            │
+│       │                               or OpenAI; cached by  │
+│       ▼                               content hash)         │
 │  MetadataStore (SQLite + FTS5)             │                │
 │  DependencyGraph (NetworkX)           FAISSStore            │
 │       │                               (IndexFlatIP)         │
 │       ▼                                    │                │
 │  data/metadata/{repo_id}.db          data/indexes/          │
-│  data/metadata/{repo_id}.graph.pkl   {repo_id}.index        │
+│  data/metadata/{repo_id}.graph.json  {repo_id}.index        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -114,10 +115,24 @@ Hugging Face; after that everything runs offline.
 
 ```bash
 python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
+# Found 47 files (.gitignore applied)
 # Indexed 47 files, 399 chunks, 807 symbols, 2591 references, 107 graph edges.
+# Embedded 399 chunks, reused 0 unchanged.
 ```
 
-`repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). Re-running ingest on the same `repo_id` is safe and idempotent — it fully replaces the previous index rather than accumulating stale chunks/symbols/edges alongside it, and the embedding backend used at ingest time is recorded and reused automatically for every later query against that `repo_id`, even if `EMBEDDING_BACKEND` in `.env` changes afterward.
+**Re-ingest after changes; it's incremental.** Run the same command again whenever the code
+changes. Everything is re-parsed (fast), but chunks whose text hasn't changed reuse their
+stored embeddings, so only edited code is re-embedded. On `requests`, an unchanged re-ingest
+takes 0.6s instead of 12s. Each run fully replaces the previous index (no stale
+chunks/symbols/edges), and a failed run leaves the previous index intact.
+
+**What gets indexed:** inside a git repo, the files `git ls-files` reports (tracked plus
+untracked), so everything your `.gitignore` excludes is skipped; outside git, a directory
+walk that skips `node_modules`, `dist`, virtualenvs and similar. Python, TS/JS, Markdown and
+config files are included. Dependency lockfiles, minified files and files over 1 MB
+(`INGEST_MAX_FILE_BYTES`) are skipped and counted in the summary.
+
+`repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). The embedding backend and model used at ingest time are recorded and reused automatically for every later query against that `repo_id`, even if `.env` changes afterward.
 
 ### Query
 
@@ -156,8 +171,13 @@ Ingest a repository and build all indexes.
 
 ```json
 {"repo_id": "my-project", "files_indexed": 47, "chunks_indexed": 399,
- "symbols_extracted": 807, "edges_in_graph": 107}
+ "symbols_extracted": 807, "edges_in_graph": 107,
+ "files_skipped": {"lockfile": 1, "minified": 2}, "chunks_embedded": 12, "chunks_reused": 387}
 ```
+
+`files_skipped` counts files left out and why (`lockfile`, `minified`, `too_large`,
+`binary_or_unreadable`). `chunks_embedded` / `chunks_reused` show how much of the index was
+re-embedded versus carried over unchanged from the previous ingest.
 
 ### `POST /search`
 
@@ -393,11 +413,12 @@ usages and 107 dependency edges in ~12 seconds on a laptop CPU — walking, tree
 chunking, dependency resolution, keyword indexing and embedding with the local
 `bge-small-en-v1.5` model. No API key, and no network calls after the one-time model download.
 
-**Re-ingestion is provably idempotent.** Ingesting the same `repo_id` twice leaves the exact
-same row counts, not double — verified both with a synthetic fixture
-(`tests/test_pipeline.py::test_reingest_replaces_not_accumulates`) and by re-ingesting the real
-`requests` repo mid-development and diffing chunk counts before/after. A symbol removed from
-source (e.g. a rename) is confirmed gone from the DB after re-ingest, not left as an orphaned row.
+**Re-ingestion is idempotent and incremental.** Ingesting the same `repo_id` twice leaves the
+exact same row counts, not double, and a symbol removed from source is gone after re-ingest
+(`tests/test_pipeline.py`). Embedding is ~95% of ingest time on `requests` (6.3s of 6.65s after
+model load), so vectors are cached by the hash of the exact text embedded: an unchanged
+re-ingest takes 0.6s and re-embeds nothing, editing one file re-embeds only that file's
+chunks, and the search eval is identical to a fresh index.
 
 **Search gains held up on questions that weren't used for tuning.** Every search change was
 scored on 42 questions, and parameters were chosen on those only. A further 25 questions were
@@ -422,7 +443,7 @@ ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolv
 package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
 edges, so tests never showed up as impacted.
 
-**Test suite: 165/165 passing in about 3 seconds**, covering ingestion and language
+**Test suite: 179/179 passing in about 4 seconds**, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
 symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
 imported names), Python and TypeScript import resolution (`src/` layouts, relative and
@@ -431,7 +452,8 @@ dependency graph and its import-cycle handling, find-references, transactional r
 legacy-DB migration, structure-aware chunking, keyword indexing, rank fusion, per-repo
 embedding-model pinning, `/ask` context assembly, caching, answer checks, streaming and
 error handling for all three LLM backends, git history with renames, co-change, test-file
-matching and diff-level impact, all three impact-analysis
+matching, diff-level impact, deterministic ranking, incremental re-ingest, `.gitignore`-aware
+file selection, all three impact-analysis
 signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
@@ -451,7 +473,8 @@ performance for repo-scale (~thousands of chunks). A flat `IndexFlatIP` with L2-
 vectors gives exact cosine similarity.
 
 **Why NetworkX over Neo4j:** Same reasoning — no server, no schema migrations, sufficient
-for file-level dependency DAGs. The graph serializes to a single pickle.
+for file-level dependency DAGs. The graph is saved as a small JSON file (not a pickle, which
+would execute arbitrary code if the file were ever tampered with).
 
 **Why answers are grounded:** LLM hallucination about code is uniquely harmful — invented
 function names, wrong file paths, and fabricated behavior are worse than "I don't know."
@@ -520,6 +543,12 @@ think adaptively, and thinking tokens count against `max_tokens`; the old `max_t
 could leave nothing for the answer. Low effort keeps spend down for what is mostly lookup
 over supplied excerpts, and `temperature` is rejected by current models.
 
+**Why incremental ingest caches embeddings instead of diffing files:** Parsing and linking
+the whole repo takes a fraction of a second; embedding is nearly all the cost. So every
+ingest re-parses everything (the graph, symbols and references are never stale) and only the
+embedding step is incremental, keyed by a hash of the exact text embedded. There's no
+dependency tracking to get wrong: if a chunk's text is unchanged its vector is too.
+
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
 
@@ -542,7 +571,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 165 passed
+# 179 passed
 ```
 
 ---
@@ -637,7 +666,8 @@ near-certain.
 ## Limitations
 
 - File-level dependency graph, not call-level (no intra-function call edges)
-- No live repo sync — re-run `ingest` after changes (safe to do repeatedly; see Quickstart)
+- No live repo sync: re-run `ingest` after changes. It's incremental (unchanged code isn't
+  re-embedded), but it still re-parses the whole repo
 - Import resolution covers Python (relative, absolute, `src/` layouts) and TS/JS (relative,
   `index` files, tsconfig `baseUrl`/`paths`); external packages are excluded. Python imports
   resolved via runtime `sys.path` tweaks aren't detected
