@@ -194,3 +194,85 @@ def test_legacy_symbols_table_is_migrated(tmp_path):
     rows = store.find_symbol("r", "foo")
     assert rows and rows[0]["qualified_name"] == "foo" and rows[0]["start_line"] == 3
     assert store.find_references("r", "foo") == []  # new table exists, empty until re-ingest
+
+
+# ── Embedding cache (incremental re-ingest) ───────────────────────────────────
+
+class _CountingEmbedder:
+    """Deterministic fake embedder that records every text it embeds."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+
+    def __call__(self, texts, backend=None, **kwargs):
+        self.calls.append(list(texts))
+        rng = [np.random.default_rng(abs(hash(t)) % (2**32)) for t in texts]
+        return np.vstack([r.random(8) for r in rng]).astype(np.float32)
+
+    @property
+    def total(self):
+        return sum(len(c) for c in self.calls)
+
+
+def test_reingest_reuses_embeddings_for_unchanged_code(tmp_path):
+    repo = _make_repo(tmp_path)
+    embed = _CountingEmbedder()
+    with patch("app.core.pipeline.embed_texts", side_effect=embed):
+        first = run_ingestion(str(repo), "myrepo")
+        assert (first["chunks_embedded"], first["chunks_reused"]) == (2, 0)
+
+        second = run_ingestion(str(repo), "myrepo")
+        assert (second["chunks_embedded"], second["chunks_reused"]) == (0, 2)
+        assert embed.total == 2  # nothing re-embedded
+
+        (repo / "b.py").write_text("def bar():\n    return 2\n")
+        third = run_ingestion(str(repo), "myrepo")
+    assert (third["chunks_embedded"], third["chunks_reused"]) == (1, 1)
+    assert embed.calls[-1] == [t for t in embed.calls[-1] if "return 2" in t]  # only b.py's chunk
+
+
+def test_cached_vectors_equal_fresh_ones(tmp_path):
+    """A re-ingest served from the cache must produce the same index vectors."""
+    from app.storage.faiss_store import FAISSStore
+
+    def vectors_by_file():
+        store = MetadataStore(str(paths.db_path("myrepo")))
+        index = FAISSStore(dim=8)
+        index.load(str(paths.index_path("myrepo")))
+        return {store.get_chunk(cid).file_path: index.vectors_for([cid])[0] for cid in index.id_map}
+
+    repo = _make_repo(tmp_path)
+    with patch("app.core.pipeline.embed_texts", side_effect=_CountingEmbedder()):
+        run_ingestion(str(repo), "myrepo")
+        fresh = vectors_by_file()
+        assert run_ingestion(str(repo), "myrepo")["chunks_reused"] == 2
+        reused = vectors_by_file()
+    assert sorted(fresh) == sorted(reused) == ["a.py", "b.py"]
+    assert all(np.allclose(fresh[f], reused[f]) for f in fresh)
+
+
+def test_changing_model_does_not_reuse_other_models_vectors(tmp_path, monkeypatch):
+    repo = _make_repo(tmp_path)
+    embed = _CountingEmbedder()
+    with patch("app.core.pipeline.embed_texts", side_effect=embed):
+        run_ingestion(str(repo), "myrepo")
+        monkeypatch.setenv("EMBEDDING_MODEL", "some/other-model")
+        again = run_ingestion(str(repo), "myrepo")
+    assert again["chunks_embedded"] == 2 and again["chunks_reused"] == 0
+    store = MetadataStore(str(paths.db_path("myrepo")))
+    models = {r[0] for r in store._conn.execute("SELECT DISTINCT model FROM embedding_cache")}
+    assert models == {"local:some/other-model"}  # old model's vectors pruned
+
+
+def test_duplicate_chunks_are_embedded_once(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "x.txt").write_text("same boilerplate\n")
+    (repo / "y.txt").write_text("same boilerplate\n")
+    embed = _CountingEmbedder()
+    with patch("app.core.pipeline.embed_texts", side_effect=embed), \
+         patch("app.core.pipeline.embedding_text", side_effect=lambda c, s=None: c.content):
+        summary = run_ingestion(str(repo), "myrepo")
+    assert embed.total == 1
+    assert (summary["chunks_embedded"], summary["chunks_reused"]) == (1, 0)
+    assert summary["chunks_indexed"] == 2

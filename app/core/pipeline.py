@@ -7,11 +7,14 @@ stale rows before re-ingest, validating repo_id) had to be made twice and was
 easy to miss in one of the two places. This module is now the single
 implementation; both callers just format the result for their own interface.
 """
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+
+import numpy as np
 
 from app.core import paths
 from app.core.chunking import chunk_file, embedding_text
@@ -63,9 +66,11 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         graph, all_chunks, embed_inputs, file_count = _index_files(
             resolved_repo_path, repo_id, metadata_store, _report
         )
+        embedded = reused = 0
         if all_chunks:
-            _report(f"Embedding {len(all_chunks)} chunks...")
-            embeddings = embed_texts(embed_inputs, backend=backend, model=model_name)
+            embeddings, embedded, reused = _embed_with_cache(
+                embed_inputs, backend, model_name, metadata_store, _report
+            )
             faiss_store = FAISSStore(
                 dim=embeddings.shape[1], embedding_backend=backend, embedding_model=model_name
             )
@@ -100,6 +105,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         "chunks_indexed": len(all_chunks),
         "symbols_extracted": total_symbols,
         "references_indexed": total_references,
+        "chunks_embedded": embedded,
+        "chunks_reused": reused,
         "files_with_history": history_files,
         "edges_in_graph": edge_count,
         "embedding_backend": backend,
@@ -110,6 +117,30 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         json.dump(summary, f)
 
     return summary
+
+
+def _embed_with_cache(
+    texts: list[str], backend: str, model_name: str, metadata_store: MetadataStore,
+    report: Callable[[str], None],
+) -> tuple["np.ndarray", int, int]:
+    """Embed `texts`, reusing vectors cached from earlier ingests of identical
+    text with the same model. Returns (embeddings, n_embedded, n_reused)."""
+    cache_model = f"{backend}:{model_name}"
+    hashes = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+    cached = metadata_store.get_cached_embeddings(cache_model, hashes)
+    reused = sum(1 for h in hashes if h in cached)
+    # First occurrence of each uncached text: identical chunks (repeated
+    # boilerplate) are embedded once.
+    to_embed = {h: t for h, t in zip(hashes, texts) if h not in cached}
+    report(f"Embedding {len(to_embed)} chunks ({reused} of {len(texts)} unchanged, reused)")
+    if to_embed:
+        fresh = embed_texts(list(to_embed.values()), backend=backend, model=model_name)
+        new_vectors = dict(zip(to_embed.keys(), fresh))
+        metadata_store.put_cached_embeddings(cache_model, new_vectors)
+        cached.update(new_vectors)
+    metadata_store.prune_embedding_cache(cache_model, set(hashes))
+    vectors = np.vstack([cached[h] for h in hashes]).astype(np.float32)
+    return vectors, len(to_embed), reused
 
 
 def _index_files(

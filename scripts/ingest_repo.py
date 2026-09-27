@@ -32,7 +32,8 @@ def main():
         f"{summary['references_indexed']} references, "
         f"{summary['edges_in_graph']} graph edges."
     )
-    print(f"Embedding backend: {summary['embedding_backend']}")
+    print(f"Embedded {summary['chunks_embedded']} chunks, reused {summary['chunks_reused']} unchanged.")
+    print(f"Embedding backend: {summary['embedding_backend']} ({summary['embedding_model']})")
     print(f"Saved to data/indexes/{args.repo_id}.index")
 
 
