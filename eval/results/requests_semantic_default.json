@@ -1,0 +1,60 @@
+{
+  "search": {
+    "file_hit@1": 0.7619047619047619,
+    "file_hit@5": 1.0,
+    "file_hit@10": 1.0,
+    "span_hit@1": 0.6904761904761905,
+    "span_hit@5": 0.9523809523809523,
+    "span_hit@10": 0.9761904761904762,
+    "mrr": 0.859920634920635,
+    "span_mrr": 0.8043650793650793,
+    "avg_lines@5": 37.385714285714286,
+    "n": 42
+  },
+  "search_holdout": {
+    "file_hit@1": 0.88,
+    "file_hit@5": 1.0,
+    "file_hit@10": 1.0,
+    "span_hit@1": 0.84,
+    "span_hit@5": 0.96,
+    "span_hit@10": 1.0,
+    "mrr": 0.9333333333333332,
+    "span_mrr": 0.8977777777777777,
+    "avg_lines@5": 38.08,
+    "n": 25
+  },
+  "search_identifier": {
+    "file_hit@1": 1.0,
+    "file_hit@5": 1.0,
+    "file_hit@10": 1.0,
+    "span_hit@1": 0.9285714285714286,
+    "span_hit@5": 1.0,
+    "span_hit@10": 1.0,
+    "mrr": 1.0,
+    "span_mrr": 0.9464285714285714,
+    "avg_lines@5": 37.18571428571428,
+    "n": 14
+  },
+  "definition": {
+    "file_acc": 1.0,
+    "line_acc": 1.0,
+    "n": 24
+  },
+  "references": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "n": 12
+  },
+  "impact": {
+    "direct_recall_high": 1.0,
+    "direct_recall_any": 1.0,
+    "high_precision": 1.0,
+    "n": 10
+  },
+  "graph": {
+    "edge_recall": 1.0,
+    "edge_precision": 1.0,
+    "edges_found": 107,
+    "edges_true": 107
+  }
+}

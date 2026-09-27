@@ -71,7 +71,8 @@ def test_ingest_then_query_end_to_end(data_dirs):
     assert call("list_repos").structured_content["repos"][0]["repo_id"] == "demo"
 
     # repo_id optional when only one repo is indexed
-    found = call("search_code", {"query": "get_netrc_auth", "top_k": 1}).structured_content
+    # hybrid: the exact-symbol lookup makes this deterministic under fake embeddings
+    found = call("search_code", {"query": "get_netrc_auth", "top_k": 1, "mode": "hybrid"}).structured_content
     assert found["repo_id"] == "demo"
     assert found["results"][0]["file"] == "pkg/netrc.py" and "def get_netrc_auth" in found["results"][0]["code"]
 

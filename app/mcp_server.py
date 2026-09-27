@@ -119,13 +119,14 @@ def search_code(
     query: str,
     repo_id: Optional[str] = None,
     top_k: int = 6,
-    mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
+    mode: Literal["semantic", "hybrid", "keyword"] = "semantic",
 ) -> dict[str, Any]:
     """Find the code that answers a question or matches identifiers.
 
     Works for natural language ("where are redirects followed?") and for
     identifiers ("get_netrc_auth", "HTTPAdapter.send"). Returns the best
     matching code chunks with file paths and line ranges, best first.
+    Use mode="keyword" to match an exact string such as an error message.
     """
     rid, state = _state(repo_id)
     top_k = max(1, min(top_k, 20))

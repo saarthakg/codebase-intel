@@ -6,7 +6,14 @@ from app.models.schemas import SearchResult
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
 
-SEARCH_MODES = ("hybrid", "semantic", "keyword")
+SEARCH_MODES = ("semantic", "hybrid", "keyword")
+# Semantic is the default: with bge-small-en-v1.5 and per-chunk context
+# headers it matched or beat hybrid fusion on all five benchmark question sets
+# across psf/requests and pallets/flask (e.g. Flask span MRR 0.781 vs 0.730).
+# Hybrid was the better choice with the earlier all-MiniLM-L6-v2 model, which
+# misses identifiers that BM25 recovers; it stays available for that case and
+# for exact-string lookups.
+DEFAULT_SEARCH_MODE = "semantic"
 
 # Reciprocal rank fusion constant (Cormack et al. 2009). Larger k flattens the
 # advantage of being ranked first in any single list.
@@ -40,11 +47,11 @@ def search_chunks(
     faiss_store: FAISSStore,
     metadata_store: MetadataStore,
     embedding_backend: Optional[str] = None,
-    mode: str = "hybrid",
+    mode: str = DEFAULT_SEARCH_MODE,
 ) -> list[SearchResult]:
     """Rank chunks for `query`.
 
-    mode="semantic": embedding cosine similarity (FAISS). `score` is the cosine.
+    mode="semantic" (default): embedding cosine similarity. `score` is the cosine.
     mode="keyword":  BM25 over path, symbol names and code (SQLite FTS5).
     mode="hybrid":   both, plus chunks that *define* any code-looking identifier
                      in the query (e.g. "get_netrc_auth"), merged with

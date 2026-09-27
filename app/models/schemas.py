@@ -50,9 +50,9 @@ class IngestResponse(BaseModel):
 class SearchRequest(_RepoScoped):
     query: str
     top_k: int = 10
-    # "hybrid" (default): semantic + keyword + exact-symbol, rank-fused.
-    # "semantic": embeddings only. "keyword": BM25 only.
-    mode: Literal["hybrid", "semantic", "keyword"] = "hybrid"
+    # "semantic" (default): embeddings only. "hybrid": semantic + keyword +
+    # exact-symbol, rank-fused. "keyword": BM25 only (exact strings).
+    mode: Literal["semantic", "hybrid", "keyword"] = "semantic"
 
 
 class SearchResult(BaseModel):

@@ -58,7 +58,7 @@ def _overlaps(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
     return a_start <= b_end and b_start <= a_end
 
 
-def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bool, mode: str = "hybrid") -> dict:
+def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bool, mode: str | None = None) -> dict:
     file_hits = {k: [] for k in KS}
     span_hits = {k: [] for k in KS}
     rr: list[float] = []
@@ -66,7 +66,10 @@ def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bo
     top5_lines: list[int] = []
     misses: list[str] = []
     for case in cases:
-        resp = client.post("/search", json={"repo_id": repo_id, "query": case["query"], "top_k": max(KS), "mode": mode})
+        body = {"repo_id": repo_id, "query": case["query"], "top_k": max(KS)}
+        if mode:  # otherwise measure whatever the API defaults to
+            body["mode"] = mode
+        resp = client.post("/search", json=body)
         resp.raise_for_status()
         results = resp.json()["results"]
         expected_files = {e["file"] for e in case["expected"]}
@@ -209,7 +212,8 @@ def main() -> None:
     parser.add_argument("--bench", default=str(Path(__file__).parent / "requests_bench.yaml"))
     parser.add_argument("--ingest", metavar="REPO_PATH", help="(Re-)ingest this path under --repo-id first")
     parser.add_argument("--out", help="Write results JSON here (e.g. eval/results/baseline.json)")
-    parser.add_argument("--search-mode", default="hybrid", choices=["hybrid", "semantic", "keyword"])
+    parser.add_argument("--search-mode", default=None, choices=["semantic", "hybrid", "keyword"],
+                        help="Default: the API's own default mode")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print individual misses")
     args = parser.parse_args()
 
