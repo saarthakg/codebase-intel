@@ -364,6 +364,23 @@ class MetadataStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def indexed_files(self, repo_id: str) -> list[str]:
+        rows = self._conn.execute(
+            """SELECT file_path FROM chunks WHERE repo_id = ?
+               UNION SELECT file_path FROM symbols WHERE repo_id = ?
+               UNION SELECT source_file FROM edges WHERE repo_id = ?
+               UNION SELECT target_file FROM edges WHERE repo_id = ?""",
+            (repo_id,) * 4,
+        ).fetchall()
+        return sorted(r[0] for r in rows)
+
+    def all_edges(self, repo_id: str) -> list[tuple[str, str]]:
+        rows = self._conn.execute(
+            "SELECT source_file, target_file FROM edges WHERE repo_id = ? AND edge_type = 'import'",
+            (repo_id,),
+        ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     def symbols_in_file(self, repo_id: str, file_path: str) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM symbols WHERE repo_id = ? AND file_path = ? ORDER BY start_line",

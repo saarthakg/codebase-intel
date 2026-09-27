@@ -31,6 +31,11 @@ def db_path(repo_id: str) -> Path:
 
 
 def graph_path(repo_id: str) -> Path:
+    return DATA_METADATA / f"{validate_repo_id(repo_id)}.graph.json"
+
+
+def legacy_graph_path(repo_id: str) -> Path:
+    """Where indexes built before the JSON format kept a pickled graph."""
     return DATA_METADATA / f"{validate_repo_id(repo_id)}.graph.pkl"
 
 
@@ -45,6 +50,7 @@ def repo_artifact_paths(repo_id: str) -> list[Path]:
         idmap_path(repo_id),
         db_path(repo_id),
         graph_path(repo_id),
+        legacy_graph_path(repo_id),
         meta_path(repo_id),
     ]
 

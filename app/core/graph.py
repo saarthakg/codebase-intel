@@ -1,6 +1,5 @@
 import json
 import os
-import pickle
 import re
 from collections import deque
 from dataclasses import dataclass, field
@@ -68,15 +67,36 @@ class DependencyGraph:
         return sorted({r["file_path"] for r in metadata_store.find_references(repo_id, symbol)})
 
     def save(self, path: str) -> None:
-        """Pickle the graph to disk."""
+        """Write the graph as JSON: {"nodes": [...], "edges": [[source, target], ...]}.
+
+        JSON rather than pickle: loading a pickle executes whatever it
+        contains, so a tampered or shared index file could run code.
+        """
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump(self.G, f)
+        data = {"nodes": sorted(self.G.nodes), "edges": sorted([a, b] for a, b in self.G.edges)}
+        with open(path, "w") as f:
+            json.dump(data, f)
 
     def load(self, path: str) -> None:
-        """Load graph from disk."""
-        with open(path, "rb") as f:
-            self.G = pickle.load(f)
+        """Load a graph written by save()."""
+        with open(path) as f:
+            data = json.load(f)
+        self.G = nx.DiGraph()
+        self.G.add_nodes_from(data["nodes"])
+        self.G.add_edges_from(tuple(e) for e in data["edges"])
+
+    @classmethod
+    def from_metadata(cls, metadata_store: "MetadataStore", repo_id: str) -> "DependencyGraph":
+        """Rebuild the graph from the SQLite index (edges table + indexed files).
+
+        Used for indexes written before the graph was stored as JSON, instead
+        of unpickling their old .graph.pkl file.
+        """
+        graph = cls()
+        graph.G.add_nodes_from(metadata_store.indexed_files(repo_id))
+        for source, target in metadata_store.all_edges(repo_id):
+            graph.add_import_edge(source, target)
+        return graph
 
     @property
     def edge_count(self) -> int:

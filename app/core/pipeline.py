@@ -97,6 +97,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
 
     faiss_store.save(str(paths.index_path(repo_id)))
     graph.save(str(paths.graph_path(repo_id)))
+    paths.legacy_graph_path(repo_id).unlink(missing_ok=True)  # superseded by the JSON graph
     edge_count = graph.edge_count
 
     summary = {

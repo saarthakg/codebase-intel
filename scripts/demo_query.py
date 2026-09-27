@@ -21,29 +21,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.core import paths
-from app.core.graph import DependencyGraph
 from app.core.search import search_chunks
-from app.core.validation import validate_repo_id
-from app.storage.faiss_store import FAISSStore
-from app.storage.metadata_store import MetadataStore
 
 
 def load_state(repo_id: str):
-    validate_repo_id(repo_id)
-    index_path = paths.index_path(repo_id)
-    if not index_path.exists():
+    """(faiss_store, metadata_store, graph), loaded exactly as the API server does."""
+    from app.main import get_repo_state
+    try:
+        state = get_repo_state(repo_id)
+    except FileNotFoundError:
         print(f"Error: No index found for repo '{repo_id}'. Run ingest_repo.py first.")
         sys.exit(1)
-
-    faiss_store = FAISSStore(dim=384)  # dim/backend overwritten by load
-    faiss_store.load(str(index_path))
-    metadata_store = MetadataStore(str(paths.db_path(repo_id)))
-    graph = DependencyGraph()
-    graph_path = paths.graph_path(repo_id)
-    if graph_path.exists():
-        graph.load(str(graph_path))
-    return faiss_store, metadata_store, graph
+    return state.faiss_store, state.metadata_store, state.graph
 
 
 def mode_search(repo_id: str, query: str, top_k: int = 10):

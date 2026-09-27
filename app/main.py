@@ -25,6 +25,17 @@ class RepoState:
 _loaded_repos: dict[str, RepoState] = {}
 
 
+def load_graph(repo_id: str, metadata_store: MetadataStore) -> DependencyGraph:
+    graph_path = paths.graph_path(repo_id)
+    if graph_path.exists():
+        graph = DependencyGraph()
+        graph.load(str(graph_path))
+        return graph
+    # Older index (pickled graph, or none): rebuild from SQLite rather than
+    # unpickling the old file.
+    return DependencyGraph.from_metadata(metadata_store, repo_id)
+
+
 def get_repo_state(repo_id: str) -> RepoState:
     validate_repo_id(repo_id)
     if repo_id in _loaded_repos:
@@ -41,10 +52,7 @@ def get_repo_state(repo_id: str) -> RepoState:
 
     metadata_store = MetadataStore(str(paths.db_path(repo_id)))
 
-    graph = DependencyGraph()
-    graph_path = paths.graph_path(repo_id)
-    if graph_path.exists():
-        graph.load(str(graph_path))
+    graph = load_graph(repo_id, metadata_store)
 
     state = RepoState(
         faiss_store=faiss_store,

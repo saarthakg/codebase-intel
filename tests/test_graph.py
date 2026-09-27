@@ -98,7 +98,7 @@ def test_unknown_file_returns_empty():
 
 def test_save_and_load(tmp_path):
     g = make_chain()
-    path = str(tmp_path / "graph.pkl")
+    path = str(tmp_path / "graph.json")
     g.save(path)
     g2 = DependencyGraph()
     g2.load(path)
@@ -238,3 +238,37 @@ def test_tsconfig_paths_alias_and_base_url(tmp_path):
     # baseUrl makes bare paths resolvable too
     assert Path(resolve_ts_import("components/Button", str(src), str(tmp_path), cfg)).name == "Button.tsx"
     assert resolve_ts_import("react", str(src), str(tmp_path), cfg) is None
+
+
+
+def test_saved_graph_is_json_not_pickle(tmp_path):
+    import json
+    g = make_chain()
+    path = tmp_path / "graph.json"
+    g.save(str(path))
+    assert json.loads(path.read_text()) == {
+        "nodes": ["A.py", "B.py", "C.py"], "edges": [["A.py", "B.py"], ["B.py", "C.py"]],
+    }
+
+
+def test_legacy_index_graph_is_rebuilt_from_sqlite_not_unpickled(tmp_path, monkeypatch):
+    """An index from before the JSON format has a .graph.pkl; it must be
+    ignored (never unpickled) and the graph rebuilt from the edges table."""
+    import pickle
+    from app.core import paths
+    from app.main import load_graph
+    from app.storage.metadata_store import MetadataStore
+
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path)
+    store = MetadataStore(str(tmp_path / "old.db"))
+    store.upsert_edge("old", "a.py", "b.py", "import")
+    store.upsert_symbol("f", "old", "c.py", 1, "function")
+
+    class Boom:
+        def __reduce__(self):
+            return (exec, ("raise RuntimeError('pickle was loaded')",))
+
+    paths.legacy_graph_path("old").write_bytes(pickle.dumps(Boom()))
+    graph = load_graph("old", store)
+    assert set(graph.G.edges) == {("a.py", "b.py")}
+    assert set(graph.G.nodes) == {"a.py", "b.py", "c.py"}
