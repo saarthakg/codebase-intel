@@ -16,6 +16,10 @@ Metrics
   search      file_hit@k  — any expected file among the top-k results
               span_hit@k  — a top-k chunk overlaps an expected symbol's line span
               MRR         — reciprocal rank of the first correct file
+              span_mrr    — reciprocal rank of the first chunk overlapping an answer span
+              avg_lines@5 — mean line count of the top-5 chunks. Bigger chunks
+                            overlap more spans for free, so read span_hit next
+                            to this rather than on its own.
   definition  file_acc    — /definition returns the right defining file
               line_acc    — ...and the right line (decorators allowed, ±0 otherwise)
   references  recall / precision of /definition's `references` vs. every file
@@ -58,6 +62,8 @@ def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bo
     file_hits = {k: [] for k in KS}
     span_hits = {k: [] for k in KS}
     rr: list[float] = []
+    span_rr: list[float] = []
+    top5_lines: list[int] = []
     misses: list[str] = []
     for case in cases:
         resp = client.post("/search", json={"repo_id": repo_id, "query": case["query"], "top_k": max(KS)})
@@ -80,6 +86,8 @@ def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bo
             None,
         )
         rr.append(1.0 / first_file_rank if first_file_rank else 0.0)
+        span_rr.append(1.0 / first_span_rank if first_span_rank else 0.0)
+        top5_lines += [r["end_line"] - r["start_line"] + 1 for r in results[:5]]
         for k in KS:
             file_hits[k].append(1.0 if first_file_rank and first_file_rank <= k else 0.0)
             span_hits[k].append(1.0 if first_span_rank and first_span_rank <= k else 0.0)
@@ -93,6 +101,8 @@ def eval_search(client: TestClient, repo_id: str, cases: list[dict], verbose: bo
     out = {f"file_hit@{k}": _mean(file_hits[k]) for k in KS}
     out.update({f"span_hit@{k}": _mean(span_hits[k]) for k in KS})
     out["mrr"] = _mean(rr)
+    out["span_mrr"] = _mean(span_rr)
+    out["avg_lines@5"] = _mean(top5_lines)
     out["n"] = len(cases)
     return out
 
