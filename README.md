@@ -23,8 +23,11 @@ was ever tuned on, it's 95%. Keyword (BM25) and hybrid modes are there for exact
 
 **Jump to a definition and every usage.** `Class.method` or bare names, with other matching
 definitions listed, source preferred over tests. Usages come from the parse tree, not text
-search, so comments and changelogs don't count. On the benchmark: 24/24 definitions and
-12/12 reference sets exactly right.
+search, so comments and changelogs don't count. Method calls are resolved by inferred
+receiver type, so `Session.send` finds calls on sessions rather than every `.send(...)` in
+the repo. On both benchmark repos: 24/24 definitions and 12/12 reference sets exactly right.
+Against the calls each repo's test suite actually makes at runtime, method callers are found
+with 95–97% recall and at least 76–78% precision.
 
 **Know what a change will break, and which tests to run.** Impact analysis ranks every
 affected file with a reason ("direct import", "test named for this file", "changed together
@@ -322,8 +325,9 @@ Compare scores only within one mode.
 
 `symbol` can be bare (`send`) or qualified (`HTTPAdapter.send`). For an ambiguous bare name,
 real definitions beat anything else, source beats tests, top-level beats nested, and the rest
-are listed in `other_definitions`. Usages are matched by identifier name: `Session.send`
-returns every `.send` usage, not only calls on a `Session`.
+are listed in `other_definitions`. For a method, usages are the files whose references can
+reach it by inferred receiver type (see [How method callers are found](#how-method-callers-are-found));
+functions and classes are matched by name, which their names make reliable.
 
 ### `POST /impact`
 
@@ -363,10 +367,9 @@ file reports `triggered_by`, the targets that surfaced it.
 
 Changed lines are mapped to the innermost symbols they touch (a method rather than its whole
 class) and returned as `changed_symbols`, each with the files that use it. Those files rank
-at 0.96, above other importers; everything else is as in `/impact/batch`. Usages count only in
-files that import the changed file (within `depth` hops), so an unrelated class's `send()`
-doesn't match. The diff's new side should be the indexed code: ingest the working tree, then
-send `git diff HEAD`. Files not in the index are listed in `unindexed_files`.
+at 0.96, above other importers; everything else is as in `/impact/batch`. Method users are
+found by inferred receiver type, so an unrelated class's `send()` doesn't match. The diff's
+new side should be the indexed code: ingest the working tree, then send `git diff HEAD`. Files not in the index are listed in `unindexed_files`.
 
 ### `POST /ask`
 
@@ -548,6 +551,46 @@ numbers above are re-measured. Co-change rates are also shrunk toward zero when 
 commits (`n / (commits + 3)`), which changes nothing on full history but stops a shallow
 clone's "3 of 3 commits" from scoring as near-certain.
 
+### How method callers are found
+
+"Who calls `HTTPAdapter.send`?" is hard to answer from text, since dozens of classes have a
+`send`. At ingest, `app/core/typeinfer.py` infers the receiver of every `obj.method` from what
+the code states:
+
+- `self`, `cls` and `super()`;
+- parameter and variable annotations (`adapter: HTTPAdapter`, `x: Foo | None`);
+- constructor calls and `with ... as`;
+- return annotations (`adapter = self.get_adapter(url)` → `BaseAdapter`);
+- class attribute types (`self.conn = Pool()`, `connection: HTTPAdapter`).
+
+Each receiver becomes a repo class, an external type (a file object, a `str`), or unknown. A
+reference counts toward `X.m` if its receiver is X, a subclass inheriting `m` from X, or a base
+class through which the call can dispatch to X's override. Unknown receivers fall back to
+name matching among files that import X's module. Constructors and protocol methods (`with`,
+`for`, `x[k]`, `len(x)`, calling an instance) are recorded with their operand's type. Methods of
+a `typing.Protocol` never run, so only code typed against the protocol counts for them.
+
+**Scored against runtime calls.** `eval/call_tracer.py` runs each repo's own test suite with a
+profile hook that records which file actually called each function. It sees through decorator
+wrappers; Flask's `@setupmethod` otherwise makes every decorated method look called from the
+decorator's module. Every recorded caller is real, so recall is trustworthy; precision is a
+lower bound, since a claimed caller may be real but untested. (`jedi`, a static-analysis
+library, was tried as the oracle first. It found no callers even for `HTTPAdapter.send` and
+`Response.json`, so it would have rewarded a tool that misses them too.)
+
+| Recall / precision (lower bound) | Name matching | Type-aware |
+|---|---|---|
+| requests: methods (47) | 0.93 / 0.68 | **0.95 / 0.76** |
+| requests: constructors and protocol methods (45) | 0.02 / 0.04 | **0.48 / 0.50** |
+| Flask, never tuned on: methods (117) | 0.97 / 0.70 | 0.97 / **0.78** |
+| Flask: constructors and protocol methods (35) | 0.34 / 0.05 | **0.48 / 0.45** |
+
+Functions are unchanged (their names are distinctive). The rest of the constructor and
+protocol gap is calls no static reading can see: pickle's `__getstate__`, descriptors,
+`__getattr__`. On real commits, diff-level impact barely moves (requests dev recall@10
+0.74 → 0.76, otherwise within ±0.01), because co-change already carries most of that signal.
+The gain is in the usage answers themselves.
+
 ### Bugs the benchmark caught
 
 - **Import resolution.** The graph originally found 81 of 107 real edges, 8 of them wrong:
@@ -570,14 +613,14 @@ clone's "3 of 3 commits" from scoring as near-certain.
 
 ```bash
 pytest tests/
-# 190 passed
+# 196 passed
 ```
 
 The suite covers:
 - symbol and import extraction (Python, TypeScript, TSX, regex fallback) and import
   resolution (`src/` layouts, submodules, tsconfig aliases, ESM specifiers);
 - chunking, the search modes and rank fusion;
-- references and definition ranking;
+- references and definition ranking, receiver-type inference and method dispatch;
 - every impact signal, deterministic ranking, git history with renames, diff parsing;
 - incremental and transactional ingest, `.gitignore`-aware scanning, legacy-index migration;
 - `/ask` context assembly, caching, citation checks and streaming for all three LLM backends;
@@ -598,11 +641,13 @@ and the graph now gets it right. "Which files will this change need to touch?" d
 history records what happened, so the eval replays commits, learning co-change only from
 commits before the ones scored.
 
-**Why diff-level impact matches methods by name.** A diff that only changes `cert_verify`
-shouldn't rank every importer of `adapters.py` equally. Callers are found by name among files
-that import the changed module. That over-matches generic names like `read`, but also
-requiring the class name gave up diff-level's recall gain on real commits (dev recall@5
-0.52 → 0.46), because methods are mostly called on instances obtained elsewhere.
+**Why method callers are resolved by inferred type, with a name fallback.** Plain name matching
+over-matches (every `.send`), and simply requiring the class name in the calling file gave
+up diff-level impact's recall gain, because methods are mostly called on instances obtained
+elsewhere (`r.connection.send(...)`, whose type comes from an attribute annotation). Inferring
+receiver types from annotations, constructors and return types handles those cases. Unknown
+receivers keep name matching, so a real caller is never dropped just because its type isn't
+written down.
 
 **Why chunks follow definitions.** A fixed 1,600-character window cuts functions in half, so the
 matching chunk often holds the end of one function and the start of the next. Chunks now
@@ -674,8 +719,10 @@ for two languages beat shallow support for six.
 
 ## Limitations
 
-- File-level dependency graph, not a call graph; method usages are matched by name, so
-  `Session.send` also matches every other `.send(...)` call
+- Method receivers are inferred only from what the code states (annotations, constructors,
+  return types). Untyped code falls back to name matching, and calls made by pickle,
+  descriptors or `__getattr__` aren't visible. Type inference is Python-only; TS/JS method
+  usages are still matched by name
 - Import resolution covers Python (relative, absolute, `src/` layouts) and TS/JS (relative,
   `index` files, tsconfig `baseUrl`/`paths`); imports set up by runtime `sys.path` changes
   aren't detected, and external packages are excluded
@@ -695,7 +742,7 @@ for two languages beat shallow support for six.
 
 ## Future work
 
-- A tree-sitter call graph, so method callers are resolved by type rather than name
+- Type-aware method usages for TypeScript, and inference through untyped function returns
 - Multi-repo support with cross-repo symbol resolution
 - Background ingest jobs with progress, so `/ingest` on a large repo doesn't hold the HTTP
   connection open
