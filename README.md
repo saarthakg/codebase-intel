@@ -45,7 +45,8 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │  GET  /definition → SQLite symbol lookup + usage index      │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
 │  POST /impact/batch → merge /impact across many changed files│
-│  POST /ask      → search → LLM (grounded answer + cites)    │
+│  POST /ask      → search → cache? → LLM → cite + check      │
+│  POST /ask/stream → same, streamed as NDJSON events         │
 │  GET  /repos    → list ingested repos + last-ingest stats   │
 │  DELETE /repos/{repo_id} → remove a repo's on-disk artifacts│
 └─────────────────────────────────────────────────────────────┘
@@ -65,26 +66,43 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### Configure your LLM key
+### Configure an LLM (only for `/ask`)
 
-The search, definition, and impact features work with no API key. Only `/ask` requires one.
+Search, definition and impact never call an LLM. Only `/ask` does, and it can run entirely
+free and local.
 
 Edit `.env` and set your preferred backend:
 
-**Option A — Gemini (free tier, no credit card):**
+**Option A: Ollama (free, local, no key):**
+Install [Ollama](https://ollama.com), then:
+```
+ollama pull qwen2.5-coder:7b     # ~4.7 GB download
+```
+```
+LLM_BACKEND=ollama
+OLLAMA_MODEL=qwen2.5-coder:7b
+```
+Pick a model that fits in your GPU/unified memory with room to spare. A 13 GB model
+(`gpt-oss`) on a 16 GB M2 Pro was partly offloaded to the CPU and didn't finish an answer
+within 10 minutes; `ollama ps` shows the CPU/GPU split. Very small models (0.5B) run fast but give vague, often uncited answers,
+which the answer checks flag.
+
+**Option B: Gemini (free tier, no credit card):**
 Get a free API key at [aistudio.google.com](https://aistudio.google.com), then:
 ```
 LLM_BACKEND=gemini
 GEMINI_API_KEY=your-key-here
 ```
 
-**Option B — Anthropic:**
+**Option C: Anthropic:**
 ```
 LLM_BACKEND=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Both backends default to a current model (`claude-sonnet-5` / `gemini-flash-latest`); override with `ANTHROPIC_MODEL=...` or `GEMINI_MODEL=...` in `.env` if you want a different one.
+Hosted backends default to a current model (`claude-sonnet-5` / `gemini-flash-latest`);
+override with `ANTHROPIC_MODEL=...` or `GEMINI_MODEL=...`. Whatever the backend, repeated
+questions on unchanged code are answered from a local cache without calling the LLM again.
 
 ### Ingest a repo
 
@@ -202,10 +220,10 @@ Remove a repo's index, database, graph, and metadata from disk, and evict it fro
 
 ### `POST /ask`
 
-Grounded LLM Q&A with citations. Requires a Gemini or Anthropic API key in `.env`.
+Grounded LLM Q&A with citations. Needs an LLM backend (see Quickstart; Ollama is free).
 
 ```json
-{"repo_id": "my-project", "question": "How does redirect handling work?", "top_k": 8}
+{"repo_id": "my-project", "question": "How does redirect handling work?", "top_k": 8, "use_cache": true}
 ```
 
 ```json
@@ -215,9 +233,43 @@ Grounded LLM Q&A with citations. Requires a Gemini or Anthropic API key in `.env
     {"file_path": "src/requests/sessions.py", "start_line": 340, "end_line": 398,
      "relevance": "Cited as [1] in the answer"}
   ],
-  "uncertainty": null
+  "uncertainty": null,
+  "unverified_mentions": [],
+  "backend": "ollama", "model": "qwen2.5-coder:7b", "cached": false,
+  "excerpts_used": 7, "excerpts_omitted": 1, "context_chars": 11420
 }
 ```
+
+- **Retrieval and context:** the question goes through hybrid search; overlapping or
+  adjacent chunks from one file are merged, and excerpts are added best-first up to a
+  12,000-character budget. `excerpts_omitted` counts retrieved excerpts that didn't fit.
+- **Cache:** answers are cached by a hash of the full prompt (question + excerpt text) and the
+  model, so a hit means the same question on unchanged code. `cached: true` means no LLM call
+  was made; send `"use_cache": false` to force a fresh answer.
+- **Checks:** `[N]` citations are mapped back to files and lines. `unverified_mentions` lists
+  code names or file paths in the answer that appear neither in the excerpts nor anywhere in
+  the repo's index, which usually means an invented name. `uncertainty` is set when the answer
+  cites nothing, cites excerpts that don't exist, names unverified things, or says the
+  evidence is insufficient.
+
+Errors: `503` when the backend isn't usable (missing key, Ollama not running, model not
+pulled; the message says what to do), `502` when the provider fails or refuses.
+
+### `POST /ask/stream`
+
+Same request as `/ask`; the response is newline-delimited JSON, so answers from slow local
+models appear as they're written:
+
+```
+{"type": "context", "backend": "ollama", "model": "...", "excerpts": [{"n": 1, "file_path": "...", "start_line": 1, "end_line": 40}], "excerpts_omitted": 0}
+{"type": "delta", "text": "Redirect handling is "}
+{"type": "delta", "text": "implemented in sessions.py [1]..."}
+{"type": "answer", "response": { ...the full /ask response, after checks... }}
+```
+
+A missing API key is still a plain `503`. Problems only discoverable mid-stream arrive as
+`{"type": "error", "status": 502|503, "detail": "..."}`. CLI:
+`python scripts/demo_query.py --repo-id X --mode ask --stream "question"`.
 
 ---
 
@@ -336,14 +388,15 @@ ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolv
 package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
 edges, so tests never showed up as impacted.
 
-**Test suite: 127/127 passing in about a second**, covering ingestion and language
+**Test suite: 146/146 passing in about a second**, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
 symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
 imported names), Python and TypeScript import resolution (`src/` layouts, relative and
 submodule imports, dotted filenames, ESM `.js` specifiers, tsconfig `paths` aliases), the
 dependency graph and its import-cycle handling, find-references, transactional re-ingest and
 legacy-DB migration, structure-aware chunking, keyword indexing, rank fusion, per-repo
-embedding-model pinning, `/ask` error handling, all three impact-analysis
+embedding-model pinning, `/ask` context assembly, caching, answer checks, streaming and
+error handling for all three LLM backends, all three impact-analysis
 signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
@@ -400,6 +453,22 @@ it was ingested with, so changing the default never breaks an existing index.
 **Why no reranker:** Off-the-shelf cross-encoders are trained on web search passages. Both
 ones tried made results clearly worse on code while adding latency to every query.
 
+**Why `/ask` caches by prompt content, not by question:** The cache key hashes the exact
+prompt, which contains the excerpt text, plus the backend, model and a prompt-format version.
+So a cached answer is only reused while the code it was answered from is unchanged; editing
+that code and re-ingesting naturally misses the cache, with no invalidation logic to get wrong.
+
+**Why answers are checked after generation:** "Grounded" is only a request in the system
+prompt. The checks make it observable: every cited `[N]` must exist, and every code name or
+path the answer mentions must appear in the excerpts or the repo index. Small local models
+in particular produce fluent answers with no citations, and those now come back flagged
+instead of looking as trustworthy as a cited one.
+
+**Why the Anthropic call uses `effort: "low"` and no `temperature`:** Current Claude models
+think adaptively, and thinking tokens count against `max_tokens`; the old `max_tokens=1000`
+could leave nothing for the answer. Low effort keeps spend down for what is mostly lookup
+over supplied excerpts, and `temperature` is rejected by current models.
+
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
 
@@ -422,7 +491,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 127 passed
+# 146 passed
 ```
 
 ---
@@ -496,6 +565,12 @@ are noise. That's why decisions were checked against the held-out set.
 - References are matched by identifier name, not by type: usages of `Session.send` include
   every `.send(...)` call
 - Answer quality depends on whether the relevant code was retrieved in the top-k chunks
+- `unverified_mentions` is a name check, not a fact check: an answer can use only real names
+  and still describe them wrongly
+- The answer cache has no size limit or expiry; it lives in each repo's DB and is removed
+  with `DELETE /repos/{repo_id}`
+- Local models trade quality for cost. The `/ask` examples in this README were generated
+  with hosted models
 - The default local model (`bge-small-en-v1.5`) is general-purpose, not code-specific. Set
   `EMBEDDING_MODEL` to any sentence-transformers model, or `EMBEDDING_BACKEND=openai`
 - Keyword search still surfaces changelog/prose entries for broad questions (e.g. `HISTORY.md`
@@ -512,6 +587,5 @@ are noise. That's why decisions were checked against the held-out set.
 - Line/hunk-level diff-aware impact analysis: changed lines → affected symbols, not just files
 - Tree-sitter call graph for intra-file function-call edges
 - Multi-repo support with cross-repo symbol resolution
-- Streaming responses for `/ask`
 - Background ingest jobs with progress polling, so `/ingest` on a large repo doesn't hold the
   HTTP connection open for the whole run
