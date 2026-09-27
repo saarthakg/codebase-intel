@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from app.core.usages import symbol_users
 from app.models.schemas import ChangedSymbol, DiffImpactResponse
 
 if TYPE_CHECKING:
@@ -126,17 +127,8 @@ def analyze_symbol_changes(
     changed_symbols: list[ChangedSymbol] = []
 
     for file_path in files:
-        dependents = {d["file"] for d in graph.dependents_of(file_path, depth=depth)}
         for qualified in changes[file_path]:
-            # Matched by name within dependents. Generic method names (`read`,
-            # `get`) over-match, but also requiring the class name in the user
-            # file lost every gain on the history eval: methods are mostly
-            # called on instances obtained elsewhere (`r.connection.send(...)`).
-            bare = qualified.rsplit(".", 1)[-1]
-            users = sorted({
-                r["file_path"] for r in metadata_store.find_references(repo_id, bare)
-                if r["file_path"] in dependents
-            })
+            users = symbol_users(repo_id, qualified, file_path, graph, metadata_store, depth)
             changed_symbols.append(ChangedSymbol(file_path=file_path, qualified_name=qualified, used_in=users))
             for user in users:
                 if user in changes:
