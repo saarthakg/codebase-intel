@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from app.api import routes_ask, routes_impact, routes_ingest, routes_repos, routes_search
 from app.core import paths
@@ -75,6 +76,15 @@ app.include_router(routes_search.router)
 app.include_router(routes_impact.router)
 app.include_router(routes_ask.router)
 app.include_router(routes_repos.router)
+
+
+_STATIC = paths.PROJECT_ROOT / "app" / "static"
+
+
+@app.get("/", include_in_schema=False)
+def web_ui():
+    """A small browser UI over the API (search, definition, impact, ask)."""
+    return FileResponse(_STATIC / "index.html")
 
 
 @app.get("/health")

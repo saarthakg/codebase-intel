@@ -116,3 +116,12 @@ def test_definition_prefers_source_over_tests_and_returns_references(client, tmp
 
     body = client.get("/definition", params={"repo_id": "defrepo", "symbol": "Other.prepare_url"}).json()
     assert (body["qualified_name"], body["start_line"]) == ("Other.prepare_url", 6)
+
+
+def test_web_ui_is_served_and_renders_api_data_as_text(client):
+    r = client.get("/")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    page = r.text
+    for endpoint in ("/repos", "/search", "/definition", "/impact", "/ask/stream"):
+        assert endpoint in page
+    assert "innerHTML" not in page.split("<script>", 1)[1].replace("never innerHTML", "")
