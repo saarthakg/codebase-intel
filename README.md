@@ -12,7 +12,8 @@ Ask developer questions about any Python or TypeScript codebase:
 - **"What files import `auth.py`?"** → Dependency graph traversal
 - **"What would break if I change `adapters.py`?"** → Multi-signal impact analysis
 - **"How does data flow from the API layer to the database?"** → Grounded LLM answer over retrieved code chunks
-- **"What does this pull request touch?"** → Batch impact analysis across every changed file, merged into one ranked result
+- **"What does this pull request touch, and which tests should I run?"** → Diff-aware impact:
+  the functions a diff changed, the files that use them, and the tests to run
 
 Answers are always grounded in retrieved code — no hallucinated function names or invented behavior.
 
@@ -43,8 +44,10 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │                                                             │
 │  POST /search   → FAISS + BM25 + exact symbol → rank fusion │
 │  GET  /definition → SQLite symbol lookup + usage index      │
-│  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
+│  POST /impact   → imports + usages + git co-change + named  │
+│                   tests + semantic neighbours, ranked       │
 │  POST /impact/batch → merge /impact across many changed files│
+│  POST /impact/diff  → diff → changed symbols → their users  │
 │  POST /ask      → search → cache? → LLM → cite + check      │
 │  POST /ask/stream → same, streamed as NDJSON events         │
 │  GET  /repos    → list ingested repos + last-ingest stats   │
@@ -198,17 +201,49 @@ Multi-signal impact analysis: which files are likely affected by changing a targ
 {"repo_id": "my-project", "target": "src/requests/adapters.py", "depth": 3}
 ```
 
-Returns `high_confidence` (graph traversal), `medium_confidence` (symbol refs), and `related` (semantic similarity) buckets.
+Ranks files by how likely they are to need changes too, from five signals, each with its
+reason in the output:
+
+| Signal | Confidence | Reason shown |
+|---|---|---|
+| A test named after the target (`test_adapters.py`, `foo.test.ts`) | 0.97 | `test named for this file` |
+| Import graph, direct / 2 hops / 3 hops | 0.95 / 0.75 / 0.50 | `direct import` … |
+| Files using the target symbol (symbol targets) | 0.70 | `references symbol` |
+| Git history: changed together in a fraction p of the target's commits | 0.4 + 0.5·p, max 0.9 | `changed together in N of M commits` |
+| Nearest chunks to the target's own code | 0.35 | `semantically related` |
+
+Results are bucketed into `high_confidence` (≥ 0.7), `medium_confidence` (≥ 0.4) and
+`related`, with co-change strength breaking ties within a confidence level. `tests` lists the
+test files among them, best-first: the tests to run. Co-change comes from the last 5,000
+commits of the ingested repo's git history (none if it isn't a git repo).
 
 ### `POST /impact/batch`
 
-Diff-aware impact analysis: the same three signals, run across every file in a change set and merged into one ranked result. Point `targets` at the output of `git diff --name-only` to see everything a whole PR is likely to affect, not just one file at a time.
+File-level impact across a change set, merged into one ranked result. Point `targets` at the
+output of `git diff --name-only` to see everything a whole PR is likely to affect.
 
 ```json
 {"repo_id": "my-project", "targets": ["src/requests/adapters.py", "src/requests/certs.py"], "depth": 3}
 ```
 
 Each impacted file additionally reports `triggered_by`: which of the requested targets caused it to show up, and keeps the highest confidence when a file is impacted by more than one target.
+
+### `POST /impact/diff`
+
+Impact of an actual diff, function by function:
+
+```json
+{"repo_id": "my-project", "diff": "<output of git diff HEAD>", "depth": 3}
+```
+
+Changed lines are mapped to the innermost symbols they touch (a method rather than its
+whole class), returned as `changed_symbols` with the files that use each one. Those files
+rank at 0.96, above other importers of the changed file; everything else is as in
+`/impact/batch`. Usages count only in files that import the changed file (within `depth`
+hops), so an unrelated class's `send()` doesn't match. Line numbers are matched against the
+index, so the diff's new side should be the ingested code: ingest the working tree, then send
+`git diff HEAD`. Files in the diff that aren't indexed are listed in `unindexed_files`.
+CLI: `git diff HEAD | python scripts/demo_query.py --repo-id X --mode impact-diff --diff -`.
 
 ### `GET /repos`
 
@@ -281,23 +316,21 @@ regenerated output.
 
 **Impact analysis of `adapters.py`:**
 ```
-HIGH CONFIDENCE (direct/transitive imports):
+HIGH CONFIDENCE:
+  [0.97] tests/test_adapters.py    — test named for this file
   [0.95] tests/test_requests.py    — direct import
   [0.95] src/requests/models.py    — direct import
   [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_adapters.py    — direct import
   [0.75] src/requests/cookies.py   — transitive import (2 hops)
-  [0.75] src/requests/utils.py     — transitive import (2 hops)
-  [0.75] src/requests/__init__.py  — transitive import (2 hops)
-  ... 5 more at 2 hops
+  ... 7 more at 2 hops
 
 MEDIUM CONFIDENCE:
-  [0.50] tests/test_utils.py       — transitive import (3 hops)
-  ... 5 more at 3 hops
+  [0.65] pyproject.toml            — changed together in 2 of 4 commits
+  [0.65] src/requests/compat.py    — changed together in 2 of 4 commits
+  ... 
 
-RELATED:
-  [0.35] pyproject.toml            — semantically related
-  [0.35] README.md                 — semantically related
+TESTS TO RUN:
+  tests/test_adapters.py, tests/test_requests.py, tests/test_utils.py, ...
 ```
 
 **Search: "what happens after Session.send() is called?":**
@@ -388,7 +421,7 @@ ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolv
 package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
 edges, so tests never showed up as impacted.
 
-**Test suite: 146/146 passing in about a second**, covering ingestion and language
+**Test suite: 165/165 passing in about 3 seconds**, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
 symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
 imported names), Python and TypeScript import resolution (`src/` layouts, relative and
@@ -396,7 +429,8 @@ submodule imports, dotted filenames, ESM `.js` specifiers, tsconfig `paths` alia
 dependency graph and its import-cycle handling, find-references, transactional re-ingest and
 legacy-DB migration, structure-aware chunking, keyword indexing, rank fusion, per-repo
 embedding-model pinning, `/ask` context assembly, caching, answer checks, streaming and
-error handling for all three LLM backends, all three impact-analysis
+error handling for all three LLM backends, git history with renames, co-change, test-file
+matching and diff-level impact, all three impact-analysis
 signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
@@ -422,9 +456,24 @@ for file-level dependency DAGs. The graph serializes to a single pickle.
 function names, wrong file paths, and fabricated behavior are worse than "I don't know."
 Every answer cites the exact file and line range it was derived from.
 
-**Why three impact signals:** Import edges alone miss semantic coupling. Semantic similarity
-alone produces false positives. Combining graph traversal + symbol references + semantic
-similarity gives calibrated confidence scores that are actually useful.
+**Why several impact signals, and why git history is one of them:** Import edges miss
+coupling that isn't an import: a module and its tests, a schema and the code that serializes
+it. Version control records that coupling directly. If a file changed in most of the commits
+that changed yours, it will probably need to change again. On real `requests` commits, adding
+co-change was the single biggest improvement to impact ranking (see Evaluation).
+
+**Why impact is scored against real commits:** "Which files import this?" has an exact answer,
+and the import graph now gets it right. "Which files will this change actually need to touch?"
+doesn't, but history records what happened. The history eval replays commits and checks
+whether the files they changed are ranked near the top. Co-change is learned only from commits
+*before* the ones scored, and weights were chosen on 2019–2022 commits, then checked once
+on 2023+.
+
+**Why diff-level impact matches methods by name:** A diff that only changes `cert_verify`
+shouldn't rank every importer of `adapters.py` equally. Callers are found by name among files
+that import the changed module. That over-matches generic names like `read`, but requiring
+the class name too was tested and threw away every gain on real commits, because methods are
+mostly called on instances obtained elsewhere (`r.connection.send(...)`).
 
 **Why the dependency-graph traversal explicitly excludes its own starting file:** Real
 codebases have import cycles (`requests`' own `adapters.py` and `models.py` import each
@@ -491,7 +540,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 146 passed
+# 165 passed
 ```
 
 ---
@@ -553,6 +602,27 @@ worse on code, e.g. main span MRR 0.77 → 0.65, and +0.25–1s per query).
 With 25–42 questions per set, one question moves a metric by 0.02–0.04, so small differences
 are noise. That's why decisions were checked against the held-out set.
 
+### Impact against real commits
+
+`eval/run_history_eval.py` replays `requests` commits: for every commit after 2018 that changed
+2–15 existing Python files, each changed source file is the query and the commit's other
+changed files are what impact analysis should find. Co-change is built only from commits up
+to 2018. Weights were chosen on 2019–2022 commits (72 queries); 2023+ (73 queries) is
+held out. It needs a full clone at the indexed commit (see the script's docstring).
+
+| Impact ranking | Dev: recall@5 / @10 / MRR | Held-out: recall@5 / @10 / MRR |
+|---|---|---|
+| Import graph + semantic (before) | 0.35 / 0.47 / 0.40 | 0.43 / 0.66 / 0.46 |
+| + git co-change | 0.45 / 0.65 / 0.65 | 0.50 / 0.68 / 0.59 |
+| + semantic query from the file's own code | 0.46 / 0.66 / 0.65 | 0.50 / 0.70 / 0.59 |
+| + named tests ranked first | 0.46 / 0.66 / 0.68 | 0.50 / 0.70 / 0.60 |
+| `/impact/diff` (uses each commit's diff) | **0.51 / 0.73 / 0.69** | 0.50 / 0.70 / **0.62** |
+
+Recall@k is the share of the commit's other changed files in the top k. The graph numbers
+are slightly optimistic, since today's import graph is used for past commits. Diff-level
+impact helps less on held-out because many 2023+ commits are typing passes that touch most
+symbols in a file.
+
 ---
 
 ## Limitations
@@ -577,14 +647,15 @@ are noise. That's why decisions were checked against the held-out set.
   for "where is SSL certificate verification handled?"); a per-file cap limits how many, but
   one can still rank first
 - The search benchmark covers one Python repo; TypeScript retrieval is tested but not scored
-- `/impact/batch` is file-level diff-awareness (which files does a change set touch), not
-  line-level (which *symbols* within a file a specific hunk affects)
+- Co-change needs git history: a shallow clone (like `requests-demo`, 64 commits) gives it
+  little to work with, and a repo without `.git` gets none
+- `/impact/diff` needs the diff's new side to match the ingested code, since it maps line
+  numbers to symbols in the index
 - Single-process, in-memory `_loaded_repos` cache — fine for local/single-worker use, not
   designed for multiple concurrent `uvicorn` workers
 
 ## Future Work
 
-- Line/hunk-level diff-aware impact analysis: changed lines → affected symbols, not just files
 - Tree-sitter call graph for intra-file function-call edges
 - Multi-repo support with cross-repo symbol resolution
 - Background ingest jobs with progress polling, so `/ingest` on a large repo doesn't hold the

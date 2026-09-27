@@ -63,21 +63,24 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "src/requ
 ```
 Impact analysis: src/requests/adapters.py
 
-HIGH CONFIDENCE (direct/transitive imports):
+HIGH CONFIDENCE:
+  [0.97] tests/test_adapters.py  — test named for this file
   [0.95] tests/test_requests.py  — direct import
   [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_adapters.py  — direct import
   [0.75] src/requests/cookies.py  — transitive import (2 hops)
   [0.75] src/requests/utils.py  — transitive import (2 hops)
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
   [0.75] src/requests/auth.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
   [0.75] src/requests/exceptions.py  — transitive import (2 hops)
   [0.75] src/requests/_types.py  — transitive import (2 hops)
   [0.75] src/requests/api.py  — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
+  [0.65] pyproject.toml  — changed together in 2 of 4 commits
+  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits
+  [0.65] src/requests/help.py  — changed together in 2 of 4 commits
   [0.50] tests/test_utils.py  — transitive import (3 hops)
   [0.50] tests/test_packages.py  — transitive import (3 hops)
   [0.50] tests/test_testserver.py  — transitive import (3 hops)
@@ -85,16 +88,28 @@ MEDIUM CONFIDENCE:
   [0.50] docs/conf.py  — transitive import (3 hops)
   [0.50] tests/test_hooks.py  — transitive import (3 hops)
 
-RELATED (semantic similarity):
-  [0.35] pyproject.toml  — semantically related
-  [0.35] README.md  — semantically related
+TESTS TO RUN:
+  tests/test_adapters.py
+  tests/test_requests.py
+  tests/test_utils.py
+  tests/test_packages.py
+  tests/test_testserver.py
+  tests/test_lowlevel.py
+  tests/test_hooks.py
 ```
 
-The test files that exercise `adapters.py` (`tests/test_adapters.py`, `tests/test_requests.py`)
-are now direct dependents. Before the import-resolution fix they were missing entirely:
-`requests` uses a `src/` layout, so `import requests.adapters` from `tests/` never resolved
-and every test file had zero graph edges. `test_adapters.py` only showed up as "semantically
-related".
+Five signals are at work here:
+- `tests/test_adapters.py` is named for the file, so it ranks first.
+- Direct and transitive importers come from the import graph. The test files that exercise
+  `adapters.py` used to be missing entirely: `requests` uses a `src/` layout, so
+  `import requests.adapters` from `tests/` never resolved.
+- "changed together in 2 of 4 commits" comes from git history.
+- References to the file's symbols (not shown, since the target here is a file).
+- Semantic neighbours, which add nothing new for this file.
+
+`requests-demo` is a shallow clone with only 64 commits, so history contributes little here:
+4 commits touching `adapters.py`. With full history (see `eval/run_history_eval.py`),
+co-change is the signal that moved the real-commit eval most.
 
 Note `adapters.py` does **not** appear in its own results, even though `adapters.py` and
 `models.py` actually import each other (a real circular import in `requests`). That's a
@@ -173,18 +188,19 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "HTTPAdap
 ```
 Impact analysis: HTTPAdapter.send
 
-HIGH CONFIDENCE (direct/transitive imports):
+HIGH CONFIDENCE:
+  [0.97] tests/test_adapters.py  — test named for this file
   [0.95] tests/test_requests.py  — direct import
   [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_adapters.py  — direct import
   [0.75] src/requests/cookies.py  — transitive import (2 hops)
   ...
   [0.70] tests/test_lowlevel.py  — references symbol
   [0.70] tests/testserver/server.py  — references symbol
 
 MEDIUM CONFIDENCE:
-  [0.50] tests/test_utils.py  — transitive import (3 hops)
+  [0.65] pyproject.toml  — changed together in 2 of 4 commits
+  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits
   ...
 ```
 
@@ -193,8 +209,8 @@ defined on `BaseAdapter`, `HTTPAdapter`, `Session` and more); `/definition` list
 matches under `other_definitions`, and symbol lookup prefers source files over tests.
 
 "references symbol" hits come from identifier usages, which are matched by name. Any
-`.send(...)` call counts, not only calls on an `HTTPAdapter`. Resolving call targets by type
-would need a call graph, which is on the roadmap.
+`.send(...)` call counts, not only calls on an `HTTPAdapter`. For a change you've actually
+made, `/impact/diff` (Q9) works from the changed functions instead.
 
 ---
 
@@ -284,32 +300,87 @@ python scripts/demo_query.py --repo-id requests --mode impact-batch \
 ```
 Batch impact analysis: src/requests/adapters.py, src/requests/certs.py
 
-HIGH CONFIDENCE (direct/transitive imports):
-  [0.95] tests/test_requests.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.95] src/requests/models.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+HIGH CONFIDENCE:
+  [0.97] tests/test_adapters.py  — test named for this file  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] tests/test_requests.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] src/requests/models.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
   [0.95] src/requests/sessions.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.95] tests/test_adapters.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.95] src/requests/utils.py     — direct import  (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/cookies.py   — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  ...
-  [0.75] tests/test_utils.py       — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] src/requests/utils.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/cookies.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/__init__.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/auth.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/_types.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/api.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] tests/test_utils.py  — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
   [0.75] src/requests/adapters.py  — transitive import (2 hops)  (via src/requests/certs.py)
 
 MEDIUM CONFIDENCE:
-  [0.50] tests/test_packages.py    — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
-  ...
+  [0.65] pyproject.toml  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
+  [0.65] src/requests/compat.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py)
+  [0.65] src/requests/help.py  — changed together in 2 of 4 commits  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_packages.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_testserver.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] docs/conf.py  — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.50] tests/test_hooks.py  — transitive import (3 hops)  (via src/requests/adapters.py)
 
-RELATED (semantic similarity):
-  [0.35] pyproject.toml  — semantically related  (via src/requests/adapters.py)
-  [0.35] README.md       — semantically related  (via src/requests/adapters.py, src/requests/certs.py)
+RELATED:
+  [0.35] HISTORY.md  — semantically related  (via src/requests/certs.py)
+  ...
 ```
 
-`triggered_by` shows which changed files cause each hit, in one call instead of running
-`/impact` twice and diffing by hand. `certs.py` now has its real importer: `utils.py` does
-`from . import certs`, which used to resolve to the package `__init__.py` and left `certs.py`
-with no dependents at all. The old output of this example credited `sessions.py` as a direct
-importer of `certs.py`, which it isn't. `adapters.py` itself shows up via `certs.py`
-(`certs.py` → `utils.py` → `adapters.py`): the two changes are linked.
+`triggered_by` (the "via" list) shows which changed files surface each hit, in one call
+instead of running `/impact` twice. `certs.py` has its real importer: `utils.py` does
+`from . import certs`, which used to resolve to the package `__init__.py`. That left
+`certs.py` with no dependents at all, and the old output of this example credited
+`sessions.py` as a direct importer instead.
+
+---
+
+## Q9: What does this diff affect, function by function? (diff impact)
+
+```
+git diff 6f66281a^ HEAD -- src/requests/_types.py src/requests/models.py > change.diff
+python scripts/demo_query.py --repo-id requests --mode impact-diff --diff change.diff
+# or: git diff HEAD | python scripts/demo_query.py --repo-id requests --mode impact-diff --diff -
+```
+
+```
+Diff impact: src/requests/_types.py, src/requests/models.py
+
+CHANGED SYMBOLS:
+  src/requests/_types.py::SupportsRead.read  → used in src/requests/adapters.py, src/requests/models.py, src/requests/sessions.py, src/requests/utils.py, tests/test_requests.py, tests/test_utils.py
+  src/requests/_types.py::has_read  → used in src/requests/models.py
+  src/requests/_types.py::SupportsItems.items  → used in src/requests/adapters.py, src/requests/models.py, src/requests/sessions.py, src/requests/utils.py, tests/test_requests.py
+  src/requests/models.py::RequestEncodingMixin._encode_params
+  src/requests/models.py::RequestEncodingMixin._encode_files
+  src/requests/models.py::PreparedRequest.prepare_body
+
+HIGH CONFIDENCE:
+  [0.96] src/requests/sessions.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] src/requests/utils.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] src/requests/adapters.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] tests/test_requests.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.96] tests/test_utils.py  — uses changed SupportsRead.read  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/models.py  — direct import  (via src/requests/_types.py)
+  [0.95] src/requests/cookies.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/hooks.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/api.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/auth.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/__init__.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/exceptions.py  — direct import  (via src/requests/_types.py, src/requests/models.py)
+  [0.95] src/requests/_types.py  — direct import  (via src/requests/models.py)
+  ...
+```
+
+The diff's changed lines are mapped to the innermost functions they touch, and files that use
+those functions rank above other importers. Usages are matched by name within files that
+import the changed module, which is why a generic method name like `read` (from the
+`SupportsRead` protocol) pulls in every dependent that calls `.read()`. Requiring the class
+name as well was tested and removed: it threw away every gain on real commits, because
+methods are usually called on instances obtained elsewhere.
 
 ---
 
