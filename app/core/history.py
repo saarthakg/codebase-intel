@@ -8,7 +8,6 @@ most commits that changed A, a change to A is likely to need a change to B.
 import subprocess
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
 # Commits touching more files than this are refactors, renames, formatting
@@ -42,7 +41,9 @@ def read_history(
     passing them to git would hide renames made outside the window, leaving
     old paths untranslated.
     """
-    cmd = ["git", "-C", str(repo_path), "log", "-M", "--name-status", "--no-merges",
+    # --relative: paths relative to repo_path (and only files under it), so
+    # ingesting a subdirectory of a larger git repo lines up with its index.
+    cmd = ["git", "-C", str(repo_path), "log", "-M", "--name-status", "--no-merges", "--relative",
            "--format=@@%H %ad", "--date=short"]
     if max_commits and not (until or since):
         cmd.append(f"--max-count={max_commits}")
@@ -153,7 +154,6 @@ class CoChange:
 
 
 def cochange_for_repo(repo_path: str, keep: set[str], max_commits: int = 5000) -> CoChange:
-    """Co-change stats for the files in `keep` from the repo's recent history."""
-    if not (Path(repo_path) / ".git").exists():
-        return CoChange()
+    """Co-change stats for the files in `keep` from the repo's most recent
+    `max_commits` commits. Empty if `repo_path` isn't inside a git repo."""
     return CoChange.from_commits(read_history(repo_path, max_commits=max_commits), keep=keep)

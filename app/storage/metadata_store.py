@@ -7,6 +7,7 @@ from app.core.text import expand_identifiers
 from app.models.schemas import ChunkMetadata
 
 if TYPE_CHECKING:
+    from app.core.history import CoChange
     from app.core.symbols import ReferenceInfo, SymbolInfo
 
 
@@ -83,6 +84,21 @@ class MetadataStore:
                 cache_key   TEXT PRIMARY KEY,
                 response    TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            -- Git co-change: commits per file, and commits shared by file pairs.
+            CREATE TABLE IF NOT EXISTS cochange_files (
+                repo_id   TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                commits   INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, file_path)
+            );
+            CREATE TABLE IF NOT EXISTS cochange_pairs (
+                repo_id TEXT NOT NULL,
+                file_a  TEXT NOT NULL,
+                file_b  TEXT NOT NULL,
+                commits INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, file_a, file_b)
             );
 
             CREATE INDEX IF NOT EXISTS idx_chunks_repo_file ON chunks (repo_id, file_path);
@@ -174,6 +190,8 @@ class MetadataStore:
         self._conn.execute("DELETE FROM edges WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM symbol_refs WHERE repo_id = ?", (repo_id,))
         self._conn.execute("DELETE FROM chunks_fts WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM cochange_files WHERE repo_id = ?", (repo_id,))
+        self._conn.execute("DELETE FROM cochange_pairs WHERE repo_id = ?", (repo_id,))
         if commit:
             self._conn.commit()
 
@@ -413,6 +431,28 @@ class MetadataStore:
             "SELECT COUNT(*) FROM edges WHERE repo_id = ?", (repo_id,)
         ).fetchone()
         return row[0]
+
+    def save_cochange(self, repo_id: str, cochange: "CoChange") -> None:
+        """Store co-change stats without committing (part of the ingest transaction)."""
+        files, pairs = cochange.to_rows()
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO cochange_files (repo_id, file_path, commits) VALUES (?, ?, ?)",
+            [(repo_id, f, n) for f, n in files],
+        )
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO cochange_pairs (repo_id, file_a, file_b, commits) VALUES (?, ?, ?, ?)",
+            [(repo_id, a, b, n) for a, b, n in pairs],
+        )
+
+    def load_cochange(self, repo_id: str) -> "CoChange":
+        from app.core.history import CoChange
+        files = self._conn.execute(
+            "SELECT file_path, commits FROM cochange_files WHERE repo_id = ?", (repo_id,)
+        ).fetchall()
+        pairs = self._conn.execute(
+            "SELECT file_a, file_b, commits FROM cochange_pairs WHERE repo_id = ?", (repo_id,)
+        ).fetchall()
+        return CoChange.from_rows([tuple(r) for r in files], [tuple(r) for r in pairs])
 
     def get_cached_answer(self, cache_key: str) -> Optional[dict]:
         row = self._conn.execute(

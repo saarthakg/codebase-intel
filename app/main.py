@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.api import routes_ask, routes_impact, routes_ingest, routes_repos, routes_search
 from app.core import paths
 from app.core.graph import DependencyGraph
+from app.core.history import CoChange
 from app.core.validation import validate_repo_id
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
@@ -18,6 +19,7 @@ class RepoState:
     faiss_store: FAISSStore
     metadata_store: MetadataStore
     graph: DependencyGraph
+    cochange: CoChange
 
 
 _loaded_repos: dict[str, RepoState] = {}
@@ -48,6 +50,7 @@ def get_repo_state(repo_id: str) -> RepoState:
         faiss_store=faiss_store,
         metadata_store=metadata_store,
         graph=graph,
+        cochange=metadata_store.load_cochange(repo_id),
     )
     _loaded_repos[repo_id] = state
     return state

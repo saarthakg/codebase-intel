@@ -114,6 +114,7 @@ def mode_impact(repo_id: str, target: str, depth: int = 3):
         metadata_store=metadata_store,
         embeddings_module=embeddings_module,
         depth=depth,
+        cochange=metadata_store.load_cochange(repo_id),
     )
     print(f"\nImpact analysis: {target}\n")
     _print_impact_buckets(response)
@@ -131,6 +132,7 @@ def mode_impact_batch(repo_id: str, targets: list[str], depth: int = 3):
         metadata_store=metadata_store,
         embeddings_module=embeddings_module,
         depth=depth,
+        cochange=metadata_store.load_cochange(repo_id),
     )
     print(f"\nBatch impact analysis: {', '.join(targets)}\n")
     _print_impact_buckets(response)

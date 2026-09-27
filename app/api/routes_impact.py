@@ -23,6 +23,7 @@ def impact(request: ImpactRequest):
         metadata_store=state.metadata_store,
         embeddings_module=embeddings_module,
         depth=request.depth,
+        cochange=state.cochange,
     )
 
 
@@ -50,4 +51,5 @@ def impact_batch(request: ImpactBatchRequest):
         metadata_store=state.metadata_store,
         embeddings_module=embeddings_module,
         depth=request.depth,
+        cochange=state.cochange,
     )

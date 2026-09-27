@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 _GRAPH_CONFIDENCE = {1: 0.95, 2: 0.75, 3: 0.50}
 _SYMBOL_CONFIDENCE = 0.70
 _SEMANTIC_CONFIDENCE = 0.35
+# Co-change: a file that changed together with the target in a fraction p of
+# the target's commits gets confidence 0.4 + 0.5·p (capped at 0.9), and p also
+# breaks ties among files with equal confidence from other signals (e.g. the
+# many "2 hops" files). Chosen on the history eval's 2019–2022 dev commits
+# (signal-only and tiebreak-only were both worse), checked once on 2023+.
+_COCHANGE_BASE = 0.4
+_COCHANGE_SCALE = 0.5
+_COCHANGE_CAP = 0.9
 
 
 def analyze_impact(
@@ -71,6 +79,17 @@ def analyze_impact(
                 continue  # skip the defining file itself
             _add(fp, _SYMBOL_CONFIDENCE, "references symbol", 0)
 
+    # ── Signal 4: Co-change history ───────────────────────────────────────────
+    cochange_p: dict[str, float] = {}
+    if cochange is not None and root_file:
+        total = cochange.file_commits.get(root_file, 0)
+        for other, p, n in cochange.related(root_file):
+            if other == root_file:
+                continue
+            cochange_p[other] = p
+            _add(other, min(_COCHANGE_CAP, _COCHANGE_BASE + _COCHANGE_SCALE * p),
+                 f"changed together in {n} of {total} commits", 0)
+
     # ── Signal 3: Semantic similarity ─────────────────────────────────────────
     try:
         backend, model = embeddings_module.index_embedding_settings(faiss_store)
@@ -95,7 +114,7 @@ def analyze_impact(
     related: list[ImpactedFile] = []
 
     for file_path, (confidence, reason, hop) in sorted(
-        results.items(), key=lambda x: -x[1][0]
+        results.items(), key=lambda x: (-x[1][0], -cochange_p.get(x[0], 0.0))
     ):
         item = ImpactedFile(
             file_path=file_path,
@@ -126,6 +145,7 @@ def analyze_impact_batch(
     metadata_store: MetadataStore,
     embeddings_module,
     depth: int = 3,
+    cochange: Optional["CoChange"] = None,
 ) -> ImpactBatchResponse:
     """Diff-aware impact analysis: merge impact across several changed targets.
 
@@ -140,7 +160,8 @@ def analyze_impact_batch(
 
     for target in targets:
         single = analyze_impact(
-            target, repo_id, graph, faiss_store, metadata_store, embeddings_module, depth=depth
+            target, repo_id, graph, faiss_store, metadata_store, embeddings_module, depth=depth,
+            cochange=cochange,
         )
         for item in single.high_confidence + single.medium_confidence + single.related:
             if item.file_path == target:

@@ -23,6 +23,7 @@ from app.core.graph import (
     resolve_python_import,
     resolve_ts_import,
 )
+from app.core.history import cochange_for_repo
 from app.core.ingest import detect_language, load_file, walk_repo
 from app.core.symbols import analyze_file
 from app.core.validation import validate_repo_id
@@ -86,6 +87,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         raise
     total_symbols = metadata_store.count_symbols(repo_id)
     total_references = metadata_store.count_references(repo_id)
+    history_files = len(metadata_store.load_cochange(repo_id).file_commits)
     metadata_store.close()
 
     faiss_store.save(str(paths.index_path(repo_id)))
@@ -98,6 +100,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         "chunks_indexed": len(all_chunks),
         "symbols_extracted": total_symbols,
         "references_indexed": total_references,
+        "files_with_history": history_files,
         "edges_in_graph": edge_count,
         "embedding_backend": backend,
         "embedding_model": model_name,
@@ -162,4 +165,9 @@ def _index_files(
                 metadata_store.add_edge(repo_id, rel_path, rel_target, "import")
 
     metadata_store.prune_references(repo_id)
+
+    cochange = cochange_for_repo(repo_path, keep=set(graph.G.nodes))
+    metadata_store.save_cochange(repo_id, cochange)
+    if cochange.commits_used:
+        report(f"Co-change history: {cochange.commits_used} commits")
     return graph, all_chunks, embed_inputs, len(file_paths)
