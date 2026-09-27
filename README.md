@@ -14,11 +14,12 @@ Every capability is scored against a labeled benchmark on
 
 ## What it can do
 
-**Find code, however you ask.** Hybrid search combines embeddings (for questions like
-"where are redirects followed?"), BM25 keyword matching, and a direct lookup of any
-identifier you type (`get_netrc_auth`, `HTTPAdapter.send`). On 25 held-out questions never
-used for tuning, the exact function that answers the question is in the top 5 results 92% of
-the time, up from 72% with plain embedding search.
+**Find code, however you ask.** Natural-language questions ("where are redirects
+followed?") and identifiers (`get_netrc_auth`, `HTTPAdapter.send`) both work. Code is
+chunked along function and class boundaries and embedded with its file and class context.
+On 25 held-out questions never used for tuning, the exact function that answers the question
+is in the top 5 results 96% of the time, up from 72% at the start. On Flask, a repo nothing
+was ever tuned on, it's 95%. Keyword (BM25) and hybrid modes are there for exact strings.
 
 **Jump to a definition and every usage.** `Class.method` or bare names, with other matching
 definitions listed, source preferred over tests. Usages come from the parse tree, not text
@@ -41,9 +42,10 @@ written, and are cached, so repeating a question on unchanged code costs nothing
 Claude Code, Cursor or any MCP client these tools directly. The client's own model does the
 reasoning, so no extra API cost.
 
-**Cheap to keep current.** Re-indexing re-embeds only code that changed: 0.6 seconds for an
-unchanged `requests` versus 12 for a first index. It respects `.gitignore` and skips
-lockfiles, minified bundles and oversized files.
+**Cheap to keep current, and it scales.** Re-indexing re-embeds only code that changed: an
+unchanged Django (3,800 files) re-indexes in 19 seconds instead of 6.6 minutes, and queries
+on it take 9–36 ms. It respects `.gitignore` and skips lockfiles, minified bundles and
+oversized files.
 
 Nothing leaves your machine unless you choose a hosted LLM for `/ask`.
 
@@ -249,7 +251,7 @@ CHANGED SYMBOLS:
 ┌──────────────────────────────────────────────────────────────┐
 │                         Query side                           │
 │                                                              │
-│  /search         vectors + BM25 + exact symbol → rank fusion │
+│  /search         embeddings (or BM25, or both rank-fused)    │
 │  /definition     symbol table + usage index                  │
 │  /impact         imports + usages + co-change + named tests  │
 │                  + code similarity → ranked, with reasons    │
@@ -295,14 +297,17 @@ query, even if `.env` changes.
 ### `POST /search`
 
 ```json
-{"repo_id": "my-project", "query": "SSL certificate verification", "top_k": 10, "mode": "hybrid"}
+{"repo_id": "my-project", "query": "SSL certificate verification", "top_k": 10, "mode": "semantic"}
 ```
 
-Three ranked lists merged with reciprocal rank fusion: semantic (embedding similarity),
-keyword (BM25 over paths, symbol names and code, with camelCase split so "adapter" matches
-`HTTPAdapter`), and chunks that define any identifier in the query. `mode` is `hybrid`
-(default), `semantic` or `keyword`. `score` is the fused rank score in hybrid mode, cosine in
-semantic mode and BM25 in keyword mode, so compare scores only within one mode.
+`mode` is one of:
+- `semantic` (default): embedding similarity. `score` is the cosine.
+- `keyword`: BM25 over paths, symbol names and code, with camelCase split so "adapter" matches
+  `HTTPAdapter`. Use it for exact strings such as error messages.
+- `hybrid`: semantic, keyword, and chunks defining any identifier in the query, merged with
+  reciprocal rank fusion. `score` is the fused rank score.
+
+Compare scores only within one mode.
 
 ### `GET /definition?repo_id=X&symbol=Y`
 
@@ -380,7 +385,7 @@ send `git diff HEAD`. Files not in the index are listed in `unindexed_files`.
 }
 ```
 
-- **Context:** hybrid search; overlapping or adjacent chunks from one file are merged, and
+- **Context:** semantic search; overlapping or adjacent chunks from one file are merged, and
   excerpts are added best-first up to 12,000 characters (`excerpts_omitted` counts the rest).
 - **Citations:** `[N]` references and mentions of an excerpt's file path (with line numbers
   when given) are both resolved to files and lines. Small local models often cite by path.
@@ -419,21 +424,59 @@ metadata (`404` if it was never ingested).
 
 ## How well it works
 
-Everything below is measured on `psf/requests`, and CI
-(`.github/workflows/ci.yml`) re-runs it on every push against a fresh clone, failing if any
-metric drops below its floor in `eval/thresholds.yaml`.
+Everything was developed and tuned on `psf/requests`, then checked on `pallets/flask`, a
+different kind of codebase that nothing was tuned on. CI (`.github/workflows/ci.yml`)
+re-runs both benchmarks on every push against fresh clones, failing if any metric drops
+below its floor in `eval/thresholds.yaml`.
 
-| Capability | Before this work | Now |
+| Capability (requests) | Before this work | Now |
 |---|---|---|
-| Search, held-out questions: answer's lines in top 5 / span MRR | 0.72 / 0.52 | **0.92 / 0.88** |
-| Search, identifier queries: in top 5 / span MRR | 0.79 / 0.66 | **0.93 / 0.93** |
-| Search, main questions: in top 5 / span MRR | 0.88 / 0.71 | **0.95 / 0.79** |
+| Search, held-out questions: answer's lines in top 5 / span MRR | 0.72 / 0.52 | **0.96 / 0.90** |
+| Search, identifier queries: in top 5 / span MRR | 0.79 / 0.66 | **1.00 / 0.95** |
+| Search, main questions: in top 5 / span MRR | 0.88 / 0.71 | **0.95 / 0.80** |
 | Definition accuracy (file + line) | 0.71 | **1.00** |
 | References recall / precision | 0.00 / 0.00 | **1.00 / 1.00** |
 | Import graph edge recall / precision | 0.68 / 0.90 | **1.00 / 1.00** |
 | Impact: true direct importers ranked high-confidence | 0.61 | **1.00** |
 | Impact on real commits, held-out: recall@5 / MRR | 0.39 / 0.45 (no history) | **0.52 / 0.64** |
 | Re-index of unchanged code | ~12 s | **0.6 s** |
+
+### Does it generalize? (Flask, never tuned on)
+
+| Capability | Flask |
+|---|---|
+| Search: answer's lines in top 5 / span MRR (43 questions) | 0.95 / 0.78 |
+| Identifier queries: in top 5 / span MRR (12) | 1.00 / 1.00 |
+| Definitions, including names Flask defines twice (`url_for`, `Blueprint`, ...) | 24/24 |
+| References recall / precision | 1.00 / 1.00 |
+| Import graph edges, recall / precision (191 edges) | 1.00 / 1.00 |
+| Impact on real commits, held-out recall@10: without history → co-change → diff-level | 0.43 → 0.57 → 0.58 |
+| Impact on real commits, held-out MRR: same three | 0.41 → 0.45 → 0.50 |
+
+The Flask labels were written from the source alone and committed before any search was run
+on it. The benchmark earned its keep straight away, with two findings:
+
+- **Hybrid search was no longer the right default.** Hybrid was chosen when the embedding
+  model was MiniLM, and still beats semantic-only with MiniLM on Flask (0.69 vs 0.57 span MRR).
+  But bge-small was adopted later and only ever measured *inside* hybrid. Re-measured, plain
+  semantic search matches or beats hybrid on all five question sets across both repos
+  (e.g. Flask 0.78 vs 0.73, requests held-out 0.90 vs 0.88), so it's now the default.
+- **Import resolution had a real bug.** Inside a package, `import typing` resolved to Flask's
+  own `typing.py` instead of the standard library.
+
+### Scale (Django: 3,831 files, 22,824 chunks, 44K symbols, 35K commits)
+
+| | |
+|---|---|
+| First index | 6.6 min, 96% of it embedding (parsing 4.9 s, git history 0.3 s) |
+| Re-index with nothing changed | 19 s |
+| Peak memory while indexing | 645 MB |
+| Query latency: search / definition / file impact | 9 / 9 / 36 ms |
+
+Django also surfaced a bug the benchmarks couldn't. On macOS (and Windows), whose file
+systems ignore case, `from django.contrib.gis.gdal import DataSource` (a class) matched the
+module `datasource.py` as if it were `DataSource.py`, adding edges to files that don't exist.
+File checks during import resolution are now case-exact.
 
 ### The benchmark
 
@@ -470,9 +513,12 @@ extraction, so the benchmark can't inherit the tool's bugs.
 | Chunks aligned to function/class boundaries | 0.77 | — |
 | + hybrid search (BM25 + exact symbol, rank-fused) | 0.80 | 0.76 |
 | + `bge-small-en-v1.5` with a context header per chunk | 0.77 | 0.83 |
-| + at most 2 keyword hits per file | **0.79** | **0.88** |
+| + at most 2 keyword hits per file | 0.79 | 0.88 |
+| Semantic only, no fusion (re-checked on Flask; see above) | **0.80** | **0.90** |
 
-The held-out set was added after chunking, so it has no chunking-only number. Tried and not
+The held-out set was added after chunking, so it has no chunking-only number. The last row
+reverses the hybrid step: with the stronger model, fusing in BM25 had become a small net
+loss. Tried and not
 shipped: other chunk sizes (1600 chars was best), headers with MiniLM (it truncates at 256
 tokens), `bge-base-en-v1.5` (no better, ~4× slower ingest), and cross-encoder rerankers
 (clearly worse on code, e.g. main span MRR 0.77 → 0.65, plus 0.25–1 s per query). A tuned
@@ -516,18 +562,21 @@ clone's "3 of 3 commits" from scoring as near-certain.
 - **A process crash.** `faiss-cpu` and `torch` bundle conflicting OpenMP runtimes on macOS, so a
   server whose first request was `/impact` aborted on the next `/search`. The vector index is
   now plain numpy (same exact results), with a test that faiss is never imported.
+- **Standard library imports matched package modules** (found by Flask), and **wrong-case
+  paths matched on case-insensitive file systems** (found by Django). Both are described
+  above.
 
 ### Tests
 
 ```bash
 pytest tests/
-# 187 passed
+# 190 passed
 ```
 
 The suite covers:
 - symbol and import extraction (Python, TypeScript, TSX, regex fallback) and import
   resolution (`src/` layouts, submodules, tsconfig aliases, ESM specifiers);
-- chunking, hybrid search and rank fusion;
+- chunking, the search modes and rank fusion;
 - references and definition ranking;
 - every impact signal, deterministic ranking, git history with renames, diff parsing;
 - incremental and transactional ingest, `.gitignore`-aware scanning, legacy-index migration;
@@ -561,10 +610,12 @@ come from the parse tree: a function or small class is one chunk, an oversized c
 into its methods, decorators and comments stay with their definition, and only a single
 function too big to fit falls back to windows.
 
-**Why hybrid search, fused by rank.** Embeddings handle paraphrase ("where are redirects
-followed?") and miss exact identifiers; BM25 is the reverse. Reciprocal rank fusion merges
-the lists by position, which avoids comparing cosine and BM25 scores and needs no trained
-weights.
+**Why semantic search by default, with hybrid as an option.** A weaker embedding model
+misses exact identifiers that BM25 finds, so fusing the two (by rank, which avoids comparing
+cosine and BM25 scores) was a big win with MiniLM. With bge-small and per-chunk context
+headers, embeddings already find identifiers, and the BM25 list mostly added noise: semantic
+alone matched or beat hybrid on every question set on both benchmark repos. Hybrid and keyword
+stay available for exact strings and weaker models.
 
 **Why `bge-small-en-v1.5`.** Same size and speed as `all-MiniLM-L6-v2`, but it reads 512
 tokens instead of 256, which lets the per-chunk context header (file, enclosing class,
@@ -638,7 +689,7 @@ for two languages beat shallow support for six.
 - The default embedding model is general-purpose, not code-specific (`EMBEDDING_MODEL`
   switches it; `EMBEDDING_BACKEND=openai` uses OpenAI)
 - The answer cache has no size limit; it's removed with the repo
-- The benchmark covers one Python repo; TypeScript is tested but not scored
+- The benchmarks cover two Python repos; TypeScript is tested but not scored
 - The in-memory repo cache is per process, fine for local use but not for multiple
   `uvicorn` workers
 
