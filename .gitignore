@@ -14,3 +14,4 @@ build/
 .pytest_cache/
 .DS_Store
 codebase-intel-plan.md
+.coverage
