@@ -1,0 +1,723 @@
+repo: psf/requests
+repo_commit: 5460f467b02e49471c0fd6cfc9ca0adab6351f98
+notes: 'Labels are hand-written in eval/build_requests_bench.py; line spans, the import graph and reference sets
+  are derived with Python''s ast module, independent of codebase-intel''s own extraction. Regenerate with: python
+  eval/build_requests_bench.py --source <requests checkout>'
+search:
+- query: where is SSL certificate verification handled?
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.cert_verify
+    lines:
+    - 307
+    - 363
+- query: how are HTTP redirects followed?
+  expected:
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.resolve_redirects
+    lines:
+    - 186
+    - 307
+- query: strip the Authorization header when redirecting to a different host
+  expected:
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.should_strip_auth
+    lines:
+    - 154
+    - 184
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.rebuild_auth
+    lines:
+    - 309
+    - 332
+- query: change POST to GET on a 303 See Other redirect
+  expected:
+  - file: src/requests/sessions.py
+    symbol: SessionRedirectMixin.rebuild_method
+    lines:
+    - 370
+    - 392
+- query: HTTP digest authentication challenge response
+  expected:
+  - file: src/requests/auth.py
+    symbol: HTTPDigestAuth.build_digest_header
+    lines:
+    - 157
+    - 266
+  - file: src/requests/auth.py
+    symbol: HTTPDigestAuth.handle_401
+    lines:
+    - 273
+    - 319
+- query: build the basic auth header from username and password
+  expected:
+  - file: src/requests/auth.py
+    symbol: _basic_auth_str
+    lines:
+    - 34
+    - 75
+- query: read credentials from the .netrc file
+  expected:
+  - file: src/requests/utils.py
+    symbol: get_netrc_auth
+    lines:
+    - 231
+    - 280
+- query: which proxy should be used for a given URL
+  expected:
+  - file: src/requests/utils.py
+    symbol: select_proxy
+    lines:
+    - 885
+    - 908
+  - file: src/requests/utils.py
+    symbol: resolve_proxies
+    lines:
+    - 911
+    - 939
+- query: NO_PROXY environment variable bypass logic
+  expected:
+  - file: src/requests/utils.py
+    symbol: should_bypass_proxies
+    lines:
+    - 810
+    - 870
+- query: merge proxy and verify settings from environment variables into the request
+  expected:
+  - file: src/requests/sessions.py
+    symbol: Session.merge_environment_settings
+    lines:
+    - 831
+    - 868
+- query: connection pooling and pool manager setup
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.init_poolmanager
+    lines:
+    - 239
+    - 267
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.proxy_manager_for
+    lines: &id001
+    - 269
+    - 305
+- query: SOCKS proxy support
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.proxy_manager_for
+    lines: *id001
+  - file: src/requests/adapters.py
+    symbol: SOCKSProxyManager
+    lines:
+    - 66
+    - 67
+- query: configure retries for failed connections
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.__init__
+    lines:
+    - 201
+    - 221
+- query: how are connect and read timeouts applied when sending
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.send
+    lines:
+    - 634
+    - 748
+- query: convert a urllib3 response into a Response object
+  expected:
+  - file: src/requests/adapters.py
+    symbol: HTTPAdapter.build_response
+    lines:
+    - 365
+    - 401
+- query: mount a transport adapter for a URL prefix
+  expected:
+  - file: src/requests/sessions.py
+    symbol: Session.mount
+    lines:
+    - 888
+    - 897
+  - file: src/requests/sessions.py
+    symbol: Session.get_adapter
+    lines:
+    - 870
+    - 881
+- query: encode multipart file uploads
+  expected:
+  - file: src/requests/models.py
+    symbol: RequestEncodingMixin._encode_files
+    lines:
+    - 182
+    - 251
+- query: encode query string parameters
+  expected:
+  - file: src/requests/models.py
+    symbol: RequestEncodingMixin._encode_params
+    lines:
+    - 132
+    - 180
+- query: validate and normalize the request URL, IDNA hostnames
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_url
+    lines:
+    - 483
+    - 563
+  - file: src/requests/models.py
+    symbol: PreparedRequest._get_idna_encoded_host
+    lines:
+    - 473
+    - 481
+- query: set the Content-Length header for the body
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_content_length
+    lines:
+    - 654
+    - 668
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_body
+    lines: &id002
+    - 576
+    - 652
+- query: serialize a JSON request body
+  expected:
+  - file: src/requests/models.py
+    symbol: PreparedRequest.prepare_body
+    lines: *id002
+- query: stream the response body in chunks
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.iter_content
+    lines:
+    - 906
+    - 977
+- query: iterate over the response one line at a time
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.iter_lines
+    lines:
+    - 979
+    - 1032
+- query: raise an exception for 4xx and 5xx status codes
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.raise_for_status
+    lines:
+    - 1144
+    - 1171
+- query: decode the response body as JSON
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.json
+    lines:
+    - 1091
+    - 1124
+- query: guess the text encoding of a response with charset detection
+  expected:
+  - file: src/requests/models.py
+    symbol: Response.apparent_encoding
+    lines:
+    - 896
+    - 904
+  - file: src/requests/models.py
+    symbol: Response.text
+    lines:
+    - 1053
+    - 1089
+  - file: src/requests/utils.py
+    symbol: get_encoding_from_headers
+    lines:
+    - 569
+    - 591
+- query: parse the Link header into a dict
+  expected:
+  - file: src/requests/utils.py
+    symbol: parse_header_links
+    lines:
+    - 965
+    - 999
+  - file: src/requests/models.py
+    symbol: Response.links
+    lines:
+    - 1126
+    - 1142
+- query: reject header values containing newlines
+  expected:
+  - file: src/requests/utils.py
+    symbol: check_header_validity
+    lines:
+    - 1087
+    - 1095
+  - file: src/requests/utils.py
+    symbol: _validate_header_part
+    lines:
+    - 1098
+    - 1119
+- query: rewind a file-like request body before resending
+  expected:
+  - file: src/requests/utils.py
+    symbol: rewind_body
+    lines:
+    - 1139
+    - 1155
+- query: compute the length of a file-like object or string body
+  expected:
+  - file: src/requests/utils.py
+    symbol: super_len
+    lines:
+    - 160
+    - 228
+- query: default User-Agent string
+  expected:
+  - file: src/requests/utils.py
+    symbol: default_user_agent
+    lines:
+    - 942
+    - 948
+  - file: src/requests/utils.py
+    symbol: default_headers
+    lines:
+    - 951
+    - 962
+- query: case-insensitive dictionary for headers
+  expected:
+  - file: src/requests/structures.py
+    symbol: CaseInsensitiveDict
+    lines:
+    - 20
+    - 93
+- query: cookie jar that behaves like a dict
+  expected:
+  - file: src/requests/cookies.py
+    symbol: RequestsCookieJar
+    lines:
+    - 191
+    - 476
+- query: extract cookies from a response into the jar
+  expected:
+  - file: src/requests/cookies.py
+    symbol: extract_cookies_to_jar
+    lines:
+    - 135
+    - 150
+- query: merge session cookies with request cookies
+  expected:
+  - file: src/requests/cookies.py
+    symbol: merge_cookies
+    lines:
+    - 604
+    - 625
+  - file: src/requests/sessions.py
+    symbol: Session.prepare_request
+    lines:
+    - 511
+    - 555
+- query: dispatch response hooks
+  expected:
+  - file: src/requests/hooks.py
+    symbol: dispatch_hook
+    lines:
+    - 32
+    - 48
+- query: merge session-level and request-level settings
+  expected:
+  - file: src/requests/sessions.py
+    symbol: merge_setting
+    lines:
+    - 76
+    - 105
+  - file: src/requests/sessions.py
+    symbol: merge_hooks
+    lines:
+    - 108
+    - 124
+- query: check urllib3 and chardet versions are compatible
+  expected:
+  - file: src/requests/__init__.py
+    symbol: check_compatibility
+    lines:
+    - 60
+    - 96
+- query: print system and dependency info for bug reports
+  expected:
+  - file: src/requests/help.py
+    symbol: info
+    lines:
+    - 67
+    - 123
+- query: mapping of HTTP status names to numeric codes
+  expected:
+  - file: src/requests/status_codes.py
+    symbol: _init
+    lines:
+    - 109
+    - 125
+- query: exception raised when there are too many redirects
+  expected:
+  - file: src/requests/exceptions.py
+    symbol: TooManyRedirects
+    lines:
+    - 106
+    - 107
+- query: requests.get convenience function
+  expected:
+  - file: src/requests/api.py
+    symbol: get
+    lines:
+    - 74
+    - 87
+  - file: src/requests/api.py
+    symbol: request
+    lines:
+    - 24
+    - 71
+definition:
+- symbol: HTTPAdapter
+  file: src/requests/adapters.py
+  line: 158
+- symbol: Session
+  file: src/requests/sessions.py
+  line: 395
+- symbol: PreparedRequest
+  file: src/requests/models.py
+  line: 378
+- symbol: Response
+  file: src/requests/models.py
+  line: 732
+- symbol: CaseInsensitiveDict
+  file: src/requests/structures.py
+  line: 20
+- symbol: RequestsCookieJar
+  file: src/requests/cookies.py
+  line: 191
+- symbol: HTTPDigestAuth
+  file: src/requests/auth.py
+  line: 124
+- symbol: dispatch_hook
+  file: src/requests/hooks.py
+  line: 32
+- symbol: get_netrc_auth
+  file: src/requests/utils.py
+  line: 231
+- symbol: super_len
+  file: src/requests/utils.py
+  line: 160
+- symbol: to_native_string
+  file: src/requests/_internal_utils.py
+  line: 26
+- symbol: check_compatibility
+  file: src/requests/__init__.py
+  line: 60
+- symbol: cert_verify
+  file: src/requests/adapters.py
+  line: 307
+- symbol: resolve_redirects
+  file: src/requests/sessions.py
+  line: 186
+- symbol: prepare_url
+  file: src/requests/models.py
+  line: 483
+- symbol: raise_for_status
+  file: src/requests/models.py
+  line: 1144
+- symbol: build_digest_header
+  file: src/requests/auth.py
+  line: 157
+- symbol: merge_environment_settings
+  file: src/requests/sessions.py
+  line: 831
+- symbol: HTTPAdapter.send
+  file: src/requests/adapters.py
+  line: 634
+- symbol: Session.send
+  file: src/requests/sessions.py
+  line: 752
+- symbol: Session.request
+  file: src/requests/sessions.py
+  line: 557
+- symbol: PreparedRequest.prepare_body
+  file: src/requests/models.py
+  line: 576
+- symbol: Response.json
+  file: src/requests/models.py
+  line: 1091
+- symbol: HTTPBasicAuth.__call__
+  file: src/requests/auth.py
+  line: 111
+references:
+- symbol: HTTPAdapter
+  files:
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - tests/test_adapters.py
+  - tests/test_requests.py
+- symbol: PreparedRequest
+  files:
+  - src/requests/__init__.py
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+- symbol: CaseInsensitiveDict
+  files:
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/structures.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+  - tests/test_structures.py
+  - tests/test_utils.py
+- symbol: dispatch_hook
+  files:
+  - src/requests/sessions.py
+  - tests/test_hooks.py
+- symbol: to_native_string
+  files:
+  - src/requests/auth.py
+  - src/requests/cookies.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_utils.py
+- symbol: extract_cookies_to_jar
+  files:
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/sessions.py
+- symbol: super_len
+  files:
+  - src/requests/models.py
+  - tests/test_utils.py
+- symbol: get_netrc_auth
+  files:
+  - src/requests/sessions.py
+  - tests/test_requests.py
+  - tests/test_utils.py
+- symbol: cookiejar_from_dict
+  files:
+  - src/requests/cookies.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+- symbol: TooManyRedirects
+  files:
+  - src/requests/__init__.py
+  - src/requests/sessions.py
+  - tests/test_requests.py
+- symbol: merge_cookies
+  files:
+  - src/requests/sessions.py
+- symbol: rewind_body
+  files:
+  - src/requests/sessions.py
+  - tests/test_requests.py
+impact:
+- target: src/requests/adapters.py
+  direct_dependents:
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - tests/test_adapters.py
+  - tests/test_requests.py
+- target: src/requests/certs.py
+  direct_dependents:
+  - src/requests/utils.py
+- target: src/requests/hooks.py
+  direct_dependents:
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - tests/test_hooks.py
+  - tests/test_requests.py
+- target: src/requests/structures.py
+  direct_dependents:
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/status_codes.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+  - tests/test_structures.py
+  - tests/test_utils.py
+- target: src/requests/help.py
+  direct_dependents:
+  - tests/test_help.py
+- target: src/requests/cookies.py
+  direct_dependents:
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+  - tests/test_utils.py
+- target: src/requests/_internal_utils.py
+  direct_dependents:
+  - src/requests/auth.py
+  - src/requests/cookies.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_utils.py
+- target: src/requests/status_codes.py
+  direct_dependents:
+  - src/requests/__init__.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+- target: src/requests/api.py
+  direct_dependents:
+  - src/requests/__init__.py
+- target: src/requests/exceptions.py
+  direct_dependents:
+  - src/requests/__init__.py
+  - src/requests/adapters.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  - src/requests/utils.py
+  - tests/test_requests.py
+import_graph:
+  docs/conf.py:
+  - src/requests/__init__.py
+  src/requests/__init__.py:
+  - src/requests/__version__.py
+  - src/requests/api.py
+  - src/requests/exceptions.py
+  - src/requests/models.py
+  - src/requests/packages.py
+  - src/requests/sessions.py
+  - src/requests/status_codes.py
+  - src/requests/utils.py
+  src/requests/_internal_utils.py:
+  - src/requests/compat.py
+  src/requests/_types.py:
+  - src/requests/auth.py
+  - src/requests/cookies.py
+  - src/requests/models.py
+  - src/requests/structures.py
+  src/requests/adapters.py:
+  - src/requests/_types.py
+  - src/requests/auth.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/models.py
+  - src/requests/structures.py
+  - src/requests/utils.py
+  src/requests/api.py:
+  - src/requests/_types.py
+  - src/requests/models.py
+  - src/requests/sessions.py
+  src/requests/auth.py:
+  - src/requests/_internal_utils.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/models.py
+  - src/requests/utils.py
+  src/requests/cookies.py:
+  - src/requests/_internal_utils.py
+  - src/requests/_types.py
+  - src/requests/compat.py
+  - src/requests/models.py
+  src/requests/exceptions.py:
+  - src/requests/compat.py
+  - src/requests/models.py
+  src/requests/help.py:
+  - src/requests/__version__.py
+  src/requests/hooks.py:
+  - src/requests/_types.py
+  - src/requests/models.py
+  src/requests/models.py:
+  - src/requests/_internal_utils.py
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/hooks.py
+  - src/requests/status_codes.py
+  - src/requests/structures.py
+  - src/requests/utils.py
+  src/requests/packages.py:
+  - src/requests/compat.py
+  src/requests/sessions.py:
+  - src/requests/_internal_utils.py
+  - src/requests/_types.py
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/hooks.py
+  - src/requests/models.py
+  - src/requests/status_codes.py
+  - src/requests/structures.py
+  - src/requests/utils.py
+  src/requests/status_codes.py:
+  - src/requests/structures.py
+  src/requests/structures.py:
+  - src/requests/compat.py
+  src/requests/utils.py:
+  - src/requests/__version__.py
+  - src/requests/_internal_utils.py
+  - src/requests/_types.py
+  - src/requests/certs.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/models.py
+  - src/requests/structures.py
+  tests/conftest.py:
+  - src/requests/compat.py
+  tests/test_adapters.py:
+  - src/requests/adapters.py
+  tests/test_help.py:
+  - src/requests/help.py
+  tests/test_hooks.py:
+  - src/requests/hooks.py
+  tests/test_lowlevel.py:
+  - src/requests/__init__.py
+  - src/requests/compat.py
+  - tests/testserver/server.py
+  - tests/utils.py
+  tests/test_packages.py:
+  - src/requests/__init__.py
+  tests/test_requests.py:
+  - src/requests/__init__.py
+  - src/requests/adapters.py
+  - src/requests/auth.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/exceptions.py
+  - src/requests/hooks.py
+  - src/requests/models.py
+  - src/requests/packages.py
+  - src/requests/sessions.py
+  - src/requests/structures.py
+  - tests/__init__.py
+  - tests/compat.py
+  - tests/testserver/server.py
+  - tests/utils.py
+  tests/test_structures.py:
+  - src/requests/structures.py
+  tests/test_testserver.py:
+  - src/requests/__init__.py
+  - tests/testserver/server.py
+  tests/test_utils.py:
+  - src/requests/_internal_utils.py
+  - src/requests/compat.py
+  - src/requests/cookies.py
+  - src/requests/structures.py
+  - src/requests/utils.py
+  - tests/compat.py

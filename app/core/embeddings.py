@@ -22,7 +22,8 @@ def _get_local_model():
 def _embed_local(texts: list[str]) -> np.ndarray:
     model = _get_local_model()
     all_embeddings = []
-    for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Embedding", unit="batch", leave=False):
+    for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Embedding", unit="batch", leave=False,
+                  disable=len(texts) <= BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
         embs = model.encode(batch, show_progress_bar=False, convert_to_numpy=True)
         all_embeddings.append(embs.astype(np.float32))
@@ -33,7 +34,8 @@ def _embed_openai(texts: list[str]) -> np.ndarray:
     import openai
     client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     all_embeddings = []
-    for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Embedding (OpenAI)", unit="batch", leave=False):
+    for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Embedding (OpenAI)", unit="batch", leave=False,
+                  disable=len(texts) <= BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
         response = client.embeddings.create(model=OPENAI_MODEL_NAME, input=batch)
         embs = np.array([d.embedding for d in response.data], dtype=np.float32)

@@ -371,6 +371,30 @@ pytest tests/ -v
 
 ---
 
+## Evaluation
+
+`eval/` holds a labeled benchmark against `psf/requests` and a runner that scores the live
+API (`/search`, `/definition`, `/impact`) through FastAPI's `TestClient`. No API key needed.
+
+```bash
+python eval/run_eval.py --repo-id requests --ingest ../requests-demo -v
+python eval/run_eval.py --repo-id requests --out eval/results/<name>.json   # save for comparison
+```
+
+- **42 search questions**, each labeled with the function/class that answers it. Scored
+  file-level (`file_hit@k`, MRR) and line-level (`span_hit@k`: a result chunk overlaps the
+  answering symbol's exact line span).
+- **24 definition lookups** (bare and `Class.method` names), **12 reference sets**
+  (every file that uses a symbol), **10 impact targets** (their true direct importers).
+- **The true import graph** (107 edges), to score the dependency graph directly.
+
+Labels are hand-written in `eval/build_requests_bench.py`. Line spans, the import graph and
+reference sets are derived from the `requests` source with Python's own `ast` module, which
+is deliberately independent of codebase-intel's tree-sitter/regex extraction, so the
+benchmark can't inherit the tool's bugs. Saved runs live in `eval/results/`.
+
+---
+
 ## Limitations
 
 - File-level dependency graph, not call-level (no intra-function call edges)
