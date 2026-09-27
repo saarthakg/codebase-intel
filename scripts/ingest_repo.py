@@ -29,6 +29,7 @@ def main():
         f"\nIndexed {summary['files_indexed']} files, "
         f"{summary['chunks_indexed']} chunks, "
         f"{summary['symbols_extracted']} symbols, "
+        f"{summary['references_indexed']} references, "
         f"{summary['edges_in_graph']} graph edges."
     )
     print(f"Embedding backend: {summary['embedding_backend']}")

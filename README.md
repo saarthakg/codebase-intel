@@ -8,7 +8,7 @@ AI-powered codebase intelligence: semantic search, symbol lookup, dependency-awa
 
 Ask developer questions about any Python or TypeScript codebase:
 
-- **"Where is `submit_order()` defined?"** → Symbol definition lookup with file + line
+- **"Where is `submit_order()` defined, and who calls it?"** → Symbol definition (bare or `Class.method`) with file + line range, plus every usage
 - **"What files import `auth.py`?"** → Dependency graph traversal
 - **"What would break if I change `adapters.py`?"** → Multi-signal impact analysis
 - **"How does data flow from the API layer to the database?"** → Grounded LLM answer over retrieved code chunks
@@ -41,7 +41,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │                       Query Pipeline                        │
 │                                                             │
 │  POST /search   → embed query → FAISS search → ranked chunks│
-│  GET  /definition → SQLite symbol lookup → graph references │
+│  GET  /definition → SQLite symbol lookup + usage index      │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
 │  POST /impact/batch → merge /impact across many changed files│
 │  POST /ask      → search → LLM (grounded answer + cites)    │
@@ -89,7 +89,7 @@ Both backends default to a current model (`claude-sonnet-5` / `gemini-flash-late
 
 ```bash
 python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
-# Indexed 47 files, 405 chunks, 807 symbols, 81 graph edges.
+# Indexed 47 files, 405 chunks, 807 symbols, 2591 references, 107 graph edges.
 ```
 
 `repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). Re-running ingest on the same `repo_id` is safe and idempotent — it fully replaces the previous index rather than accumulating stale chunks/symbols/edges alongside it, and the embedding backend used at ingest time is recorded and reused automatically for every later query against that `repo_id`, even if `EMBEDDING_BACKEND` in `.env` changes afterward.
@@ -131,7 +131,7 @@ Ingest a repository and build all indexes.
 
 ```json
 {"repo_id": "my-project", "files_indexed": 47, "chunks_indexed": 405,
- "symbols_extracted": 807, "edges_in_graph": 81}
+ "symbols_extracted": 807, "edges_in_graph": 107}
 ```
 
 ### `POST /search`
@@ -144,12 +144,22 @@ Semantic search over embedded code chunks.
 
 ### `GET /definition?repo_id=X&symbol=Y`
 
-Symbol definition lookup with cross-reference list.
+Symbol definition lookup plus every usage. `symbol` can be bare (`send`) or qualified
+(`HTTPAdapter.send`). When a bare name matches several definitions, source files win over
+tests and the rest are listed in `other_definitions`.
 
 ```json
-{"symbol": "HTTPAdapter", "defining_file": "src/requests/adapters.py",
- "start_line": 158, "references": ["src/requests/adapters.py"]}
+{"symbol": "HTTPAdapter", "qualified_name": "HTTPAdapter", "kind": "class",
+ "defining_file": "src/requests/adapters.py", "start_line": 158, "end_line": 748,
+ "references": ["src/requests/models.py", "src/requests/sessions.py",
+                "tests/test_adapters.py", "tests/test_requests.py"],
+ "reference_locations": [{"file_path": "src/requests/models.py", "line": 90}, ...],
+ "other_definitions": []}
 ```
+
+References come from an index of identifier usages built from the tree-sitter parse, so
+comments and docstrings don't count. They're matched by name: a query for `Session.send`
+returns every `.send` usage, not only calls on a `Session`.
 
 ### `POST /impact`
 
@@ -209,19 +219,22 @@ regenerated output.
 **Impact analysis of `adapters.py`:**
 ```
 HIGH CONFIDENCE (direct/transitive imports):
+  [0.95] tests/test_requests.py    — direct import
   [0.95] src/requests/models.py    — direct import
   [0.95] src/requests/sessions.py  — direct import
+  [0.95] tests/test_adapters.py    — direct import
   [0.75] src/requests/cookies.py   — transitive import (2 hops)
-  [0.75] src/requests/auth.py      — transitive import (2 hops)
   [0.75] src/requests/utils.py     — transitive import (2 hops)
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
-  [0.75] src/requests/api.py       — transitive import (2 hops)
+  ... 5 more at 2 hops
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/help.py      — transitive import (3 hops)
+  [0.50] tests/test_utils.py       — transitive import (3 hops)
+  ... 5 more at 3 hops
 
 RELATED:
-  [0.35] tests/test_adapters.py    — semantically related
+  [0.35] pyproject.toml            — semantically related
+  [0.35] README.md                 — semantically related
 ```
 
 **Search: "where is SSL certificate verification handled?":**
@@ -277,8 +290,8 @@ instead of running `/impact` twice and manually merging the results. Full output
 Validated end-to-end against `psf/requests` (47 files, ~12K lines of Python) and dogfooded
 against its own source. Everything below is measured, not estimated.
 
-**Ingestion is fast and fully local.** 47 files → 405 chunks, 807 symbols, 81 dependency
-edges in ~7 seconds on a laptop CPU — walking, chunking, tree-sitter parsing, dependency
+**Ingestion is fast and fully local.** 47 files → 405 chunks, 807 symbols, 2,591 symbol
+usages and 107 dependency edges in ~8 seconds on a laptop CPU — walking, chunking, tree-sitter parsing, dependency
 resolution, and embedding with the local `all-MiniLM-L6-v2` model, no API key and no network
 calls required.
 
@@ -304,10 +317,19 @@ against real code with a real import cycle. Fixed and covered by a regression te
 (`tests/test_graph.py::test_import_cycle_excludes_start_from_its_own_results`) that encodes
 the cycle directly rather than relying on the one real repo that happens to have one.
 
-**Test suite: 70/70 passing in well under a second**, covering ingestion and language
+**The dependency graph is exact on `requests`.** Scored against the import graph Python's own
+`ast` module derives (see [Evaluation](#evaluation)), all 107 edges are found with no false
+ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolved to the
+package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
+edges, so tests never showed up as impacted.
+
+**Test suite: 100/100 passing in about a second**, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
-symbol extraction for both Python and TypeScript (including the class-method extraction gap
-that was fixed), the dependency graph and its import-cycle handling, all three impact-analysis
+symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
+imported names), Python and TypeScript import resolution (`src/` layouts, relative and
+submodule imports, dotted filenames, ESM `.js` specifiers, tsconfig `paths` aliases), the
+dependency graph and its import-cycle handling, find-references, transactional re-ingest and
+legacy-DB migration, `/ask` error handling, all three impact-analysis
 signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
@@ -366,7 +388,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 70 passed
+# 100 passed
 ```
 
 ---
@@ -393,13 +415,29 @@ reference sets are derived from the `requests` source with Python's own `ast` mo
 is deliberately independent of codebase-intel's tree-sitter/regex extraction, so the
 benchmark can't inherit the tool's bugs. Saved runs live in `eval/results/`.
 
+| Metric | Baseline | Now |
+|---|---|---|
+| Search `file_hit@5` / `span_hit@5` / MRR | 0.95 / 0.88 / 0.78 | 0.95 / 0.88 / 0.78 |
+| Definition accuracy (file + line) | 0.71 | **1.00** |
+| References recall / precision | 0.00 / 0.00 | **1.00 / 1.00** |
+| Impact: true direct importers in `high_confidence` | 0.61 | **1.00** |
+| Impact: `high_confidence` precision | 0.70 | **1.00** |
+| Import graph edge recall / precision | 0.68 / 0.90 | **1.00 / 1.00** |
+
+Search is unchanged so far: these fixes were to symbols, references and the import graph.
+Retrieval quality (AST-aware chunking, hybrid keyword + semantic search) is next.
+
 ---
 
 ## Limitations
 
 - File-level dependency graph, not call-level (no intra-function call edges)
 - No live repo sync — re-run `ingest` after changes (safe to do repeatedly; see Quickstart)
-- Import resolution is best-effort for relative paths; external packages are excluded
+- Import resolution covers Python (relative, absolute, `src/` layouts) and TS/JS (relative,
+  `index` files, tsconfig `baseUrl`/`paths`); external packages are excluded. Python imports
+  resolved via runtime `sys.path` tweaks aren't detected
+- References are matched by identifier name, not by type: usages of `Session.send` include
+  every `.send(...)` call
 - Answer quality depends on whether the relevant code was retrieved in the top-k chunks
 - `all-MiniLM-L6-v2` is 384-dimensional and fast but not state-of-the-art; swap to
   `text-embedding-3-small` via `EMBEDDING_BACKEND=openai` for better retrieval

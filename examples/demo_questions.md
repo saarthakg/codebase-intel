@@ -3,7 +3,7 @@
 Indexed with:
 ```
 python scripts/ingest_repo.py --repo ../requests-demo --repo-id requests
-# Indexed 47 files, 405 chunks, 807 symbols, 81 graph edges.
+# Indexed 47 files, 405 chunks, 807 symbols, 107 graph edges.
 ```
 
 All output below is real, regenerated against the current `requests-demo` source (post the
@@ -77,25 +77,37 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "src/requ
 Impact analysis: src/requests/adapters.py
 
 HIGH CONFIDENCE (direct/transitive imports):
+  [0.95] tests/test_requests.py  — direct import
   [0.95] src/requests/models.py  — direct import
   [0.95] src/requests/sessions.py  — direct import
+  [0.95] tests/test_adapters.py  — direct import
   [0.75] src/requests/cookies.py  — transitive import (2 hops)
-  [0.75] src/requests/_types.py  — transitive import (2 hops)
-  [0.75] src/requests/auth.py  — transitive import (2 hops)
   [0.75] src/requests/utils.py  — transitive import (2 hops)
-  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
   [0.75] src/requests/__init__.py  — transitive import (2 hops)
+  [0.75] src/requests/hooks.py  — transitive import (2 hops)
+  [0.75] src/requests/auth.py  — transitive import (2 hops)
+  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.75] src/requests/_types.py  — transitive import (2 hops)
   [0.75] src/requests/api.py  — transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/help.py  — transitive import (3 hops)
+  [0.50] tests/test_utils.py  — transitive import (3 hops)
+  [0.50] tests/test_packages.py  — transitive import (3 hops)
+  [0.50] tests/test_testserver.py  — transitive import (3 hops)
+  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)
+  [0.50] docs/conf.py  — transitive import (3 hops)
+  [0.50] tests/test_hooks.py  — transitive import (3 hops)
 
 RELATED (semantic similarity):
-  [0.35] tests/test_adapters.py  — semantically related
   [0.35] pyproject.toml  — semantically related
   [0.35] README.md  — semantically related
 ```
+
+The test files that exercise `adapters.py` (`tests/test_adapters.py`, `tests/test_requests.py`)
+are now direct dependents. Before the import-resolution fix they were missing entirely:
+`requests` uses a `src/` layout, so `import requests.adapters` from `tests/` never resolved
+and every test file had zero graph edges. `test_adapters.py` only showed up as "semantically
+related".
 
 Note `adapters.py` does **not** appear in its own results, even though `adapters.py` and
 `models.py` actually import each other (a real circular import in `requests`). That's a
@@ -145,7 +157,7 @@ Top 5 results:
 
 ---
 
-## Q4: Where is HTTPAdapter defined?
+## Q4: Where is HTTPAdapter defined, and who uses it?
 
 ```
 python scripts/demo_query.py --repo-id requests --mode definition --symbol HTTPAdapter
@@ -153,46 +165,55 @@ python scripts/demo_query.py --repo-id requests --mode definition --symbol HTTPA
 
 ```
 Definition: HTTPAdapter
-  Defined in: src/requests/adapters.py  line 158  (class)
-  Referenced in (1 files):
-    - src/requests/adapters.py
+  HTTPAdapter (class)  src/requests/adapters.py  lines 158–748
+  Used in 4 files (26 places):
+    - src/requests/models.py: 90, 750
+    - src/requests/sessions.py: 21, 502, 503
+    - tests/test_adapters.py: 6
+    - tests/test_requests.py: 20, 1651, 1652, 1653, 1654, 1664, 1665, 1666 …
 ```
+
+References come from an index of identifier usages built from the tree-sitter parse, so
+mentions in comments, docstrings and `HISTORY.md` aren't counted. This used to print
+`Referenced in (1 files): src/requests/adapters.py`, the defining file itself, because the
+lookup queried the definitions table instead of usages.
+
+Qualified names work too: `--symbol HTTPAdapter.send` resolves to the adapter's `send`
+method (lines 634–748) rather than `BaseAdapter.send` or `Session.send`.
 
 ---
 
-## Q5: What would break if I changed the send() code path?
+## Q5: What would break if I changed HTTPAdapter.send()?
 
 ```
-python scripts/demo_query.py --repo-id requests --mode impact --target "send"
+python scripts/demo_query.py --repo-id requests --mode impact --target "HTTPAdapter.send"
 ```
 
 ```
-Impact analysis: send
+Impact analysis: HTTPAdapter.send
 
 HIGH CONFIDENCE (direct/transitive imports):
-  [0.95] src/requests/__init__.py  — direct import
-  [0.75] src/requests/models.py  — transitive import (2 hops)
-  [0.75] src/requests/utils.py  — transitive import (2 hops)
-  [0.75] src/requests/adapters.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
-  [0.75] src/requests/api.py  — transitive import (2 hops)
-  [0.75] src/requests/help.py  — transitive import (2 hops)
+  [0.95] tests/test_requests.py  — direct import
+  [0.95] src/requests/models.py  — direct import
+  [0.95] src/requests/sessions.py  — direct import
+  [0.95] tests/test_adapters.py  — direct import
+  [0.75] src/requests/cookies.py  — transitive import (2 hops)
+  ...
+  [0.70] tests/test_lowlevel.py  — references symbol
+  [0.70] tests/testserver/server.py  — references symbol
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/cookies.py  — transitive import (3 hops)
-  [0.50] src/requests/_types.py  — transitive import (3 hops)
-  [0.50] src/requests/auth.py  — transitive import (3 hops)
-  [0.50] src/requests/exceptions.py  — transitive import (3 hops)
-
-RELATED (semantic similarity):
-  [0.35] tests/test_requests.py  — semantically related
-  [0.35] tests/test_lowlevel.py  — semantically related
-  [0.35] HISTORY.md  — semantically related
+  [0.50] tests/test_utils.py  — transitive import (3 hops)
+  ...
 ```
 
-`send` is a common enough name that symbol lookup resolves to whichever matching definition
-was indexed first (`__init__.py` re-exports here) — a good illustration of why `/impact`
-accepts file paths as well as symbol names when you want to be unambiguous.
+A qualified name pins the target to the right definition. A bare `send` is ambiguous (it's
+defined on `BaseAdapter`, `HTTPAdapter`, `Session` and more); `/definition` lists the other
+matches under `other_definitions`, and symbol lookup prefers source files over tests.
+
+"references symbol" hits come from identifier usages, which are matched by name. Any
+`.send(...)` call counts, not only calls on an `HTTPAdapter`. Resolving call targets by type
+would need a call graph, which is on the roadmap.
 
 ---
 
@@ -283,29 +304,31 @@ python scripts/demo_query.py --repo-id requests --mode impact-batch \
 Batch impact analysis: src/requests/adapters.py, src/requests/certs.py
 
 HIGH CONFIDENCE (direct/transitive imports):
-  [0.95] src/requests/models.py    — direct import              (via src/requests/adapters.py)
-  [0.95] src/requests/sessions.py  — direct import              (via src/requests/adapters.py, src/requests/certs.py)
-  [0.75] src/requests/cookies.py   — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/_types.py    — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/auth.py      — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/utils.py     — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/exceptions.py — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/hooks.py     — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/__init__.py  — transitive import (2 hops) (via src/requests/adapters.py)
-  [0.75] src/requests/api.py       — transitive import (2 hops) (via src/requests/adapters.py)
+  [0.95] tests/test_requests.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] src/requests/models.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] src/requests/sessions.py  — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] tests/test_adapters.py    — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.95] src/requests/utils.py     — direct import  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/cookies.py   — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  ...
+  [0.75] tests/test_utils.py       — transitive import (2 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  [0.75] src/requests/adapters.py  — transitive import (2 hops)  (via src/requests/certs.py)
 
 MEDIUM CONFIDENCE:
-  [0.50] src/requests/help.py      — transitive import (3 hops) (via src/requests/adapters.py)
+  [0.50] tests/test_packages.py    — transitive import (3 hops)  (via src/requests/adapters.py, src/requests/certs.py)
+  ...
 
 RELATED (semantic similarity):
-  [0.35] tests/test_adapters.py    — semantically related (via src/requests/adapters.py)
-  [0.35] pyproject.toml            — semantically related (via src/requests/adapters.py)
-  [0.35] README.md                 — semantically related (via src/requests/adapters.py, src/requests/certs.py)
-  [0.35] tests/test_requests.py    — semantically related (via src/requests/certs.py)
+  [0.35] pyproject.toml  — semantically related  (via src/requests/adapters.py)
+  [0.35] README.md       — semantically related  (via src/requests/adapters.py, src/requests/certs.py)
 ```
 
-`sessions.py` and `README.md` are each impacted by *both* changed files — `triggered_by` makes
-that visible in one call instead of running `/impact` twice and diffing the results by hand.
+`triggered_by` shows which changed files cause each hit, in one call instead of running
+`/impact` twice and diffing by hand. `certs.py` now has its real importer: `utils.py` does
+`from . import certs`, which used to resolve to the package `__init__.py` and left `certs.py`
+with no dependents at all. The old output of this example credited `sessions.py` as a direct
+importer of `certs.py`, which it isn't. `adapters.py` itself shows up via `certs.py`
+(`certs.py` → `utils.py` → `adapters.py`): the two changes are linked.
 
 ---
 
