@@ -227,8 +227,10 @@ def main() -> None:
         "search": eval_search(client, args.repo_id, bench["search"], args.verbose, args.search_mode),
         # Never tune on these two: holdout checks that search gains transfer,
         # identifier covers queries typed as code.
-        "search_holdout": eval_search(client, args.repo_id, bench.get("search_holdout", []), args.verbose, args.search_mode),
-        "search_identifier": eval_search(client, args.repo_id, bench.get("search_identifier", []), args.verbose, args.search_mode),
+        **{
+            name: eval_search(client, args.repo_id, bench[name], args.verbose, args.search_mode)
+            for name in ("search_holdout", "search_identifier") if bench.get(name)
+        },
         "definition": eval_definition(client, args.repo_id, bench["definition"], args.verbose),
         "references": eval_references(client, args.repo_id, bench["references"], args.verbose),
         "impact": eval_impact(client, args.repo_id, bench["impact"], gt_graph, args.verbose),

@@ -1,0 +1,905 @@
+repo: pallets/flask
+repo_commit: d73fa1cdcbd8b1465c151db8924ba58b1dd14e35
+notes: 'Labels are hand-written in eval/build_flask_bench.py; line spans, the import graph and reference sets are
+  derived with Python''s ast module, independent of codebase-intel''s own extraction. Regenerate with: python eval/build_flask_bench.py
+  --source <flask checkout>'
+search:
+- query: WSGI application entry point that handles each request
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.wsgi_app
+    lines:
+    - 1569
+    - 1619
+  - file: src/flask/app.py
+    symbol: Flask.__call__
+    lines:
+    - 1621
+    - 1628
+- query: dispatch the request to the matching view function
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.dispatch_request
+    lines:
+    - 969
+    - 993
+  - file: src/flask/app.py
+    symbol: Flask.full_dispatch_request
+    lines: &id001
+    - 995
+    - 1022
+- query: convert a view's return value into a response object
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.make_response
+    lines:
+    - 1227
+    - 1367
+- query: run the before_request functions
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.preprocess_request
+    lines:
+    - 1369
+    - 1395
+- query: apply after_request functions to the response
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.process_response
+    lines:
+    - 1397
+    - 1421
+- query: handle an unhandled exception raised during a request
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.handle_exception
+    lines:
+    - 900
+    - 951
+  - file: src/flask/app.py
+    symbol: Flask.handle_user_exception
+    lines:
+    - 868
+    - 898
+- query: handle HTTP errors like 404 with registered error handlers
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.handle_http_exception
+    lines:
+    - 833
+    - 866
+- query: build a URL for an endpoint
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.url_for
+    lines:
+    - 1105
+    - 1225
+  - file: src/flask/helpers.py
+    symbol: url_for
+    lines:
+    - 200
+    - 251
+- query: register a blueprint on the application
+  expected:
+  - file: src/flask/sansio/app.py
+    symbol: App.register_blueprint
+    lines: &id004
+    - 569
+    - 595
+  - file: src/flask/sansio/blueprints.py
+    symbol: Blueprint.register
+    lines:
+    - 273
+    - 377
+- query: add a URL rule that maps a path to a view function
+  expected:
+  - file: src/flask/sansio/app.py
+    symbol: App.add_url_rule
+    lines:
+    - 604
+    - 661
+  - file: src/flask/sansio/scaffold.py
+    symbol: Scaffold.add_url_rule
+    lines:
+    - 375
+    - 441
+- query: route decorator for registering views
+  expected:
+  - file: src/flask/sansio/scaffold.py
+    symbol: Scaffold.route
+    lines:
+    - 343
+    - 373
+- query: register an error handler for an exception type or status code
+  expected:
+  - file: src/flask/sansio/scaffold.py
+    symbol: Scaffold.errorhandler
+    lines:
+    - 605
+    - 647
+  - file: src/flask/sansio/scaffold.py
+    symbol: Scaffold.register_error_handler
+    lines:
+    - 649
+    - 662
+- query: load configuration from a Python file
+  expected:
+  - file: src/flask/config.py
+    symbol: Config.from_pyfile
+    lines:
+    - 187
+    - 216
+- query: load configuration from environment variables with a prefix
+  expected:
+  - file: src/flask/config.py
+    symbol: Config.from_prefixed_env
+    lines: &id003
+    - 126
+    - 185
+- query: load configuration from an object or import string
+  expected:
+  - file: src/flask/config.py
+    symbol: Config.from_object
+    lines:
+    - 218
+    - 254
+- query: store the session in a signed cookie
+  expected:
+  - file: src/flask/sessions.py
+    symbol: SecureCookieSessionInterface
+    lines:
+    - 284
+    - 385
+  - file: src/flask/sessions.py
+    symbol: SecureCookieSessionInterface.save_session
+    lines: &id002
+    - 337
+    - 385
+- query: decide whether the session cookie should be set on the response
+  expected:
+  - file: src/flask/sessions.py
+    symbol: SessionInterface.should_set_cookie
+    lines:
+    - 233
+    - 247
+- query: SameSite and Secure attributes of the session cookie
+  expected:
+  - file: src/flask/sessions.py
+    symbol: SessionInterface.get_cookie_samesite
+    lines:
+    - 208
+    - 213
+  - file: src/flask/sessions.py
+    symbol: SessionInterface.get_cookie_secure
+    lines:
+    - 202
+    - 206
+- query: push and pop the application context
+  expected:
+  - file: src/flask/ctx.py
+    symbol: AppContext.push
+    lines: &id007
+    - 416
+    - 444
+  - file: src/flask/ctx.py
+    symbol: AppContext.pop
+    lines:
+    - 446
+    - 504
+- query: check whether a request context is active
+  expected:
+  - file: src/flask/ctx.py
+    symbol: has_request_context
+    lines:
+    - 209
+    - 232
+- query: run a function after the current request finishes
+  expected:
+  - file: src/flask/ctx.py
+    symbol: after_this_request
+    lines:
+    - 118
+    - 148
+- query: keep the request context available inside a streaming generator
+  expected:
+  - file: src/flask/helpers.py
+    symbol: stream_with_context
+    lines: &id005
+    - 51
+    - 148
+- query: render a Jinja template with context variables
+  expected:
+  - file: src/flask/templating.py
+    symbol: render_template
+    lines:
+    - 136
+    - 148
+- query: look up templates across the app and blueprints
+  expected:
+  - file: src/flask/templating.py
+    symbol: DispatchingJinjaLoader.get_source
+    lines:
+    - 57
+    - 62
+  - file: src/flask/templating.py
+    symbol: DispatchingJinjaLoader._iter_loaders
+    lines:
+    - 98
+    - 106
+- query: flash a message to show on the next request
+  expected:
+  - file: src/flask/helpers.py
+    symbol: flash
+    lines:
+    - 326
+    - 357
+  - file: src/flask/helpers.py
+    symbol: get_flashed_messages
+    lines: &id009
+    - 360
+    - 399
+- query: send a file from a directory without path traversal
+  expected:
+  - file: src/flask/helpers.py
+    symbol: send_from_directory
+    lines: &id010
+    - 543
+    - 584
+- query: abort the request with an HTTP error code
+  expected:
+  - file: src/flask/helpers.py
+    symbol: abort
+    lines:
+    - 281
+    - 301
+- query: return a JSON response
+  expected:
+  - file: src/flask/json/__init__.py
+    symbol: jsonify
+    lines:
+    - 138
+    - 170
+  - file: src/flask/json/provider.py
+    symbol: DefaultJSONProvider.response
+    lines:
+    - 189
+    - 215
+- query: serialize dates, UUIDs and dataclasses to JSON
+  expected:
+  - file: src/flask/json/provider.py
+    symbol: _default
+    lines:
+    - 108
+    - 121
+- query: tagged JSON serializer used for session data
+  expected:
+  - file: src/flask/json/tag.py
+    symbol: TaggedJSONSerializer
+    lines:
+    - 219
+    - 327
+- query: find the application object in a module for the CLI
+  expected:
+  - file: src/flask/cli.py
+    symbol: find_best_app
+    lines: &id006
+    - 41
+    - 91
+  - file: src/flask/cli.py
+    symbol: locate_app
+    lines:
+    - 229
+    - 264
+- query: load environment variables from .env and .flaskenv files
+  expected:
+  - file: src/flask/cli.py
+    symbol: load_dotenv
+    lines:
+    - 698
+    - 763
+- query: the command that runs the development server
+  expected:
+  - file: src/flask/cli.py
+    symbol: run_command
+    lines:
+    - 882
+    - 993
+- query: command that lists all registered routes
+  expected:
+  - file: src/flask/cli.py
+    symbol: routes_command
+    lines:
+    - 1048
+    - 1107
+- query: test client for sending requests in tests
+  expected:
+  - file: src/flask/testing.py
+    symbol: FlaskClient
+    lines:
+    - 109
+    - 262
+  - file: src/flask/app.py
+    symbol: Flask.test_client
+    lines:
+    - 758
+    - 814
+- query: modify the session inside a test
+  expected:
+  - file: src/flask/testing.py
+    symbol: FlaskClient.session_transaction
+    lines: &id008
+    - 135
+    - 183
+- query: class-based view that dispatches on the HTTP method
+  expected:
+  - file: src/flask/views.py
+    symbol: MethodView
+    lines:
+    - 138
+    - 191
+- query: turn a view class into a view function
+  expected:
+  - file: src/flask/views.py
+    symbol: View.as_view
+    lines:
+    - 85
+    - 135
+- query: set up the application logger
+  expected:
+  - file: src/flask/logging.py
+    symbol: create_logger
+    lines:
+    - 58
+    - 79
+- query: maximum allowed size of the request body
+  expected:
+  - file: src/flask/wrappers.py
+    symbol: Request.max_content_length
+    lines:
+    - 59
+    - 90
+- query: serve a static file with a cache timeout
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.send_static_file
+    lines:
+    - 393
+    - 413
+  - file: src/flask/app.py
+    symbol: Flask.get_send_file_max_age
+    lines:
+    - 366
+    - 391
+- query: find the root path of a package or module
+  expected:
+  - file: src/flask/helpers.py
+    symbol: get_root_path
+    lines:
+    - 587
+    - 641
+- query: run async view functions in a sync app
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.ensure_sync
+    lines:
+    - 1068
+    - 1080
+  - file: src/flask/app.py
+    symbol: Flask.async_to_sync
+    lines:
+    - 1082
+    - 1103
+search_identifier:
+- query: full_dispatch_request
+  expected:
+  - file: src/flask/app.py
+    symbol: Flask.full_dispatch_request
+    lines: *id001
+- query: SecureCookieSessionInterface.save_session
+  expected:
+  - file: src/flask/sessions.py
+    symbol: SecureCookieSessionInterface.save_session
+    lines: *id002
+- query: from_prefixed_env
+  expected:
+  - file: src/flask/config.py
+    symbol: Config.from_prefixed_env
+    lines: *id003
+- query: register_blueprint options
+  expected:
+  - file: src/flask/sansio/app.py
+    symbol: App.register_blueprint
+    lines: *id004
+- query: stream_with_context
+  expected:
+  - file: src/flask/helpers.py
+    symbol: stream_with_context
+    lines: *id005
+- query: find_best_app
+  expected:
+  - file: src/flask/cli.py
+    symbol: find_best_app
+    lines: *id006
+- query: AppContext.push
+  expected:
+  - file: src/flask/ctx.py
+    symbol: AppContext.push
+    lines: *id007
+- query: session_transaction
+  expected:
+  - file: src/flask/testing.py
+    symbol: FlaskClient.session_transaction
+    lines: *id008
+- query: get_flashed_messages with_categories
+  expected:
+  - file: src/flask/helpers.py
+    symbol: get_flashed_messages
+    lines: *id009
+- query: MethodView dispatch_request
+  expected:
+  - file: src/flask/views.py
+    symbol: MethodView.dispatch_request
+    lines:
+    - 182
+    - 191
+- query: TaggedJSONSerializer register
+  expected:
+  - file: src/flask/json/tag.py
+    symbol: TaggedJSONSerializer.register
+    lines:
+    - 256
+    - 287
+- query: send_from_directory
+  expected:
+  - file: src/flask/helpers.py
+    symbol: send_from_directory
+    lines: *id010
+definition:
+- symbol: Flask
+  file: src/flask/app.py
+  line: 110
+- symbol: Config
+  file: src/flask/config.py
+  line: 50
+- symbol: AppContext
+  file: src/flask/ctx.py
+  line: 260
+- symbol: FlaskClient
+  file: src/flask/testing.py
+  line: 109
+- symbol: MethodView
+  file: src/flask/views.py
+  line: 138
+- symbol: TaggedJSONSerializer
+  file: src/flask/json/tag.py
+  line: 219
+- symbol: render_template
+  file: src/flask/templating.py
+  line: 136
+- symbol: send_from_directory
+  file: src/flask/helpers.py
+  line: 543
+- symbol: find_best_app
+  file: src/flask/cli.py
+  line: 41
+- symbol: jsonify
+  file: src/flask/json/__init__.py
+  line: 138
+- symbol: has_request_context
+  file: src/flask/ctx.py
+  line: 209
+- symbol: stream_with_context
+  file: src/flask/helpers.py
+  line: 51
+- symbol: create_logger
+  file: src/flask/logging.py
+  line: 58
+- symbol: Scaffold
+  file: src/flask/sansio/scaffold.py
+  line: 52
+- symbol: from_pyfile
+  file: src/flask/config.py
+  line: 187
+- symbol: full_dispatch_request
+  file: src/flask/app.py
+  line: 995
+- symbol: url_for
+  file: src/flask/helpers.py
+  line: 200
+- symbol: make_response
+  file: src/flask/helpers.py
+  line: 151
+- symbol: Blueprint
+  file: src/flask/blueprints.py
+  line: 18
+- symbol: Flask.make_response
+  file: src/flask/app.py
+  line: 1227
+- symbol: Flask.url_for
+  file: src/flask/app.py
+  line: 1105
+- symbol: AppContext.push
+  file: src/flask/ctx.py
+  line: 416
+- symbol: SecureCookieSessionInterface.open_session
+  file: src/flask/sessions.py
+  line: 323
+- symbol: View.dispatch_request
+  file: src/flask/views.py
+  line: 78
+references:
+- symbol: has_request_context
+  files:
+  - src/flask/__init__.py
+  - tests/test_reqctx.py
+- symbol: stream_with_context
+  files:
+  - src/flask/__init__.py
+  - src/flask/helpers.py
+  - src/flask/templating.py
+  - tests/test_helpers.py
+  - tests/test_testing.py
+- symbol: _split_blueprint_path
+  files:
+  - src/flask/helpers.py
+  - src/flask/sansio/app.py
+  - src/flask/wrappers.py
+- symbol: TaggedJSONSerializer
+  files:
+  - src/flask/json/tag.py
+  - src/flask/sessions.py
+  - tests/test_json_tag.py
+- symbol: SecureCookieSession
+  files:
+  - src/flask/sessions.py
+- symbol: get_debug_flag
+  files:
+  - src/flask/app.py
+  - src/flask/cli.py
+  - src/flask/sansio/app.py
+  - tests/test_helpers.py
+- symbol: ScriptInfo
+  files:
+  - src/flask/cli.py
+  - src/flask/testing.py
+  - tests/test_cli.py
+  - tests/test_testing.py
+- symbol: setupmethod
+  files:
+  - src/flask/sansio/app.py
+  - src/flask/sansio/blueprints.py
+  - src/flask/sansio/scaffold.py
+- symbol: find_package
+  files:
+  - src/flask/sansio/app.py
+- symbol: DispatchingJinjaLoader
+  files:
+  - src/flask/sansio/app.py
+- symbol: NullSession
+  files:
+  - src/flask/sessions.py
+- symbol: BlueprintSetupState
+  files:
+  - src/flask/blueprints.py
+  - src/flask/sansio/blueprints.py
+impact:
+- target: src/flask/config.py
+  direct_dependents:
+  - src/flask/__init__.py
+  - src/flask/sansio/app.py
+- target: src/flask/ctx.py
+  direct_dependents:
+  - src/flask/__init__.py
+  - src/flask/app.py
+  - src/flask/globals.py
+  - src/flask/sansio/app.py
+  - src/flask/templating.py
+- target: src/flask/helpers.py
+  direct_dependents:
+  - src/flask/__init__.py
+  - src/flask/app.py
+  - src/flask/blueprints.py
+  - src/flask/cli.py
+  - src/flask/ctx.py
+  - src/flask/sansio/app.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/templating.py
+  - src/flask/wrappers.py
+  - tests/test_helpers.py
+- target: src/flask/sessions.py
+  direct_dependents:
+  - src/flask/app.py
+  - src/flask/ctx.py
+  - src/flask/globals.py
+  - src/flask/testing.py
+  - tests/test_reqctx.py
+  - tests/test_session_interface.py
+- target: src/flask/templating.py
+  direct_dependents:
+  - src/flask/__init__.py
+  - src/flask/app.py
+  - src/flask/sansio/app.py
+  - src/flask/sansio/scaffold.py
+  - tests/type_check/typing_route.py
+- target: src/flask/json/tag.py
+  direct_dependents:
+  - src/flask/sessions.py
+  - tests/test_json_tag.py
+- target: src/flask/views.py
+  direct_dependents:
+  - tests/test_async.py
+  - tests/test_helpers.py
+  - tests/test_views.py
+  - tests/type_check/typing_route.py
+- target: src/flask/testing.py
+  direct_dependents:
+  - src/flask/app.py
+  - src/flask/sansio/app.py
+  - tests/test_appctx.py
+  - tests/test_basic.py
+  - tests/test_reqctx.py
+  - tests/test_request.py
+  - tests/test_testing.py
+  - tests/test_views.py
+- target: src/flask/sansio/scaffold.py
+  direct_dependents:
+  - src/flask/blueprints.py
+  - src/flask/debughelpers.py
+  - src/flask/sansio/app.py
+  - src/flask/sansio/blueprints.py
+  - src/flask/templating.py
+- target: src/flask/cli.py
+  direct_dependents:
+  - src/flask/__main__.py
+  - src/flask/app.py
+  - src/flask/blueprints.py
+  - src/flask/testing.py
+  - tests/test_cli.py
+  - tests/test_testing.py
+import_graph:
+  examples/celery/src/task_app/__init__.py:
+  - examples/celery/src/task_app/views.py
+  - src/flask/__init__.py
+  examples/celery/src/task_app/views.py:
+  - examples/celery/src/task_app/tasks.py
+  - src/flask/__init__.py
+  examples/javascript/js_example/__init__.py:
+  - src/flask/__init__.py
+  examples/javascript/js_example/views.py:
+  - examples/javascript/js_example/__init__.py
+  - src/flask/__init__.py
+  examples/javascript/tests/test_js_example.py:
+  - src/flask/__init__.py
+  examples/tutorial/flaskr/__init__.py:
+  - examples/tutorial/flaskr/auth.py
+  - examples/tutorial/flaskr/blog.py
+  - examples/tutorial/flaskr/db.py
+  - src/flask/__init__.py
+  examples/tutorial/flaskr/auth.py:
+  - examples/tutorial/flaskr/db.py
+  - src/flask/__init__.py
+  examples/tutorial/flaskr/blog.py:
+  - examples/tutorial/flaskr/auth.py
+  - examples/tutorial/flaskr/db.py
+  - src/flask/__init__.py
+  examples/tutorial/flaskr/db.py:
+  - src/flask/__init__.py
+  examples/tutorial/tests/test_auth.py:
+  - src/flask/__init__.py
+  src/flask/__init__.py:
+  - src/flask/app.py
+  - src/flask/blueprints.py
+  - src/flask/config.py
+  - src/flask/ctx.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/json/__init__.py
+  - src/flask/signals.py
+  - src/flask/templating.py
+  - src/flask/wrappers.py
+  src/flask/__main__.py:
+  - src/flask/cli.py
+  src/flask/app.py:
+  - src/flask/cli.py
+  - src/flask/ctx.py
+  - src/flask/debughelpers.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/sansio/app.py
+  - src/flask/sessions.py
+  - src/flask/signals.py
+  - src/flask/templating.py
+  - src/flask/testing.py
+  - src/flask/typing.py
+  - src/flask/wrappers.py
+  src/flask/blueprints.py:
+  - src/flask/cli.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/sansio/blueprints.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/wrappers.py
+  src/flask/cli.py:
+  - src/flask/__init__.py
+  - src/flask/app.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  src/flask/config.py:
+  - src/flask/sansio/app.py
+  src/flask/ctx.py:
+  - src/flask/app.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/sessions.py
+  - src/flask/signals.py
+  - src/flask/typing.py
+  - src/flask/wrappers.py
+  src/flask/debughelpers.py:
+  - src/flask/blueprints.py
+  - src/flask/globals.py
+  - src/flask/sansio/app.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/wrappers.py
+  src/flask/globals.py:
+  - src/flask/app.py
+  - src/flask/ctx.py
+  - src/flask/sessions.py
+  - src/flask/wrappers.py
+  src/flask/helpers.py:
+  - src/flask/globals.py
+  - src/flask/signals.py
+  - src/flask/wrappers.py
+  src/flask/json/__init__.py:
+  - src/flask/globals.py
+  - src/flask/json/provider.py
+  - src/flask/wrappers.py
+  src/flask/json/provider.py:
+  - src/flask/sansio/app.py
+  src/flask/json/tag.py:
+  - src/flask/json/__init__.py
+  src/flask/logging.py:
+  - src/flask/globals.py
+  - src/flask/sansio/app.py
+  src/flask/sansio/app.py:
+  - src/flask/config.py
+  - src/flask/ctx.py
+  - src/flask/helpers.py
+  - src/flask/json/provider.py
+  - src/flask/logging.py
+  - src/flask/sansio/blueprints.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/templating.py
+  - src/flask/testing.py
+  - src/flask/typing.py
+  src/flask/sansio/blueprints.py:
+  - src/flask/sansio/app.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/typing.py
+  src/flask/sansio/scaffold.py:
+  - src/flask/helpers.py
+  - src/flask/templating.py
+  - src/flask/typing.py
+  src/flask/sessions.py:
+  - src/flask/app.py
+  - src/flask/json/tag.py
+  - src/flask/wrappers.py
+  src/flask/templating.py:
+  - src/flask/ctx.py
+  - src/flask/debughelpers.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/sansio/app.py
+  - src/flask/sansio/scaffold.py
+  - src/flask/signals.py
+  src/flask/testing.py:
+  - src/flask/app.py
+  - src/flask/cli.py
+  - src/flask/sessions.py
+  src/flask/views.py:
+  - src/flask/globals.py
+  - src/flask/typing.py
+  src/flask/wrappers.py:
+  - src/flask/debughelpers.py
+  - src/flask/globals.py
+  - src/flask/helpers.py
+  - src/flask/json/__init__.py
+  tests/conftest.py:
+  - src/flask/__init__.py
+  - src/flask/globals.py
+  tests/test_appctx.py:
+  - src/flask/__init__.py
+  - src/flask/globals.py
+  - src/flask/testing.py
+  tests/test_apps/blueprintapp/__init__.py:
+  - src/flask/__init__.py
+  tests/test_apps/blueprintapp/apps/admin/__init__.py:
+  - src/flask/__init__.py
+  tests/test_apps/blueprintapp/apps/frontend/__init__.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/app.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/factory.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/importerrorapp.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/inner1/__init__.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/inner1/inner2/flask.py:
+  - src/flask/__init__.py
+  tests/test_apps/cliapp/multiapp.py:
+  - src/flask/__init__.py
+  tests/test_apps/helloworld/hello.py:
+  - src/flask/__init__.py
+  tests/test_apps/subdomaintestmodule/__init__.py:
+  - src/flask/__init__.py
+  tests/test_async.py:
+  - src/flask/__init__.py
+  - src/flask/views.py
+  tests/test_basic.py:
+  - src/flask/__init__.py
+  - src/flask/debughelpers.py
+  - src/flask/globals.py
+  - src/flask/testing.py
+  tests/test_blueprints.py:
+  - src/flask/__init__.py
+  tests/test_cli.py:
+  - src/flask/__init__.py
+  - src/flask/cli.py
+  tests/test_config.py:
+  - src/flask/__init__.py
+  tests/test_converters.py:
+  - src/flask/__init__.py
+  tests/test_helpers.py:
+  - src/flask/__init__.py
+  - src/flask/helpers.py
+  - src/flask/views.py
+  tests/test_instance_config.py:
+  - src/flask/__init__.py
+  tests/test_json.py:
+  - src/flask/__init__.py
+  - src/flask/json/__init__.py
+  - src/flask/json/provider.py
+  tests/test_json_tag.py:
+  - src/flask/json/tag.py
+  tests/test_logging.py:
+  - src/flask/logging.py
+  tests/test_regression.py:
+  - src/flask/__init__.py
+  tests/test_reqctx.py:
+  - src/flask/__init__.py
+  - src/flask/sessions.py
+  - src/flask/testing.py
+  tests/test_request.py:
+  - src/flask/__init__.py
+  - src/flask/testing.py
+  tests/test_session_interface.py:
+  - src/flask/__init__.py
+  - src/flask/globals.py
+  - src/flask/sessions.py
+  tests/test_signals.py:
+  - src/flask/__init__.py
+  tests/test_subclassing.py:
+  - src/flask/__init__.py
+  tests/test_templating.py:
+  - src/flask/__init__.py
+  tests/test_testing.py:
+  - src/flask/__init__.py
+  - src/flask/cli.py
+  - src/flask/globals.py
+  - src/flask/json/__init__.py
+  - src/flask/testing.py
+  tests/test_user_error_handler.py:
+  - src/flask/__init__.py
+  tests/test_views.py:
+  - src/flask/testing.py
+  - src/flask/views.py
+  tests/type_check/typing_app_decorators.py:
+  - src/flask/__init__.py
+  tests/type_check/typing_error_handler.py:
+  - src/flask/__init__.py
+  tests/type_check/typing_route.py:
+  - src/flask/__init__.py
+  - src/flask/templating.py
+  - src/flask/views.py
+  - src/flask/wrappers.py
