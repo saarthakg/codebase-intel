@@ -63,10 +63,10 @@ def test_ask_without_key_returns_503(tmp_path, monkeypatch):
     repo.mkdir()
     (repo / "a.py").write_text("def foo():\n    return 1\n")
 
-    fake_embed = lambda texts, backend=None: np.ones((len(texts), 8), dtype=np.float32)
+    fake_embed = lambda texts, backend=None, **kw: np.ones((len(texts), 8), dtype=np.float32)
     client = TestClient(app)
     with patch("app.core.pipeline.embed_texts", side_effect=fake_embed), \
-         patch("app.core.search.embed_query", side_effect=lambda q, backend=None: fake_embed([q])):
+         patch("app.core.search.embed_query", side_effect=lambda q, backend=None, **kw: fake_embed([q])):
         assert client.post("/ingest", json={"repo_path": str(repo), "repo_id": "askrepo"}).status_code == 200
         r = client.post("/ask", json={"repo_id": "askrepo", "question": "what does foo do?"})
     _loaded_repos.clear()

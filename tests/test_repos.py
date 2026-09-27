@@ -8,7 +8,7 @@ from app.core import paths
 from app.main import _loaded_repos, app
 
 
-def _fake_embed_texts(texts, backend=None):
+def _fake_embed_texts(texts, backend=None, **kwargs):
     return np.random.rand(len(texts), 8).astype(np.float32)
 
 

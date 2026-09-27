@@ -64,7 +64,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         )
         if all_chunks:
             _report(f"Embedding {len(all_chunks)} chunks...")
-            embeddings = embed_texts([c.content for c in all_chunks], backend=backend)
+            embeddings = embed_texts([c.content for c in all_chunks], backend=backend, model=model_name)
             faiss_store = FAISSStore(
                 dim=embeddings.shape[1], embedding_backend=backend, embedding_model=model_name
             )
@@ -73,7 +73,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
             # Still write an (empty) index so a repo with zero indexable chunks
             # doesn't leave get_repo_state() unable to find anything to load.
             faiss_store = FAISSStore(
-                dim=get_embedding_dim(backend), embedding_backend=backend, embedding_model=model_name
+                dim=get_embedding_dim(backend, model_name), embedding_backend=backend,
+                embedding_model=model_name,
             )
         # Commit the DB rebuild only once everything that can fail slowly
         # (parsing, embedding) has succeeded: an error mid-ingest leaves the
@@ -99,6 +100,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         "references_indexed": total_references,
         "edges_in_graph": edge_count,
         "embedding_backend": backend,
+        "embedding_model": model_name,
         "ingested_at": datetime.now(timezone.utc).isoformat(),
     }
     with open(paths.meta_path(repo_id), "w") as f:

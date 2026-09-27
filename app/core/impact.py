@@ -67,8 +67,8 @@ def analyze_impact(
 
     # ── Signal 3: Semantic similarity ─────────────────────────────────────────
     try:
-        backend = getattr(faiss_store, "embedding_backend", None)
-        query_emb = embeddings_module.embed_query(target, backend=backend)
+        backend, model = embeddings_module.index_embedding_settings(faiss_store)
+        query_emb = embeddings_module.embed_query(target, backend=backend, model=model)
         hits = faiss_store.search(query_emb, top_k=5)
         for chunk_id, _score in hits:
             chunk = metadata_store.get_chunk(chunk_id)

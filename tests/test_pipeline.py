@@ -9,7 +9,7 @@ from app.core.pipeline import IngestError, run_ingestion
 from app.storage.metadata_store import MetadataStore
 
 
-def _fake_embed_texts(texts, backend=None):
+def _fake_embed_texts(texts, backend=None, **kwargs):
     return np.random.rand(len(texts), 8).astype(np.float32)
 
 

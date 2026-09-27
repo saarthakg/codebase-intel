@@ -54,8 +54,11 @@ def make_mock_faiss(chunk_file_map: dict[str, str]) -> tuple[MagicMock, MagicMoc
 
 
 class MockEmbeddings:
-    def embed_query(self, text: str, backend: str | None = None) -> np.ndarray:
+    def embed_query(self, text: str, backend: str | None = None, model: str | None = None) -> np.ndarray:
         return np.zeros((1, 8), dtype=np.float32)
+
+    def index_embedding_settings(self, faiss_store):
+        return None, None
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────────

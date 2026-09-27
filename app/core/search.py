@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.core.embeddings import embed_query
+from app.core.embeddings import embed_query, index_embedding_settings
 from app.core.text import keyword_query_terms, query_identifiers
 from app.models.schemas import SearchResult
 from app.storage.faiss_store import FAISSStore
@@ -59,8 +59,9 @@ def search_chunks(
 
     semantic: list[tuple[str, float]] = []
     if mode in ("semantic", "hybrid"):
-        backend = embedding_backend or getattr(faiss_store, "embedding_backend", None)
-        semantic = faiss_store.search(embed_query(query, backend=backend), pool)
+        index_backend, index_model = index_embedding_settings(faiss_store)
+        query_vec = embed_query(query, backend=embedding_backend or index_backend, model=index_model)
+        semantic = faiss_store.search(query_vec, pool)
 
     keyword: list[tuple[str, float]] = []
     if mode in ("keyword", "hybrid"):

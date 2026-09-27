@@ -123,7 +123,7 @@ def _semantic_store(order: list[str]) -> FAISSStore:
 
 def test_search_modes(store):
     faiss_store = _semantic_store(["c3", "c2", "c1"])
-    query_vec = lambda q, backend=None: np.eye(1, 3, dtype=np.float32)
+    query_vec = lambda q, backend=None, **kw: np.eye(1, 3, dtype=np.float32)
     with patch("app.core.search.embed_query", side_effect=query_vec):
         semantic = search_chunks("adapter", "r1", 3, faiss_store, store, mode="semantic")
         keyword = search_chunks("adapter", "r1", 3, faiss_store, store, mode="keyword")
@@ -149,10 +149,10 @@ def test_search_endpoint_accepts_mode_and_rejects_unknown(tmp_path, monkeypatch)
     (repo / "netrc.py").write_text("def get_netrc_auth(url):\n    return None\n")
     (repo / "other.py").write_text("def unrelated():\n    return 1\n")
 
-    fake = lambda texts, backend=None: np.ones((len(texts), 8), dtype=np.float32)
+    fake = lambda texts, backend=None, **kw: np.ones((len(texts), 8), dtype=np.float32)
     client = TestClient(app)
     with patch("app.core.pipeline.embed_texts", side_effect=fake), \
-         patch("app.core.search.embed_query", side_effect=lambda q, backend=None: fake([q])):
+         patch("app.core.search.embed_query", side_effect=lambda q, backend=None, **kw: fake([q])):
         assert client.post("/ingest", json={"repo_path": str(repo), "repo_id": "hy"}).status_code == 200
         r = client.post("/search", json={"repo_id": "hy", "query": "get_netrc_auth", "mode": "hybrid"})
         bad = client.post("/search", json={"repo_id": "hy", "query": "x", "mode": "fuzzy"})
