@@ -1,6 +1,7 @@
 import re
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 # Suppress the FutureWarning from tree-sitter-languages about Language(path, name)
@@ -16,180 +17,352 @@ except Exception:
 @dataclass
 class SymbolInfo:
     name: str
-    kind: str        # "function" | "class" | "method"
+    kind: str        # "function" | "class" | "method" | "interface" | "type" | "enum"
     start_line: int
     file_path: str
+    end_line: Optional[int] = None
+    # Dotted path of enclosing classes/functions, e.g. "HTTPAdapter.send".
+    # Equal to `name` for top-level definitions.
+    qualified_name: Optional[str] = None
+
+    def __post_init__(self):
+        if self.qualified_name is None:
+            self.qualified_name = self.name
 
 
 @dataclass
 class ImportInfo:
     source_file: str
+    # The module exactly as written: "os", "pkg.mod", ".", "..pkg.mod", "./util", "react"
     imported_module: str
     is_relative: bool
+    # Python `from M import a, b` → ["a", "b"] (needed to resolve `from . import submodule`).
+    # Empty for `import M` and for TS/JS.
+    names: list[str] = field(default_factory=list)
+    line: int = 0
+
+
+@dataclass
+class ReferenceInfo:
+    """A usage of an identifier (not its definition site)."""
+    name: str
+    line: int
+
+
+@dataclass
+class FileAnalysis:
+    symbols: list[SymbolInfo]
+    imports: list[ImportInfo]
+    references: list[ReferenceInfo]
 
 
 # ── Regex fallback patterns ───────────────────────────────────────────────────
 
-_PY_FUNC_RE = re.compile(r'^def\s+(\w+)\s*\(', re.MULTILINE)
-_PY_CLASS_RE = re.compile(r'^class\s+(\w+)', re.MULTILINE)
-_PY_IMPORT_RE = re.compile(r'^(?:import|from)\s+([\w.]+)', re.MULTILINE)
+_PY_DEF_RE = re.compile(r'^([ \t]*)(?:async[ \t]+)?def[ \t]+(\w+)[ \t]*[\(\[]', re.MULTILINE)
+_PY_CLASS_RE = re.compile(r'^([ \t]*)class[ \t]+(\w+)', re.MULTILINE)
+_PY_IMPORT_RE = re.compile(r'^[ \t]*import[ \t]+([^\n#]+)', re.MULTILINE)
+_PY_FROM_IMPORT_RE = re.compile(
+    r'^[ \t]*from[ \t]+(\.+[\w.]*|[\w.]+)[ \t]+import[ \t]+(\([^)]*\)|[^\n#]+)', re.MULTILINE
+)
 _TS_FUNC_RE = re.compile(
     r'(?:^|\n)\s*(?:export\s+)?(?:async\s+)?(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\()',
     re.MULTILINE,
 )
-_TS_CLASS_RE = re.compile(r'(?:^|\n)\s*(?:export\s+)?class\s+(\w+)', re.MULTILINE)
-_TS_IMPORT_RE = re.compile(r"(?:import|from)\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
+_TS_CLASS_RE = re.compile(r'(?:^|\n)\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)', re.MULTILINE)
+_TS_IMPORT_RE = re.compile(
+    r"""(?:\bimport\s+(?:[^'";]*?\s+from\s+)?|\bexport\s+[^'";]*?\s+from\s+|\brequire\s*\(\s*|\bimport\s*\(\s*)['"]([^'"]+)['"]"""
+)
+_IDENT_RE = re.compile(r'\b[A-Za-z_]\w*\b')
+
+
+def _line_at(content: str, offset: int) -> int:
+    return content.count("\n", 0, offset) + 1
 
 
 def _regex_extract_symbols(content: str, file_path: str, language: str) -> list[SymbolInfo]:
     symbols: list[SymbolInfo] = []
-    lines = content.splitlines()
-
-    def line_of(name: str, pattern: re.Pattern, kind: str) -> None:
-        for m in pattern.finditer(content):
-            matched_name = next((g for g in m.groups() if g), None) if m.groups() else m.group(1)
-            if matched_name:
-                line_num = content[:m.start()].count("\n") + 1
-                symbols.append(SymbolInfo(name=matched_name, kind=kind, start_line=line_num, file_path=file_path))
-
     if language == "python":
-        line_of("", _PY_FUNC_RE, "function")
-        line_of("", _PY_CLASS_RE, "class")
+        for m in _PY_CLASS_RE.finditer(content):
+            symbols.append(SymbolInfo(m.group(2), "class", _line_at(content, m.start(2)), file_path))
+        for m in _PY_DEF_RE.finditer(content):
+            # Without a parse tree we can't tell a method from a nested function;
+            # indentation is the best cheap signal.
+            kind = "method" if m.group(1) else "function"
+            symbols.append(SymbolInfo(m.group(2), kind, _line_at(content, m.start(2)), file_path))
     elif language in ("typescript", "javascript"):
         for m in _TS_FUNC_RE.finditer(content):
             name = m.group(1) or m.group(2)
             if name:
-                line_num = content[:m.start()].count("\n") + 1
-                symbols.append(SymbolInfo(name=name, kind="function", start_line=line_num, file_path=file_path))
+                symbols.append(SymbolInfo(name, "function", _line_at(content, m.start()), file_path))
         for m in _TS_CLASS_RE.finditer(content):
-            line_num = content[:m.start()].count("\n") + 1
-            symbols.append(SymbolInfo(name=m.group(1), kind="class", start_line=line_num, file_path=file_path))
+            symbols.append(SymbolInfo(m.group(1), "class", _line_at(content, m.start()), file_path))
+    symbols.sort(key=lambda s: s.start_line)
     return symbols
+
+
+def _split_import_names(text: str) -> list[str]:
+    """'(a, b as c,\n d)' → ['a', 'b', 'd']"""
+    text = re.sub(r'#[^\n]*', '', text).strip().strip("()")
+    names = []
+    for part in text.split(","):
+        part = part.strip()
+        if part:
+            names.append(part.split()[0])
+    return names
 
 
 def _regex_extract_imports(content: str, file_path: str, language: str) -> list[ImportInfo]:
     imports: list[ImportInfo] = []
     if language == "python":
-        for m in _PY_IMPORT_RE.finditer(content):
+        for m in _PY_FROM_IMPORT_RE.finditer(content):
             mod = m.group(1)
-            imports.append(ImportInfo(source_file=file_path, imported_module=mod, is_relative=mod.startswith(".")))
+            imports.append(ImportInfo(
+                source_file=file_path, imported_module=mod, is_relative=mod.startswith("."),
+                names=_split_import_names(m.group(2)), line=_line_at(content, m.start()),
+            ))
+        for m in _PY_IMPORT_RE.finditer(content):
+            for mod in _split_import_names(m.group(1)):
+                imports.append(ImportInfo(
+                    source_file=file_path, imported_module=mod, is_relative=False,
+                    line=_line_at(content, m.start()),
+                ))
+        imports.sort(key=lambda i: i.line)
     elif language in ("typescript", "javascript"):
         for m in _TS_IMPORT_RE.finditer(content):
             mod = m.group(1)
-            imports.append(ImportInfo(source_file=file_path, imported_module=mod, is_relative=mod.startswith(".")))
+            imports.append(ImportInfo(
+                source_file=file_path, imported_module=mod, is_relative=mod.startswith("."),
+                line=_line_at(content, m.start()),
+            ))
     return imports
+
+
+def _regex_extract_references(content: str, definitions: list[SymbolInfo]) -> list[ReferenceInfo]:
+    """Fallback: every identifier-looking token that isn't a definition site.
+
+    Unlike the tree-sitter path this also matches words inside strings and
+    comments; the pipeline later prunes names that aren't defined anywhere in
+    the repo, which removes most of that noise.
+    """
+    def_sites = {(s.name, s.start_line) for s in definitions}
+    refs: set[tuple[str, int]] = set()
+    for lineno, line in enumerate(content.splitlines(), 1):
+        for m in _IDENT_RE.finditer(line):
+            if (m.group(0), lineno) not in def_sites:
+                refs.add((m.group(0), lineno))
+    return [ReferenceInfo(n, l) for n, l in sorted(refs, key=lambda r: (r[1], r[0]))]
 
 
 # ── tree-sitter extraction ────────────────────────────────────────────────────
 
-def _walk_tree(node, types: set[str]):
-    """Yield all descendant nodes matching `types`."""
-    if node.type in types:
-        yield node
-    for child in node.children:
-        yield from _walk_tree(child, types)
+def _text(node, src: bytes) -> str:
+    return src[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
-def _ts_extract_python(tree, content: str, file_path: str) -> tuple[list[SymbolInfo], list[ImportInfo]]:
+def _grammar_for(file_path: str, language: str) -> str:
+    """Pick the tree-sitter grammar from the file extension.
+
+    .tsx needs the `tsx` grammar (the plain `typescript` grammar mis-parses JSX),
+    and plain JS is parsed with the `javascript` grammar.
+    """
+    if language == "python":
+        return "python"
+    ext = Path(file_path).suffix.lower()
+    if ext == ".tsx":
+        return "tsx"
+    if ext in (".js", ".jsx", ".mjs", ".cjs"):
+        return "javascript"
+    return "typescript"
+
+
+def _ts_analyze_python(root, src: bytes, file_path: str) -> FileAnalysis:
     symbols: list[SymbolInfo] = []
     imports: list[ImportInfo] = []
-    lines = content.encode("utf-8")
+    references: list[ReferenceInfo] = []
+    def_name_bytes: set[int] = set()  # start_byte of each definition's name node
 
-    for node in _walk_tree(tree.root_node, {"function_definition", "class_definition"}):
-        name_node = node.child_by_field_name("name")
-        if name_node:
-            name = content[name_node.start_byte:name_node.end_byte]
-            kind = "function" if node.type == "function_definition" else "class"
-            line = node.start_point[0] + 1  # 0-based → 1-based
-            symbols.append(SymbolInfo(name=name, kind=kind, start_line=line, file_path=file_path))
+    # Iterative walk (deep expression trees can exceed Python's recursion limit).
+    # Each entry: (node, enclosing qualified-name parts, innermost scope is a class)
+    stack = [(root, (), False)]
+    while stack:
+        node, scope, in_class = stack.pop()
+        child_scope, child_in_class = scope, in_class
 
-    for node in _walk_tree(tree.root_node, {"import_statement", "import_from_statement"}):
-        text = content[node.start_byte:node.end_byte]
-        for m in _PY_IMPORT_RE.finditer(text):
-            mod = m.group(1)
-            imports.append(ImportInfo(source_file=file_path, imported_module=mod, is_relative=mod.startswith(".")))
-
-    return symbols, imports
-
-
-def _ts_extract_typescript(tree, content: str, file_path: str) -> tuple[list[SymbolInfo], list[ImportInfo]]:
-    symbols: list[SymbolInfo] = []
-    imports: list[ImportInfo] = []
-
-    func_types = {"function_declaration", "function_expression", "arrow_function"}
-    method_types = {"method_definition"}
-    class_types = {"class_declaration"}
-    import_types = {"import_statement"}
-    lexical_types = {"lexical_declaration", "variable_declaration"}
-
-    walk_types = func_types | method_types | class_types | import_types | lexical_types
-    for node in _walk_tree(tree.root_node, walk_types):
-        if node.type in method_types:
-            # Class methods are `method_definition` nodes, not `function_declaration` —
-            # without this branch, every method on a TS/JS class was silently dropped.
+        if node.type in ("function_definition", "class_definition"):
             name_node = node.child_by_field_name("name")
-            if name_node:
-                name = content[name_node.start_byte:name_node.end_byte]
-                line = node.start_point[0] + 1
-                symbols.append(SymbolInfo(name=name, kind="method", start_line=line, file_path=file_path))
-
-        elif node.type in func_types | class_types:
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = content[name_node.start_byte:name_node.end_byte]
-                kind = "class" if node.type in class_types else "function"
-                line = node.start_point[0] + 1
-                symbols.append(SymbolInfo(name=name, kind=kind, start_line=line, file_path=file_path))
-
-        elif node.type in lexical_types:
-            # const foo = () => {} or const foo = function() {}
-            for child in node.children:
-                if child.type == "variable_declarator":
-                    name_node = child.child_by_field_name("name")
-                    val_node = child.child_by_field_name("value")
-                    if name_node and val_node and val_node.type in {"arrow_function", "function_expression"}:
-                        name = content[name_node.start_byte:name_node.end_byte]
-                        line = node.start_point[0] + 1
-                        symbols.append(SymbolInfo(name=name, kind="function", start_line=line, file_path=file_path))
+            if name_node is not None:
+                name = _text(name_node, src)
+                if node.type == "class_definition":
+                    kind = "class"
+                else:
+                    kind = "method" if in_class else "function"
+                symbols.append(SymbolInfo(
+                    name=name, kind=kind, file_path=file_path,
+                    start_line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
+                    qualified_name=".".join(scope + (name,)),
+                ))
+                def_name_bytes.add(name_node.start_byte)
+                child_scope = scope + (name,)
+                child_in_class = node.type == "class_definition"
 
         elif node.type == "import_statement":
-            text = content[node.start_byte:node.end_byte]
-            for m in _TS_IMPORT_RE.finditer(text):
-                mod = m.group(1)
-                imports.append(ImportInfo(source_file=file_path, imported_module=mod, is_relative=mod.startswith(".")))
+            for child in node.children_by_field_name("name"):
+                target = child.child_by_field_name("name") if child.type == "aliased_import" else child
+                if target is not None:
+                    imports.append(ImportInfo(
+                        source_file=file_path, imported_module=_text(target, src),
+                        is_relative=False, line=node.start_point[0] + 1,
+                    ))
 
-    return symbols, imports
+        elif node.type == "import_from_statement":
+            module_node = node.child_by_field_name("module_name")
+            if module_node is not None:
+                module = re.sub(r"\s+", "", _text(module_node, src))
+                names = []
+                for child in node.children_by_field_name("name"):
+                    target = child.child_by_field_name("name") if child.type == "aliased_import" else child
+                    if target is not None:
+                        names.append(_text(target, src))
+                if any(c.type == "wildcard_import" for c in node.children):
+                    names.append("*")
+                imports.append(ImportInfo(
+                    source_file=file_path, imported_module=module,
+                    is_relative=module.startswith("."), names=names,
+                    line=node.start_point[0] + 1,
+                ))
+
+        elif node.type == "identifier":
+            if node.start_byte not in def_name_bytes:
+                references.append(ReferenceInfo(_text(node, src), node.start_point[0] + 1))
+            continue  # leaf
+
+        for child in reversed(node.children):
+            stack.append((child, child_scope, child_in_class))
+
+    # A def's name node is visited after the def itself (it's a child), so the
+    # skip-set is always populated in time; sort for stable output.
+    symbols.sort(key=lambda s: (s.start_line, s.qualified_name))
+    return FileAnalysis(symbols, imports, references)
+
+
+_TS_CLASS_TYPES = {"class_declaration", "abstract_class_declaration", "class"}
+_TS_FUNC_TYPES = {"function_declaration", "generator_function_declaration", "function_expression", "function"}
+_TS_DECL_KINDS = {
+    "interface_declaration": "interface",
+    "type_alias_declaration": "type",
+    "enum_declaration": "enum",
+}
+_TS_IDENT_TYPES = {"identifier", "property_identifier", "type_identifier", "shorthand_property_identifier"}
+
+
+def _string_value(node, src: bytes) -> Optional[str]:
+    if node is None or node.type not in ("string", "template_string"):
+        return None
+    return _text(node, src)[1:-1]
+
+
+def _ts_analyze_typescript(root, src: bytes, file_path: str) -> FileAnalysis:
+    symbols: list[SymbolInfo] = []
+    imports: list[ImportInfo] = []
+    references: list[ReferenceInfo] = []
+    def_name_bytes: set[int] = set()
+
+    def add_symbol(node, name_node, kind: str, scope: tuple) -> tuple:
+        name = _text(name_node, src)
+        symbols.append(SymbolInfo(
+            name=name, kind=kind, file_path=file_path,
+            start_line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
+            qualified_name=".".join(scope + (name,)),
+        ))
+        def_name_bytes.add(name_node.start_byte)
+        return scope + (name,)
+
+    def add_import(module: Optional[str], line_node) -> None:
+        if module:
+            imports.append(ImportInfo(
+                source_file=file_path, imported_module=module,
+                is_relative=module.startswith("."), line=line_node.start_point[0] + 1,
+            ))
+
+    stack = [(root, ())]
+    while stack:
+        node, scope = stack.pop()
+        child_scope = scope
+        name_node = node.child_by_field_name("name")
+
+        if node.type in _TS_CLASS_TYPES and name_node is not None:
+            child_scope = add_symbol(node, name_node, "class", scope)
+        elif node.type == "method_definition" and name_node is not None:
+            # Class methods are `method_definition` nodes, not `function_declaration` —
+            # without this branch, every method on a TS/JS class was silently dropped.
+            child_scope = add_symbol(node, name_node, "method", scope)
+        elif node.type in _TS_FUNC_TYPES and name_node is not None:
+            child_scope = add_symbol(node, name_node, "function", scope)
+        elif node.type in _TS_DECL_KINDS and name_node is not None:
+            child_scope = add_symbol(node, name_node, _TS_DECL_KINDS[node.type], scope)
+        elif node.type == "variable_declarator":
+            # const foo = () => {} or const foo = function() {}
+            value = node.child_by_field_name("value")
+            if name_node is not None and name_node.type == "identifier" and value is not None \
+                    and value.type in {"arrow_function", "function_expression", "function"}:
+                decl = node.parent if node.parent is not None else node
+                child_scope = add_symbol(decl, name_node, "function", scope)
+        elif node.type in ("import_statement", "export_statement"):
+            add_import(_string_value(node.child_by_field_name("source"), src), node)
+        elif node.type == "call_expression":
+            # require('x') and dynamic import('x')
+            fn = node.child_by_field_name("function")
+            args = node.child_by_field_name("arguments")
+            if fn is not None and args is not None and (
+                fn.type == "import" or (fn.type == "identifier" and _text(fn, src) == "require")
+            ):
+                first = next((a for a in args.children if a.type in ("string", "template_string")), None)
+                add_import(_string_value(first, src), node)
+        elif node.type in _TS_IDENT_TYPES:
+            if node.start_byte not in def_name_bytes:
+                references.append(ReferenceInfo(_text(node, src), node.start_point[0] + 1))
+            continue
+
+        for child in reversed(node.children):
+            stack.append((child, child_scope))
+
+    symbols.sort(key=lambda s: (s.start_line, s.qualified_name))
+    return FileAnalysis(symbols, imports, references)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def extract_symbols(content: str, file_path: str, language: str) -> list[SymbolInfo]:
-    if not _TS_AVAILABLE or language not in ("python", "typescript", "javascript"):
-        return _regex_extract_symbols(content, file_path, language)
+def _regex_analyze(content: str, file_path: str, language: str) -> FileAnalysis:
+    symbols = _regex_extract_symbols(content, file_path, language)
+    imports = _regex_extract_imports(content, file_path, language)
+    references = _regex_extract_references(content, symbols) if symbols or imports else []
+    return FileAnalysis(symbols, imports, references)
+
+
+def analyze_file(content: str, file_path: str, language: str) -> FileAnalysis:
+    """Extract symbols, imports and identifier references from one parse of a file.
+
+    Falls back to regex extraction if tree-sitter is unavailable or fails.
+    Non-code files (markdown, config, ...) yield an empty analysis.
+    """
+    if language not in ("python", "typescript", "javascript"):
+        return FileAnalysis([], [], [])
+    if not _TS_AVAILABLE:
+        return _regex_analyze(content, file_path, language)
     try:
-        lang_name = "python" if language == "python" else "typescript"
-        parser = _get_parser(lang_name)
-        tree = parser.parse(content.encode("utf-8"))
+        parser = _get_parser(_grammar_for(file_path, language))
+        src = content.encode("utf-8")
+        tree = parser.parse(src)
         if language == "python":
-            syms, _ = _ts_extract_python(tree, content, file_path)
-        else:
-            syms, _ = _ts_extract_typescript(tree, content, file_path)
-        return syms
+            return _ts_analyze_python(tree.root_node, src, file_path)
+        return _ts_analyze_typescript(tree.root_node, src, file_path)
     except Exception:
-        return _regex_extract_symbols(content, file_path, language)
+        return _regex_analyze(content, file_path, language)
+
+
+def extract_symbols(content: str, file_path: str, language: str) -> list[SymbolInfo]:
+    return analyze_file(content, file_path, language).symbols
 
 
 def extract_imports(content: str, file_path: str, language: str) -> list[ImportInfo]:
-    if not _TS_AVAILABLE or language not in ("python", "typescript", "javascript"):
-        return _regex_extract_imports(content, file_path, language)
-    try:
-        lang_name = "python" if language == "python" else "typescript"
-        parser = _get_parser(lang_name)
-        tree = parser.parse(content.encode("utf-8"))
-        if language == "python":
-            _, imps = _ts_extract_python(tree, content, file_path)
-        else:
-            _, imps = _ts_extract_typescript(tree, content, file_path)
-        return imps
-    except Exception:
-        return _regex_extract_imports(content, file_path, language)
+    return analyze_file(content, file_path, language).imports

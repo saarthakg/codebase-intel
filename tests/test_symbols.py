@@ -167,3 +167,108 @@ def test_extract_imports_falls_back_on_tree_sitter_error():
         imps = extract_imports(PYTHON_FIXTURE, "service.py", "python")
         modules = [i.imported_module for i in imps]
         assert "os" in modules
+
+
+# ── Qualified names, imports with names, references (single-parse analysis) ──
+
+from app.core.symbols import analyze_file
+
+NESTED_PY_FIXTURE = """\
+from . import certs, utils as u
+from ..pkg.mod import (
+    Alpha,
+    Beta as B,
+)
+import os.path as osp, sys
+
+class HTTPAdapter:
+    def send(self):
+        return certs.where()
+
+    def close(self):
+        pass
+
+class Session:
+    def send(self):
+        return HTTPAdapter().send()
+
+def top():
+    def inner():
+        pass
+    return inner
+"""
+
+
+def test_python_methods_are_kind_method_with_qualified_names():
+    syms = {s.qualified_name: s for s in extract_symbols(NESTED_PY_FIXTURE, "a.py", "python")}
+    assert syms["HTTPAdapter.send"].kind == "method"
+    assert syms["Session.send"].kind == "method"
+    assert syms["top"].kind == "function"
+    assert syms["top.inner"].kind == "function"  # nested function, not a method
+    assert syms["HTTPAdapter"].end_line == 13
+
+
+def test_python_same_name_methods_in_one_file_are_all_kept():
+    """Two classes each defining `send` in the same file must both survive —
+    previously the (name, file) key collapsed them into one row."""
+    sends = [s for s in extract_symbols(NESTED_PY_FIXTURE, "a.py", "python") if s.name == "send"]
+    assert {s.qualified_name for s in sends} == {"HTTPAdapter.send", "Session.send"}
+
+
+def test_python_from_import_records_imported_names():
+    """`from . import certs` must keep `certs`: it's the submodule being imported,
+    and dropping it made the import resolve to the package __init__ instead."""
+    imps = extract_imports(NESTED_PY_FIXTURE, "a.py", "python")
+    by_module = {i.imported_module: i for i in imps}
+    assert by_module["."].names == ["certs", "utils"]
+    assert by_module["."].is_relative
+    assert by_module["..pkg.mod"].names == ["Alpha", "Beta"]
+    assert "os.path" in by_module and "sys" in by_module
+
+
+def test_python_references_exclude_definition_sites():
+    refs = analyze_file(NESTED_PY_FIXTURE, "a.py", "python").references
+    adapter_lines = sorted(r.line for r in refs if r.name == "HTTPAdapter")
+    assert adapter_lines == [17]  # the usage in Session.send, not the `class` line
+    assert any(r.name == "certs" and r.line == 10 for r in refs)
+
+
+def test_regex_fallback_keeps_from_import_names():
+    imps = _regex_extract_imports(NESTED_PY_FIXTURE, "a.py", "python")
+    by_module = {i.imported_module: i for i in imps}
+    assert by_module["."].names == ["certs", "utils"]
+    assert by_module["..pkg.mod"].names == ["Alpha", "Beta"]
+    assert "os.path" in by_module
+
+
+TSX_FIXTURE = """\
+import { Button } from "./ui/button.component";
+export * from "./types";
+const fs = require("fs");
+const lazy = () => import("./Lazy");
+
+interface Props { label: string }
+type Size = "s" | "m";
+enum Color { Red }
+
+export class Panel extends Base {
+    render(p: Props) {
+        return <Button label={p.label} />;
+    }
+}
+"""
+
+
+def test_tsx_uses_tsx_grammar_and_finds_all_import_forms():
+    imps = [i.imported_module for i in extract_imports(TSX_FIXTURE, "panel.tsx", "typescript")]
+    assert imps == ["./ui/button.component", "./types", "fs", "./Lazy"]
+
+
+def test_typescript_declarations_and_qualified_methods():
+    syms = {s.qualified_name: s.kind for s in extract_symbols(TSX_FIXTURE, "panel.tsx", "typescript")}
+    assert syms["Panel"] == "class"
+    assert syms["Panel.render"] == "method"
+    assert syms["Props"] == "interface"
+    assert syms["Size"] == "type"
+    assert syms["Color"] == "enum"
+    assert syms["lazy"] == "function"
