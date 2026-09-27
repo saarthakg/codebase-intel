@@ -291,3 +291,25 @@ def test_package_module_does_not_shadow_stdlib(tmp_path):
     # A script outside any package can still import its sibling
     script = str(tmp_path / "scripts/run.py")
     assert _rel(resolve_python_import("util", script, str(tmp_path), source_roots=roots), tmp_path) == ["scripts/util.py"]
+
+
+
+def test_class_import_does_not_match_lowercase_module_on_case_insensitive_fs(tmp_path):
+    """`from pkg import DataSource` imports a class from pkg/__init__.py. On
+    macOS/Windows, DataSource.py "exists" when datasource.py does; that must
+    not turn into an edge to a phantom DataSource.py (seen on Django)."""
+    _touch(tmp_path, "pkg/__init__.py", "from .datasource import DataSource\n")
+    _touch(tmp_path, "pkg/datasource.py", "class DataSource: ...\n")
+    _touch(tmp_path, "app.py")
+    hits = resolve_python_import("pkg", str(tmp_path / "app.py"), str(tmp_path), names=["DataSource"])
+    assert _rel(hits, tmp_path) == ["pkg/__init__.py"]
+    # the lowercase submodule import still resolves
+    hits = resolve_python_import("pkg", str(tmp_path / "app.py"), str(tmp_path), names=["datasource"])
+    assert _rel(hits, tmp_path) == ["pkg/datasource.py"]
+
+
+def test_ts_import_case_must_match(tmp_path):
+    _touch(tmp_path, "src/button.tsx")
+    src = _touch(tmp_path, "src/app.ts")
+    assert resolve_ts_import("./Button", str(src), str(tmp_path)) is None  # would fail on Linux too
+    assert Path(resolve_ts_import("./button", str(src), str(tmp_path))).name == "button.tsx"

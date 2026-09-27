@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 import re
@@ -130,11 +131,41 @@ def find_python_source_roots(repo_root: str) -> list[Path]:
     return roots
 
 
+@functools.lru_cache(maxsize=4096)
+def _dir_entries(directory: str, mtime_ns: int) -> frozenset[str]:
+    # Keyed on the directory's mtime so a long-running server never serves a
+    # listing from before files were added or removed.
+    try:
+        return frozenset(os.listdir(directory))
+    except OSError:
+        return frozenset()
+
+
+def _is_file_exact(path: Path) -> bool:
+    """is_file() with exact name case, even on case-insensitive filesystems.
+
+    On macOS/Windows `Path("DataSource.py").is_file()` is true when only
+    `datasource.py` exists. Django's `from django.contrib.gis.gdal import
+    DataSource` (a class) then looked like an import of a submodule, creating
+    edges to phantom wrong-case paths instead of to the package.
+    """
+    if not path.is_file():
+        return False
+    for node in (path, path.parent):  # the file, and its package directory
+        try:
+            parent_mtime = node.parent.stat().st_mtime_ns
+        except OSError:
+            return False
+        if node.name not in _dir_entries(str(node.parent), parent_mtime):
+            return False
+    return True
+
+
 def _python_module_file(base: Path) -> Path | None:
     """`pkg/mod` → pkg/mod.py or pkg/mod/__init__.py, whichever exists."""
-    if base.name and (candidate := base.with_name(base.name + ".py")).is_file():
+    if base.name and _is_file_exact(candidate := base.with_name(base.name + ".py")):
         return candidate
-    if (candidate := base / "__init__.py").is_file():
+    if _is_file_exact(candidate := base / "__init__.py"):
         return candidate
     return None
 
@@ -178,7 +209,7 @@ def resolve_python_import(
 
     for base in bases:
         module_file = _python_module_file(base) if parts else base / "__init__.py"
-        if module_file is not None and not module_file.is_file():
+        if module_file is not None and not _is_file_exact(module_file):
             module_file = None
 
         resolved: list[Path] = []
@@ -310,7 +341,7 @@ def resolve_ts_import(
     repo = Path(repo_root).resolve()
     for base in bases:
         for candidate in _ts_file_candidates(base):
-            if candidate.is_file():
+            if _is_file_exact(candidate):
                 resolved = candidate.resolve()
                 if resolved.is_relative_to(repo):
                     return str(resolved)

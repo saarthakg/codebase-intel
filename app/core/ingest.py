@@ -44,6 +44,7 @@ class RepoScan:
     files: list[str]                                   # absolute paths to index
     skipped: Counter = field(default_factory=Counter)  # reason → count
     used_git: bool = False                             # .gitignore rules applied via git
+    indexed: int = 0                                   # files actually read and indexed (set by the pipeline)
 
 
 def _max_file_bytes() -> int:

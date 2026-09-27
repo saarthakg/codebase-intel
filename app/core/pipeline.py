@@ -102,7 +102,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
 
     summary = {
         "repo_id": repo_id,
-        "files_indexed": len(graph.G.nodes),
+        "files_indexed": scan.indexed,
         "files_skipped": dict(scan.skipped),
         "chunks_indexed": len(all_chunks),
         "symbols_extracted": total_symbols,
@@ -164,6 +164,8 @@ def _index_files(
 
     all_chunks = []
     embed_inputs: list[str] = []  # parallel to all_chunks: header + content
+    scanned = {os.path.relpath(f, repo_path) for f in file_paths}
+    indexed = 0
     for file_path in file_paths:
         content = load_file(file_path)
         if content is None:
@@ -171,6 +173,7 @@ def _index_files(
         rel_path = os.path.relpath(file_path, repo_path)
         language = detect_language(file_path)
         graph.add_file(rel_path)
+        indexed += 1
 
         analysis = analyze_file(content, rel_path, language)
         metadata_store.add_symbols(repo_id, analysis.symbols)
@@ -197,6 +200,8 @@ def _index_files(
                 rel_target = os.path.relpath(target, repo_path)
                 if rel_target == rel_path:
                     continue  # e.g. `from . import x` inside __init__.py where x is an attribute
+                if rel_target not in scanned:
+                    continue  # resolves to a file that isn't indexed (e.g. skipped as too large)
                 graph.add_import_edge(rel_path, rel_target)
                 metadata_store.add_edge(repo_id, rel_path, rel_target, "import")
 
@@ -206,7 +211,8 @@ def _index_files(
     metadata_store.save_cochange(repo_id, cochange)
     if cochange.commits_used:
         report(f"Co-change history: {cochange.commits_used} commits")
-    unreadable = len(file_paths) - len(graph.G.nodes)
+    unreadable = len(file_paths) - indexed
     if unreadable:
         scan.skipped["binary_or_unreadable"] += unreadable
+    scan.indexed = indexed
     return graph, all_chunks, embed_inputs, scan
