@@ -113,3 +113,37 @@ def test_vectors_for_returns_stored_normalized_rows():
     assert rows.shape == (2, DIM)
     assert np.allclose(rows[0], unit_vector(2)[0]) and np.allclose(rows[1], unit_vector(0)[0])
     assert store.vectors_for([]).shape == (0, DIM)
+
+
+def test_faiss_is_not_used():
+    """faiss-cpu and torch bundle separate OpenMP runtimes; with both
+    initialized in one process on macOS it aborts (/impact then /search
+    killed the server). The vector index is plain numpy: keep it that way."""
+    import subprocess
+    import sys
+    out = subprocess.run(
+        [sys.executable, "-c", "import sys, app.main, app.mcp_server; print('faiss' in sys.modules)"],
+        capture_output=True, text=True, check=True,
+    )
+    assert out.stdout.strip() == "False"
+
+
+def test_old_faiss_format_index_asks_for_reingest(tmp_path):
+    from app.storage.faiss_store import IndexFormatError
+    path = tmp_path / "old.index"
+    path.write_bytes(b"IxFI\x08\x00\x00\x00 not a numpy file")
+    (tmp_path / "old.idmap.json").write_text('{"dim": 8, "id_map": []}')
+    with pytest.raises(IndexFormatError, match="Re-run ingest"):
+        FAISSStore(dim=8).load(str(path))
+
+
+def test_search_matches_brute_force_ranking():
+    rng = np.random.default_rng(0)
+    vecs = rng.normal(size=(200, DIM)).astype(np.float32)
+    store = FAISSStore(dim=DIM)
+    store.add(vecs, [f"c{i}" for i in range(200)])
+    q = rng.normal(size=(1, DIM)).astype(np.float32)
+    got = [cid for cid, _ in store.search(q, 10)]
+    normed = vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
+    want = [f"c{i}" for i in np.argsort(-(normed @ (q[0] / np.linalg.norm(q[0]))))[:10]]
+    assert got == want
