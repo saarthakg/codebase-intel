@@ -232,3 +232,23 @@ def chunk_file(
             )
         )
     return chunks
+
+
+def embedding_text(chunk: ChunkMetadata, file_symbols: Optional[list["SymbolInfo"]] = None) -> str:
+    """The text actually embedded for a chunk: a one-line context header + the code.
+
+    A method body alone rarely says which file or class it belongs to, and that
+    context is often what a query names ("adapter", "session"). Only the
+    embedding sees the header; the stored chunk content is unchanged.
+    """
+    header = [chunk.file_path]
+    enclosing = [
+        s for s in (file_symbols or [])
+        if s.end_line and s.start_line < chunk.start_line <= s.end_line
+    ]
+    if enclosing:
+        inner = max(enclosing, key=lambda s: s.start_line)
+        header.append(f"in {inner.kind} {inner.qualified_name}")
+    if chunk.symbols:
+        header.append("defines " + ", ".join(chunk.symbols[:6]) + (" …" if len(chunk.symbols) > 6 else ""))
+    return " | ".join(header) + "\n" + chunk.content

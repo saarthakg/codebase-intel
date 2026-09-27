@@ -4,7 +4,7 @@ import numpy as np
 
 from app.core import embeddings
 from app.core.embeddings import (
-    DEFAULT_LOCAL_MODEL, embed_query, embed_texts, get_embedding_model_name, index_embedding_settings,
+    DEFAULT_LOCAL_MODEL, LEGACY_LOCAL_MODEL, embed_query, embed_texts, get_embedding_model_name, index_embedding_settings,
 )
 from app.storage.faiss_store import FAISSStore
 
@@ -45,7 +45,7 @@ def test_queries_use_the_model_the_index_was_built_with(monkeypatch):
     assert index_embedding_settings(store) == ("local", "BAAI/bge-small-en-v1.5")
 
     legacy = FAISSStore(dim=384, embedding_backend="local", embedding_model=None)
-    assert index_embedding_settings(legacy) == ("local", DEFAULT_LOCAL_MODEL)
+    assert index_embedding_settings(legacy) == ("local", LEGACY_LOCAL_MODEL)
 
 
 def test_search_embeds_with_index_model(tmp_path, monkeypatch):

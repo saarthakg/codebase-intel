@@ -1,4 +1,4 @@
-from app.core.chunking import chunk_file
+from app.core.chunking import chunk_file, embedding_text
 from app.core.symbols import analyze_file
 
 
@@ -90,3 +90,14 @@ def test_without_parsed_symbols_chunks_are_regex_scanned():
     src = "def f():\n    pass\n\nclass K:\n    def g(self):\n        pass\n"
     [chunk] = chunk_file(src, "m.py", "python")
     assert chunk.symbols == ["f", "K", "g"]
+
+
+def test_embedding_text_names_file_enclosing_class_and_definitions():
+    src = "class Big:\n    attr = 1\n\n" + "".join(_method(f"m{i}", 12) for i in range(4))
+    analysis = analyze_file(src, "pkg/big.py", "python")
+    chunks = chunk_file(src, "pkg/big.py", "python", chunk_size_chars=300,
+                        symbols=analysis.symbols, imports=analysis.imports)
+    method_chunk = next(c for c in chunks if "Big.m2" in c.symbols)
+    header, body = embedding_text(method_chunk, analysis.symbols).split("\n", 1)
+    assert header.startswith("pkg/big.py | in class Big | defines Big.m2")
+    assert body == method_chunk.content

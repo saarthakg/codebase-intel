@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from app.core import paths
-from app.core.chunking import chunk_file
+from app.core.chunking import chunk_file, embedding_text
 from app.core.embeddings import embed_texts, get_embedding_dim, get_embedding_model_name
 from app.core.graph import (
     DependencyGraph,
@@ -59,12 +59,12 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     backend = os.environ.get("EMBEDDING_BACKEND", "local").lower()
     model_name = get_embedding_model_name(backend)
     try:
-        graph, all_chunks, file_count = _index_files(
+        graph, all_chunks, embed_inputs, file_count = _index_files(
             resolved_repo_path, repo_id, metadata_store, _report
         )
         if all_chunks:
             _report(f"Embedding {len(all_chunks)} chunks...")
-            embeddings = embed_texts([c.content for c in all_chunks], backend=backend, model=model_name)
+            embeddings = embed_texts(embed_inputs, backend=backend, model=model_name)
             faiss_store = FAISSStore(
                 dim=embeddings.shape[1], embedding_backend=backend, embedding_model=model_name
             )
@@ -111,9 +111,9 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
 
 def _index_files(
     repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None]
-) -> tuple[DependencyGraph, list, int]:
+) -> tuple[DependencyGraph, list, list[str], int]:
     """Walk, parse, chunk and link every file. Writes to `metadata_store`
-    without committing; returns (graph, chunks, files_walked)."""
+    without committing; returns (graph, chunks, embedding inputs, files_walked)."""
     metadata_store.clear_repo(repo_id, commit=False)  # replace, don't accumulate, on re-ingest
     graph = DependencyGraph()
 
@@ -124,6 +124,7 @@ def _index_files(
     ts_config = load_ts_config(repo_path)
 
     all_chunks = []
+    embed_inputs: list[str] = []  # parallel to all_chunks: header + content
     for file_path in file_paths:
         content = load_file(file_path)
         if content is None:
@@ -141,6 +142,7 @@ def _index_files(
         )
         metadata_store.add_chunks(chunks, repo_id)
         all_chunks.extend(chunks)
+        embed_inputs.extend(embedding_text(c, analysis.symbols) for c in chunks)
 
         for imp in analysis.imports:
             targets: list[str] = []
@@ -160,4 +162,4 @@ def _index_files(
                 metadata_store.add_edge(repo_id, rel_path, rel_target, "import")
 
     metadata_store.prune_references(repo_id)
-    return graph, all_chunks, len(file_paths)
+    return graph, all_chunks, embed_inputs, len(file_paths)

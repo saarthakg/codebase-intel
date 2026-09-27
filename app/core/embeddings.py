@@ -7,7 +7,12 @@ from tqdm import tqdm
 
 BATCH_SIZE = 64
 
-DEFAULT_LOCAL_MODEL = "all-MiniLM-L6-v2"
+# Default for new ingests. Chosen on the requests benchmark (see README →
+# Evaluation): with context headers it beat all-MiniLM-L6-v2 at top-5 on all
+# three query sets at the same size and speed.
+DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
+# What every local index was built with before the model became configurable.
+LEGACY_LOCAL_MODEL = "all-MiniLM-L6-v2"
 OPENAI_MODEL_NAME = "text-embedding-3-small"
 # Kept for backwards compatibility with code that imported it.
 LOCAL_MODEL_NAME = DEFAULT_LOCAL_MODEL
@@ -82,7 +87,7 @@ def _resolve_backend(backend: Optional[str]) -> str:
 
 def get_embedding_model_name(backend: Optional[str] = None) -> str:
     """The model to use for a *new* ingest: EMBEDDING_MODEL for the local
-    backend (default all-MiniLM-L6-v2), text-embedding-3-small for OpenAI."""
+    backend (default bge-small-en-v1.5), text-embedding-3-small for OpenAI."""
     if _resolve_backend(backend) == "openai":
         return OPENAI_MODEL_NAME
     return os.environ.get("EMBEDDING_MODEL", "").strip() or DEFAULT_LOCAL_MODEL
@@ -147,5 +152,5 @@ def index_embedding_settings(faiss_store) -> tuple[Optional[str], Optional[str]]
     backend = getattr(faiss_store, "embedding_backend", None)
     model = getattr(faiss_store, "embedding_model", None)
     if model is None and (backend or "local") == "local":
-        model = DEFAULT_LOCAL_MODEL
+        model = LEGACY_LOCAL_MODEL
     return backend, model
