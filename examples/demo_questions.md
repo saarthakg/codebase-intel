@@ -3,67 +3,54 @@
 Indexed with:
 ```
 python scripts/ingest_repo.py --repo ../requests-demo --repo-id requests
-# Indexed 47 files, 405 chunks, 807 symbols, 107 graph edges.
+# Indexed 47 files, 399 chunks, 807 symbols, 2591 references, 107 graph edges.
 ```
 
 All output below is real, regenerated against the current `requests-demo` source (post the
-2026-09 upstream pull that added the `_types.py` typing pass).
+2026-09 upstream pull that added the `_types.py` typing pass). The one exception is the
+`/ask` answer in Q7, which is marked as such.
 
 ---
 
 ## Q1: Where is SSL certificate verification handled?
 
 ```
-python scripts/demo_query.py --repo-id requests "where is SSL certificate verification handled?"
+python scripts/demo_query.py --repo-id requests "where is SSL certificate verification handled?" --top-k 5
 ```
 
 ```
 Search: "where is SSL certificate verification handled?"
-Top 10 results:
+Top 5 results:
+[1] HISTORY.md  lines 1799–1875  score=0.031
+    -   danger\_mode for automatic Response.raise\_for\_status()
+    -   Response.iter\_lines refactor
 
-[1] src/requests/adapters.py  lines 296–337  score=0.457
-    manager = self.proxy_manager[proxy] = proxy_from_url(...)
-    (proxy connection pool setup, used by the TLS-verifying send() path)
+[2] src/requests/adapters.py  lines 307–348  score=0.031
+    def cert_verify(
+    self, conn: Any, url: str, verify: _t.VerifyType, cert: _t.CertType
 
-[2] tests/certs/README.md  lines 1–11  score=0.442
-    # Testing Certificates
-    This is a collection of certificates useful for testing aspects of
-    Requests' behaviour.
+[3] src/requests/adapters.py  lines 428–453  score=0.031
+    To override these settings, one may subclass this class, call this
+    method and use the above logic to change parameters as desired. For
 
-[3] src/requests/adapters.py  lines 431–464  score=0.423
-    must both set "ssl_context" and based on what else they require,
-    alter the other keys to ensure the desired behaviour.
+[4] HISTORY.md  lines 163–196  score=0.030
+    - Fixed an issue where setting `verify=False` on the first request from a
+    Session will cause subsequent requests to the _same origin_ to also ignore
 
-[4] tests/certs/mtls/README.md  lines 1–5  score=0.420
-    # Certificate Examples for mTLS
-
-[5] src/requests/certs.py  lines 1–19  score=0.415
-    #!/usr/bin/env python
-    """
-    requests.certs
-    ~~~~~~~~~~~~~~
-    This module returns the preferred default CA certificate bundle.
-
-[6] src/requests/sessions.py  lines 470–503  score=0.385
-    #: If verify is set to `False`, requests will accept any TLS certificate
-    #: presented by the server, and will ignore hostname mismatches...
-
-[7] src/requests/sessions.py  lines 602–639  score=0.373
-    hostname to the URL of the proxy...
-
-[8] tests/certs/README.md  lines 9–11  score=0.370
-    * [mtls](./mtls) provides a valid client certificate with a 2 year validity
-
-[9] tests/testserver/server.py  lines 153–177  score=0.370
-    (test server TLS context setup for mTLS tests)
-
-[10] src/requests/adapters.py  lines 640–679  score=0.355
-    Sends PreparedRequest object. Returns Response object.
+[5] tests/testserver/server.py  lines 138–176  score=0.029
+    class TLSServer(Server):
+    def __init__(
 ```
 
-**Answer:** SSL certificate verification lives primarily in `src/requests/adapters.py` (TLS
-context construction and the `verify`/`cert` parameter handling in `send()`/`cert_verify()`)
-and `src/requests/certs.py` (CA bundle resolution via `certifi`).
+Snippets are trimmed to their first two lines. `HTTPAdapter.cert_verify` (lines 307–348) is
+the method that does the verification. The top hit is a changelog entry ("verify ssl is
+default"), which keyword search matches strongly; hybrid search caps how many chunks one file
+can contribute to the keyword list, so `HISTORY.md` doesn't take over the results, but it can
+still rank first.
+
+**Answer:** SSL certificate verification lives primarily in `src/requests/adapters.py`
+(`HTTPAdapter.cert_verify`, and TLS context setup around it) and `src/requests/certs.py` (CA
+bundle resolution via `certifi`).
 
 ---
 
@@ -125,35 +112,29 @@ python scripts/demo_query.py --repo-id requests "what happens after Session.send
 ```
 Search: "what happens after Session.send() is called?"
 Top 5 results:
+[1] src/requests/sessions.py  lines 752–793  score=0.046
+    def send(self, request: PreparedRequest, **kwargs: Any) -> Response:
+    """Send a given PreparedRequest.
 
-[1] src/requests/sessions.py  lines 916–921  score=0.414
-    to create a session. This may be removed at a future date.
-    :rtype: Session
-    """
-    return Session()
+[2] src/requests/api.py  lines 67–99  score=0.029
+    # By using the 'with' statement we are sure the session is closed, thus we
+    # cases, and look like a memory leak in
 
-[2] src/requests/sessions.py  lines 377–436  score=0.402
-    # https://tools.ietf.org/html/rfc7231#section-6.4.4
-    if response.status_code == codes.see_other and method != "HEAD":
-        method = "GET"
-    # Do what the browsers do, despite standards... (redirect handling)
+[3] tests/test_requests.py  lines 2608–2646  score=0.028
+    class RedirectSession(SessionRedirectMixin):
+    def __init__(self, order_of_redirects):
 
-[3] src/requests/models.py  lines 793–835  score=0.402
-    #: Textual reason of responded HTTP Status, e.g. "Not Found" or "OK".
-    self.reason = None
-    #: A CookieJar of Cookies the server sent back.
+[4] src/requests/sessions.py  lines 108–132  score=0.028
+    def merge_hooks(
+    request_hooks: _t.HooksType,
 
-[4] src/requests/sessions.py  lines 901–921  score=0.396
-    return state
-    def __setstate__(self, state): ...
-    def session() -> Session: ...
-
-[5] src/requests/sessions.py  lines 1–66  score=0.386
-    """
-    requests.sessions
-    ~~~~~~~~~~~~~~~~~
-    This module provides a Session object to manage and persist settings.
+[5] HISTORY.md  lines 1653–1704  score=0.028
+    -   Session cookies not saved when Session.request is called with
+    return\_response=False
 ```
+
+`Session.send()` itself is the top hit. The query contains the identifier `Session.send`, so
+hybrid search also looks up the chunk that *defines* it and ranks it first.
 
 ---
 
@@ -226,39 +207,39 @@ python scripts/demo_query.py --repo-id requests "where is authentication handled
 ```
 Search: "where is authentication handled?"
 Top 5 results:
-
-[1] src/requests/auth.py  lines 330–355  score=0.358
-    r.headers["Authorization"] = _digest_auth
-    if (tell := getattr(r.body, "tell", None)) is not None: ...
-
-[2] src/requests/auth.py  lines 1–52  score=0.355
-    """
-    requests.auth
-    ~~~~~~~~~~~~~
-    This module contains the authentication handlers for Requests.
+[1] src/requests/auth.py  lines 273–310  score=0.032
+    def handle_401(self, r: Response, **kwargs: Any) -> Response:
     """
 
-[3] src/requests/auth.py  lines 93–143  score=0.339
-    @overload
-    def __init__(self, username: bytes, password: bytes) -> None: ...
+[2] HISTORY.md  lines 2049–2102  score=0.031
+    -   Smarter Query URL Parameterization
+    -   Allow file uploads and POST data together
 
-[4] HISTORY.md  lines 2022–2093  score=0.325
-    - Internal Refactor
-    - Bytes data upload Bugfix ...
+[3] src/requests/auth.py  lines 252–271  score=0.031
+    # XXX should the partial digests be encoded too?
+    base = (
 
-[5] src/requests/sessions.py  lines 306–343  score=0.317
-    url = self.get_redirect_target(resp)
-    yield resp
-    def rebuild_auth(self, prepared_request, response): ...
+[4] HISTORY.md  lines 1935–1996  score=0.028
+    ------------------
+    -   Automatic decoding of unicode, based on HTTP Headers.
+
+[5] src/requests/sessions.py  lines 309–332  score=0.028
+    def rebuild_auth(
+    self, prepared_request: PreparedRequest, response: Response
 ```
 
 **Answer:** Authentication is handled in `src/requests/auth.py` (`HTTPBasicAuth`,
 `HTTPDigestAuth`, `HTTPProxyAuth`) and applied/re-applied across redirects in
-`src/requests/sessions.py`.
+`src/requests/sessions.py` (`rebuild_auth`, lines 309–332).
 
 ---
 
 ## Q7: Where is SSL certificate verification handled? (grounded Q&A)
+
+> This answer was generated before hybrid search and structure-aware chunking; it hasn't been
+> re-run since, because `/ask` calls a paid/rate-limited LLM API. Retrieval for the same
+> question now returns the chunks shown in Q1, and `/ask` now sends full chunks rather than
+> the first 800 characters of each, so a fresh run will differ.
 
 ```
 python scripts/demo_query.py --repo-id requests --mode ask \

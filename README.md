@@ -24,12 +24,13 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                        Ingest Pipeline                      │
 │                                                             │
-│  walk_repo → load_file → detect_language → chunk_file       │
+│  walk_repo → load_file → detect_language → analyze_file     │
+│       │          (tree-sitter: symbols, imports, usages)    │
 │       │                                        │            │
-│  extract_symbols/imports              embed_texts (local    │
+│  chunk_file (definition-aligned)      embed_texts (local    │
 │       │                               sentence-transformers │
 │       ▼                               or OpenAI)            │
-│  MetadataStore (SQLite)                    │                │
+│  MetadataStore (SQLite + FTS5)             │                │
 │  DependencyGraph (NetworkX)           FAISSStore            │
 │       │                               (IndexFlatIP)         │
 │       ▼                                    │                │
@@ -40,7 +41,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                       Query Pipeline                        │
 │                                                             │
-│  POST /search   → embed query → FAISS search → ranked chunks│
+│  POST /search   → FAISS + BM25 + exact symbol → rank fusion │
 │  GET  /definition → SQLite symbol lookup + usage index      │
 │  POST /impact   → graph BFS + symbol refs + FAISS (3 signals│
 │  POST /impact/batch → merge /impact across many changed files│
@@ -87,9 +88,12 @@ Both backends default to a current model (`claude-sonnet-5` / `gemini-flash-late
 
 ### Ingest a repo
 
+The first ingest downloads the local embedding model (`BAAI/bge-small-en-v1.5`, ~130 MB) from
+Hugging Face; after that everything runs offline.
+
 ```bash
 python scripts/ingest_repo.py --repo /path/to/your/repo --repo-id my-project
-# Indexed 47 files, 405 chunks, 807 symbols, 2591 references, 107 graph edges.
+# Indexed 47 files, 399 chunks, 807 symbols, 2591 references, 107 graph edges.
 ```
 
 `repo_id` may only contain letters, digits, `_`, and `-` (it's used as a filesystem path component, so this is enforced everywhere, not just the CLI). Re-running ingest on the same `repo_id` is safe and idempotent — it fully replaces the previous index rather than accumulating stale chunks/symbols/edges alongside it, and the embedding backend used at ingest time is recorded and reused automatically for every later query against that `repo_id`, even if `EMBEDDING_BACKEND` in `.env` changes afterward.
@@ -130,17 +134,24 @@ Ingest a repository and build all indexes.
 ```
 
 ```json
-{"repo_id": "my-project", "files_indexed": 47, "chunks_indexed": 405,
+{"repo_id": "my-project", "files_indexed": 47, "chunks_indexed": 399,
  "symbols_extracted": 807, "edges_in_graph": 107}
 ```
 
 ### `POST /search`
 
-Semantic search over embedded code chunks.
+Hybrid search over code chunks. Three ranked lists are merged with reciprocal rank fusion:
+semantic (embedding similarity), keyword (BM25 over paths, symbol names and code, with
+camelCase split so "adapter" matches `HTTPAdapter`), and chunks that define any identifier
+typed in the query (`get_netrc_auth`, `HTTPAdapter.send`).
 
 ```json
-{"repo_id": "my-project", "query": "SSL certificate verification", "top_k": 10}
+{"repo_id": "my-project", "query": "SSL certificate verification", "top_k": 10, "mode": "hybrid"}
 ```
+
+`mode` is `hybrid` (default), `semantic` or `keyword`. `score` is the fused rank score in
+hybrid mode, cosine similarity in semantic mode and BM25 in keyword mode, so compare scores
+only within one mode.
 
 ### `GET /definition?repo_id=X&symbol=Y`
 
@@ -237,16 +248,17 @@ RELATED:
   [0.35] README.md                 — semantically related
 ```
 
-**Search: "where is SSL certificate verification handled?":**
+**Search: "what happens after Session.send() is called?":**
 ```
-[1] src/requests/adapters.py  lines 296–337  score=0.457
-[2] tests/certs/README.md     lines 1–11     score=0.442
-[3] src/requests/adapters.py  lines 431–464  score=0.423
-[4] src/requests/certs.py     lines 1–19     score=0.415
-[5] src/requests/sessions.py  lines 470–503  score=0.385
+[1] src/requests/sessions.py        lines 752–793    score=0.046   (Session.send itself)
+[2] src/requests/api.py             lines 67–99      score=0.029
+[3] tests/test_requests.py          lines 2608–2646  score=0.028
+[4] src/requests/sessions.py        lines 108–132    score=0.028
+[5] HISTORY.md                      lines 1653–1704  score=0.028
 ```
 
-**Grounded Q&A: "Where is SSL certificate verification handled?"**
+**Grounded Q&A: "Where is SSL certificate verification handled?"** (generated before the
+hybrid-search and full-chunk changes; not re-run since, as it uses a paid API)
 ```
 A: Based on the provided excerpts, SSL/TLS certificate verification is handled in
 the following places:
@@ -290,10 +302,10 @@ instead of running `/impact` twice and manually merging the results. Full output
 Validated end-to-end against `psf/requests` (47 files, ~12K lines of Python) and dogfooded
 against its own source. Everything below is measured, not estimated.
 
-**Ingestion is fast and fully local.** 47 files → 405 chunks, 807 symbols, 2,591 symbol
-usages and 107 dependency edges in ~8 seconds on a laptop CPU — walking, chunking, tree-sitter parsing, dependency
-resolution, and embedding with the local `all-MiniLM-L6-v2` model, no API key and no network
-calls required.
+**Ingestion is fast and fully local.** 47 files → 399 chunks, 807 symbols, 2,591 symbol
+usages and 107 dependency edges in ~12 seconds on a laptop CPU — walking, tree-sitter parsing,
+chunking, dependency resolution, keyword indexing and embedding with the local
+`bge-small-en-v1.5` model. No API key, and no network calls after the one-time model download.
 
 **Re-ingestion is provably idempotent.** Ingesting the same `repo_id` twice leaves the exact
 same row counts, not double — verified both with a synthetic fixture
@@ -301,11 +313,12 @@ same row counts, not double — verified both with a synthetic fixture
 `requests` repo mid-development and diffing chunk counts before/after. A symbol removed from
 source (e.g. a rename) is confirmed gone from the DB after re-ingest, not left as an orphaned row.
 
-**Retrieval finds the right code with pure semantic similarity — no keyword matching.**
-Querying "where is SSL certificate verification handled?" against all 405 chunks returns
-`adapters.py`'s TLS/cert-verification logic and `certs.py`'s CA-bundle resolution in the top 5
-results, purely from embedding similarity — neither file name nor the query share much
-vocabulary. See [Example Output](#example-output) above for the exact ranked results.
+**Search gains held up on questions that weren't used for tuning.** Every search change was
+scored on 42 questions, and parameters were chosen on those only. A further 25 questions were
+written and committed *before* any tuning and used only to check that gains transfer. On them,
+the answering function's exact lines are in the top 5 for 92% of questions, up from 72%,
+and span MRR rose from 0.52 to 0.88. A tuned idea that didn't transfer (down-weighting keyword
+matches for plain-English queries) was reverted. See [Evaluation](#evaluation).
 
 **The impact engine caught a real bug in a mature, heavily-tested library — on itself.**
 Running `/impact` against `adapters.py` in the actual `requests` codebase surfaced that
@@ -323,13 +336,14 @@ ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolv
 package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
 edges, so tests never showed up as impacted.
 
-**Test suite: 100/100 passing in about a second**, covering ingestion and language
+**Test suite: 127/127 passing in about a second**, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
 symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
 imported names), Python and TypeScript import resolution (`src/` layouts, relative and
 submodule imports, dotted filenames, ESM `.js` specifiers, tsconfig `paths` aliases), the
 dependency graph and its import-cycle handling, find-references, transactional re-ingest and
-legacy-DB migration, `/ask` error handling, all three impact-analysis
+legacy-DB migration, structure-aware chunking, keyword indexing, rank fusion, per-repo
+embedding-model pinning, `/ask` error handling, all three impact-analysis
 signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
@@ -366,6 +380,26 @@ will report a file as one of its own transitive dependents. That's never actiona
 information for "what breaks if I change this file" — it's excluded unconditionally, cycle or
 not, rather than trying to special-case cycle detection.
 
+**Why chunks follow definitions instead of fixed windows:** A fixed 1,600-character window cuts
+functions in half, so the chunk that matches a query often holds the end of one function and
+the start of the next. Chunks now come from the parse tree: a function or small class is one
+chunk, an oversized class is split into its methods, decorators and comments stay with the
+definition they describe, and only a single function too big to fit falls back to windows.
+
+**Why hybrid search, fused by rank:** Embeddings are good at paraphrase ("where are redirects
+followed?") and bad at exact identifiers; BM25 is the reverse. Reciprocal rank fusion merges
+the lists by rank position, which sidesteps the fact that cosine and BM25 scores aren't on
+comparable scales, and needs no trained weights. Queries that contain an identifier also pull
+in the chunk that defines it, straight from the symbol table.
+
+**Why `bge-small-en-v1.5` by default:** Same size and speed as `all-MiniLM-L6-v2`, but it reads
+512 tokens instead of 256, which is what lets the per-chunk context header (file, enclosing
+class, defined symbols) help instead of crowding out code. Each repo stays pinned to the model
+it was ingested with, so changing the default never breaks an existing index.
+
+**Why no reranker:** Off-the-shelf cross-encoders are trained on web search passages. Both
+ones tried made results clearly worse on code while adding latency to every query.
+
 **Why Python + TypeScript only:** Depth over breadth. Two languages done well (real ASTs
 via tree-sitter, proper import resolution) beats six languages done poorly.
 
@@ -388,7 +422,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 100 passed
+# 127 passed
 ```
 
 ---
@@ -404,8 +438,12 @@ python eval/run_eval.py --repo-id requests --out eval/results/<name>.json   # sa
 ```
 
 - **42 search questions**, each labeled with the function/class that answers it. Scored
-  file-level (`file_hit@k`, MRR) and line-level (`span_hit@k`: a result chunk overlaps the
-  answering symbol's exact line span).
+  file-level (`file_hit@k`, MRR) and line-level (`span_hit@k`, `span_mrr`: a result chunk
+  overlaps the answering symbol's exact line span), with the average result size alongside,
+  since bigger chunks overlap more spans for free.
+- **25 held-out search questions**, committed before any search tuning and never used to pick
+  parameters, and **14 identifier queries** typed the way developers do (`get_netrc_auth`,
+  `HTTPAdapter.send timeout handling`).
 - **24 definition lookups** (bare and `Class.method` names), **12 reference sets**
   (every file that uses a symbol), **10 impact targets** (their true direct importers).
 - **The true import graph** (107 edges), to score the dependency graph directly.
@@ -417,15 +455,34 @@ benchmark can't inherit the tool's bugs. Saved runs live in `eval/results/`.
 
 | Metric | Baseline | Now |
 |---|---|---|
-| Search `file_hit@5` / `span_hit@5` / MRR | 0.95 / 0.88 / 0.78 | 0.95 / 0.88 / 0.78 |
+| Search, main 42: `span_hit@5` / span MRR | 0.88 / 0.71 | **0.95 / 0.79** |
+| Search, held-out 25: `span_hit@5` / span MRR | 0.72 / 0.52 | **0.92 / 0.88** |
+| Search, identifier 14: `span_hit@5` / span MRR | 0.79 / 0.66 | **0.93 / 0.93** |
+| Search: avg lines per top-5 result | 44 | 39 |
 | Definition accuracy (file + line) | 0.71 | **1.00** |
 | References recall / precision | 0.00 / 0.00 | **1.00 / 1.00** |
 | Impact: true direct importers in `high_confidence` | 0.61 | **1.00** |
 | Impact: `high_confidence` precision | 0.70 | **1.00** |
 | Import graph edge recall / precision | 0.68 / 0.90 | **1.00 / 1.00** |
 
-Search is unchanged so far: these fixes were to symbols, references and the import graph.
-Retrieval quality (AST-aware chunking, hybrid keyword + semantic search) is next.
+What moved search, in order (span MRR on main / held-out; the held-out set was added after
+chunking was done, so it has no chunking-only number):
+
+| Change | Main | Held-out |
+|---|---|---|
+| Baseline: fixed 1600-char windows, MiniLM, semantic only | 0.71 | 0.52 |
+| Definition-aligned chunks | 0.77 | — |
+| + hybrid search (BM25 + exact symbol, rank-fused) | 0.80 | 0.76 |
+| + `bge-small-en-v1.5` with a context header per chunk | 0.77 | 0.83 |
+| + at most 2 keyword hits per file | **0.79** | **0.88** |
+
+Tried and not shipped: chunk budgets of 1000/1200/2000/2400 chars (1600 was best), context
+headers with MiniLM (it truncates at 256 tokens), `bge-base-en-v1.5` (no better, ~4× slower
+ingest), cross-encoder rerankers `ms-marco-MiniLM-L-6-v2` and `bge-reranker-base` (both clearly
+worse on code, e.g. main span MRR 0.77 → 0.65, and +0.25–1s per query).
+
+With 25–42 questions per set, one question moves a metric by 0.02–0.04, so small differences
+are noise. That's why decisions were checked against the held-out set.
 
 ---
 
@@ -439,8 +496,12 @@ Retrieval quality (AST-aware chunking, hybrid keyword + semantic search) is next
 - References are matched by identifier name, not by type: usages of `Session.send` include
   every `.send(...)` call
 - Answer quality depends on whether the relevant code was retrieved in the top-k chunks
-- `all-MiniLM-L6-v2` is 384-dimensional and fast but not state-of-the-art; swap to
-  `text-embedding-3-small` via `EMBEDDING_BACKEND=openai` for better retrieval
+- The default local model (`bge-small-en-v1.5`) is general-purpose, not code-specific. Set
+  `EMBEDDING_MODEL` to any sentence-transformers model, or `EMBEDDING_BACKEND=openai`
+- Keyword search still surfaces changelog/prose entries for broad questions (e.g. `HISTORY.md`
+  for "where is SSL certificate verification handled?"); a per-file cap limits how many, but
+  one can still rank first
+- The search benchmark covers one Python repo; TypeScript retrieval is tested but not scored
 - `/impact/batch` is file-level diff-awareness (which files does a change set touch), not
   line-level (which *symbols* within a file a specific hunk affects)
 - Single-process, in-memory `_loaded_repos` cache — fine for local/single-worker use, not
