@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """Build eval/requests_bench.yaml from hand-written labels + the requests source.
 
-Labels below are hand-written (query → the function/class that answers it).
-Everything mechanical — exact line spans, the true import graph, which files
-reference a symbol — is derived with Python's own `ast` module, which is
-deliberately independent of codebase-intel's tree-sitter/regex extraction so
-the benchmark can't inherit the tool's bugs.
+Labels below are hand-written (query → the function/class that answers it);
+everything mechanical is derived from the source by eval/benchlib.py.
 
 Usage:
   python eval/build_requests_bench.py --source ../requests-demo
 """
 import argparse
-import ast
-import subprocess
+import sys
 from pathlib import Path
 
-import yaml
+sys.path.insert(0, str(Path(__file__).parent))
+
+from benchlib import build_bench, write_bench
 
 S = "src/requests/"
 
@@ -153,177 +151,26 @@ IMPACT_TARGETS = [
 ]
 
 
-def symbol_spans(path: Path) -> dict[str, list[int]]:
-    """Qualified name → [start_line, end_line] for every def/class in a file.
-
-    @overload stubs share a name; their spans are merged so the entry covers
-    every overload plus the implementation.
-    """
-    out: dict[str, list[int]] = {}
-
-    def visit(node, prefix: str) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                qual = f"{prefix}{child.name}"
-                start = min([child.lineno] + [d.lineno for d in child.decorator_list])
-                if qual in out:
-                    out[qual] = [min(out[qual][0], start), max(out[qual][1], child.end_lineno)]
-                else:
-                    out[qual] = [start, child.end_lineno]
-                visit(child, qual + ".")
-            else:
-                visit(child, prefix)
-
-    visit(ast.parse(path.read_text()), "")
-    return out
-
-
-def _module_name(rel: str) -> list[str]:
-    parts = list(Path(rel).with_suffix("").parts)
-    if parts[0] == "src":
-        parts = parts[1:]
-    return parts
-
-
-def import_graph(source: Path, py_files: list[str]) -> dict[str, list[str]]:
-    """file → sorted list of in-repo files it imports (ground truth via ast)."""
-    modules: dict[str, str] = {}
-    for rel in py_files:
-        parts = _module_name(rel)
-        if parts[-1] == "__init__":
-            parts = parts[:-1]
-        modules[".".join(parts)] = rel
-
-    def longest_known(mod: str):
-        while mod and mod not in modules:
-            mod = mod.rpartition(".")[0]
-        return modules.get(mod) if mod else None
-
-    edges: dict[str, list[str]] = {}
-    for rel in py_files:
-        parts = _module_name(rel)
-        package = parts[:-1]  # for __init__.py this is the package itself
-        targets: set[str] = set()
-        for node in ast.walk(ast.parse((source / rel).read_text())):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    hit = longest_known(alias.name)
-                    if hit:
-                        targets.add(hit)
-            elif isinstance(node, ast.ImportFrom):
-                if node.level:
-                    base = package[: len(package) - (node.level - 1)]
-                    module = ".".join(base + ([node.module] if node.module else []))
-                else:
-                    module = node.module or ""
-                for alias in node.names:
-                    sub = f"{module}.{alias.name}"
-                    hit = modules.get(sub) or longest_known(module)
-                    if hit:
-                        targets.add(hit)
-        targets.discard(rel)
-        if targets:
-            edges[rel] = sorted(targets)
-    return edges
-
-
-def referencing_files(source: Path, symbol: str, py_files: list[str]) -> list[str]:
-    hits = []
-    for rel in py_files:
-        for node in ast.walk(ast.parse((source / rel).read_text())):
-            if (
-                (isinstance(node, ast.Name) and node.id == symbol)
-                or (isinstance(node, ast.Attribute) and node.attr == symbol)
-                or (isinstance(node, ast.ImportFrom) and any(a.name == symbol for a in node.names))
-            ):
-                hits.append(rel)
-                break
-    return sorted(hits)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, help="Path to the requests checkout")
     parser.add_argument("--out", default=str(Path(__file__).parent / "requests_bench.yaml"))
     args = parser.parse_args()
-
-    source = Path(args.source).resolve()
-    py_files = sorted(
-        p.relative_to(source).as_posix() for p in source.rglob("*.py") if ".git" not in p.parts
+    bench = build_bench(
+        Path(args.source),
+        repo="psf/requests",
+        builder="eval/build_requests_bench.py",
+        prefix=S,
+        search_sets={
+            "search": SEARCH,
+            "search_holdout": SEARCH_HOLDOUT,
+            "search_identifier": SEARCH_IDENTIFIER,
+        },
+        definitions=DEFINITIONS,
+        ref_symbols=REF_SYMBOLS,
+        impact_targets=IMPACT_TARGETS,
     )
-    commit = subprocess.run(
-        ["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True
-    ).stdout.strip() or None
-
-    spans: dict[str, dict[str, list[int]]] = {}
-
-    def span(rel: str, qual: str) -> list[int]:
-        if rel not in spans:
-            spans[rel] = symbol_spans(source / rel)
-        if qual in spans[rel]:
-            return spans[rel][qual]
-        # Bare method name (e.g. "cert_verify") — must match exactly one Class.method.
-        matches = [k for k in spans[rel] if k.endswith("." + qual)]
-        if len(matches) != 1:
-            raise KeyError(f"{qual!r} in {rel}: expected one match, got {matches}")
-        return spans[rel][matches[0]]
-
-    edges = import_graph(source, py_files)
-    dependents: dict[str, set[str]] = {}
-    for src, targets in edges.items():
-        for t in targets:
-            dependents.setdefault(t, set()).add(src)
-
-    bench = {
-        "repo": "psf/requests",
-        "repo_commit": commit,
-        "notes": (
-            "Labels are hand-written in eval/build_requests_bench.py; line spans, the import "
-            "graph and reference sets are derived with Python's ast module, independent of "
-            "codebase-intel's own extraction. Regenerate with: "
-            "python eval/build_requests_bench.py --source <requests checkout>"
-        ),
-        "search": [
-            {
-                "query": q,
-                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
-            }
-            for q, expected in SEARCH
-        ],
-        "search_holdout": [
-            {
-                "query": q,
-                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
-            }
-            for q, expected in SEARCH_HOLDOUT
-        ],
-        "search_identifier": [
-            {
-                "query": q,
-                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
-            }
-            for q, expected in SEARCH_IDENTIFIER
-        ],
-        "definition": [
-            {"symbol": s, "file": S + f, "line": span(S + f, s)[0]} for s, f in DEFINITIONS
-        ],
-        "references": [
-            {"symbol": s, "files": referencing_files(source, s, py_files)} for s in REF_SYMBOLS
-        ],
-        "impact": [
-            {"target": S + t, "direct_dependents": sorted(dependents.get(S + t, []))}
-            for t in IMPACT_TARGETS
-        ],
-        "import_graph": edges,
-    }
-    with open(args.out, "w") as f:
-        yaml.safe_dump(bench, f, sort_keys=False, width=110)
-    print(
-        f"Wrote {args.out}: {len(bench['search'])} search, {len(bench['search_holdout'])} holdout, "
-        f"{len(bench['search_identifier'])} identifier, {len(bench['definition'])} definition, "
-        f"{len(bench['references'])} references, {len(bench['impact'])} impact cases, "
-        f"{sum(len(v) for v in edges.values())} ground-truth import edges"
-    )
+    write_bench(bench, args.out)
 
 
 if __name__ == "__main__":
