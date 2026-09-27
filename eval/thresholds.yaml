@@ -36,3 +36,17 @@ flask_history:
   dev.mrr: 0.54                     # 0.567
   heldout.recall@10: 0.54           # 0.567
   heldout.mrr: 0.43                 # 0.454
+usage_requests:             # eval/run_usage_eval.py vs runtime calls (eval/requests_calls.json)
+  methods.recall: 0.92              # 0.947
+  methods.precision_lower_bound: 0.73   # 0.759
+  dunder_methods.recall: 0.44       # 0.477
+  dunder_methods.precision_lower_bound: 0.47  # 0.502
+  functions.recall: 0.91            # 0.935
+  functions.precision_lower_bound: 0.84  # 0.863
+usage_flask:                # never tuned on
+  methods.recall: 0.95              # 0.974
+  methods.precision_lower_bound: 0.75   # 0.784
+  dunder_methods.recall: 0.44       # 0.475
+  dunder_methods.precision_lower_bound: 0.42  # 0.450
+  functions.recall: 0.77            # 0.796
+  functions.precision_lower_bound: 0.57  # 0.598
