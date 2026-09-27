@@ -111,3 +111,86 @@ def test_package_init_does_not_get_self_edges(mock_embed, tmp_path):
     assert ("pkg/__init__.py", "pkg/__init__.py") not in edges
     assert ("pkg/__init__.py", "pkg/mod.py") in edges
     assert ("pkg/mod.py", "pkg/__init__.py") in edges
+
+
+@patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts)
+def test_same_name_methods_all_stored_with_qualified_names(mock_embed, tmp_path):
+    """Every `send` must be stored — the old (name, file) key kept only the last one."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text(
+        "class A:\n    def send(self):\n        pass\n\n"
+        "class B:\n    def send(self):\n        return A().send()\n"
+    )
+    summary = run_ingestion(str(repo), "myrepo")
+    store = MetadataStore(str(paths.db_path("myrepo")))
+    assert {r["qualified_name"] for r in store.find_symbol("myrepo", "send")} == {"A.send", "B.send"}
+    assert [r["start_line"] for r in store.find_symbol("myrepo", "B.send")] == [6]
+    assert summary["symbols_extracted"] == 4  # A, A.send, B, B.send
+
+
+@patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts)
+def test_references_are_stored_and_pruned_to_repo_symbols(mock_embed, tmp_path):
+    repo = _make_repo(tmp_path)  # a.py calls b.bar()
+    run_ingestion(str(repo), "myrepo")
+    store = MetadataStore(str(paths.db_path("myrepo")))
+    assert store.find_references("myrepo", "bar") == [{"file_path": "a.py", "line": 4}]
+    # `return` isn't an identifier and `b` isn't a defined symbol → pruned
+    assert store.find_references("myrepo", "b") == []
+
+
+@patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts)
+def test_chunks_list_only_their_own_symbols(mock_embed, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    body = "".join(f"def f{i}():\n" + "    x = 1\n" * 40 + "\n" for i in range(6))
+    (repo / "big.py").write_text(body)
+    run_ingestion(str(repo), "myrepo")
+    store = MetadataStore(str(paths.db_path("myrepo")))
+    chunks = store.get_chunks_by_file("myrepo", "big.py")
+    assert len(chunks) > 1
+    for i in range(6):
+        # def f{i} sits on line 1 + 42*i; only chunks covering that line list it
+        # (previously every chunk carried the whole file's symbol list).
+        def_line = 1 + 42 * i
+        holders = [c for c in chunks if f"f{i}" in c.symbols]
+        assert holders and all(c.start_line <= def_line <= c.end_line for c in holders)
+
+
+def test_failed_ingest_leaves_previous_index_intact(tmp_path):
+    """If embedding fails, the DB rebuild must roll back rather than leave a
+    cleared/half-written DB that no longer matches the FAISS index."""
+    repo = _make_repo(tmp_path)
+    with patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts):
+        run_ingestion(str(repo), "myrepo")
+
+    (repo / "b.py").write_text("def renamed():\n    return 1\n")
+    with patch("app.core.pipeline.embed_texts", side_effect=RuntimeError("model download failed")):
+        with pytest.raises(RuntimeError):
+            run_ingestion(str(repo), "myrepo")
+
+    store = MetadataStore(str(paths.db_path("myrepo")))
+    assert store.find_symbol("myrepo", "bar")          # old state still there
+    assert store.find_symbol("myrepo", "renamed") == []
+    assert store.count_chunks("myrepo") == 2
+
+
+def test_legacy_symbols_table_is_migrated(tmp_path):
+    """DBs from before qualified names get upgraded in place, keeping their rows."""
+    import sqlite3
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+        CREATE TABLE symbols (symbol_name TEXT NOT NULL, repo_id TEXT NOT NULL,
+            file_path TEXT NOT NULL, start_line INTEGER, kind TEXT,
+            PRIMARY KEY (symbol_name, repo_id, file_path));
+        CREATE INDEX idx_symbols_repo_name ON symbols (repo_id, symbol_name);
+        INSERT INTO symbols VALUES ('foo', 'r', 'a.py', 3, 'function');
+    """)
+    conn.commit()
+    conn.close()
+
+    store = MetadataStore(str(db))
+    rows = store.find_symbol("r", "foo")
+    assert rows and rows[0]["qualified_name"] == "foo" and rows[0]["start_line"] == 3
+    assert store.find_references("r", "foo") == []  # new table exists, empty until re-ingest
