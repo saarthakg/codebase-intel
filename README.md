@@ -1,6 +1,10 @@
 # codebase-intel
 
+[![CI](https://github.com/saarthakg/codebase-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/saarthakg/codebase-intel/actions/workflows/ci.yml)
+
 AI-powered codebase intelligence: semantic search, symbol lookup, dependency-aware impact analysis, and grounded repository Q&A.
+Runs locally at no cost. Use it from the CLI, a small web UI, a REST API, or as an MCP server
+inside Claude Code / Cursor.
 
 ---
 
@@ -33,8 +37,8 @@ Answers are always grounded in retrieved code — no hallucinated function names
 │       │                               or OpenAI; cached by  │
 │       ▼                               content hash)         │
 │  MetadataStore (SQLite + FTS5)             │                │
-│  DependencyGraph (NetworkX)           FAISSStore            │
-│       │                               (IndexFlatIP)         │
+│  DependencyGraph (NetworkX)           vector index (exact   │
+│       │                               cosine, numpy)        │
 │       ▼                                    │                │
 │  data/metadata/{repo_id}.db          data/indexes/          │
 │  data/metadata/{repo_id}.graph.json  {repo_id}.index        │
@@ -43,7 +47,7 @@ Answers are always grounded in retrieved code — no hallucinated function names
 ┌─────────────────────────────────────────────────────────────┐
 │                       Query Pipeline                        │
 │                                                             │
-│  POST /search   → FAISS + BM25 + exact symbol → rank fusion │
+│  POST /search   → vectors + BM25 + exact symbol → rank fusion│
 │  GET  /definition → SQLite symbol lookup + usage index      │
 │  POST /impact   → imports + usages + git co-change + named  │
 │                   tests + semantic neighbours, ranked       │
@@ -150,12 +154,37 @@ python scripts/demo_query.py --repo-id my-project --mode impact --target src/req
 python scripts/demo_query.py --repo-id my-project --mode ask "how does redirect handling work?"
 ```
 
-### Start the API server
+### Start the API server and web UI
 
 ```bash
 uvicorn app.main:app --reload
-# Interactive docs at http://localhost:8000/docs
+# Web UI:           http://localhost:8000/
+# Interactive docs: http://localhost:8000/docs
 ```
+
+The web UI has a repo picker and tabs for search, definition, impact and (streaming) ask.
+
+### Use it from Claude Code, Cursor or any MCP client
+
+`app/mcp_server.py` is an MCP server over stdio. The client's own model does the reasoning,
+so it makes no LLM calls itself. Register it with Claude Code (use your absolute paths):
+
+```bash
+claude mcp add codebase-intel -- /path/to/codebase-intel/.venv/bin/python /path/to/codebase-intel/app/mcp_server.py
+```
+
+For Cursor, add to `~/.cursor/mcp.json`:
+
+```json
+{"mcpServers": {"codebase-intel": {
+  "command": "/path/to/codebase-intel/.venv/bin/python",
+  "args": ["/path/to/codebase-intel/app/mcp_server.py"]}}}
+```
+
+Tools: `search_code` (returns the matching code), `find_definition` (definition plus every
+usage), `impact` (ranked affected files and tests to run), `impact_of_diff` (pass `git diff`
+output), `list_repos`, and `ingest_repo` (the only one that writes). `repo_id` can be omitted
+when a single repo is indexed, or set `CODEBASE_INTEL_REPO_ID`.
 
 ---
 
@@ -443,7 +472,7 @@ ones. An earlier version found 81, 8 of them wrong: `from . import certs` resolv
 package `__init__.py` instead of `certs.py`, and the `src/` layout meant no test file had any
 edges, so tests never showed up as impacted.
 
-**Test suite: 179/179 passing in about 4 seconds**, covering ingestion and language
+**Test suite: 187/187 passing in about 5 seconds**, run in CI on every push,, covering ingestion and language
 detection, chunking with overlap/line-boundary handling, tree-sitter *and* regex-fallback
 symbol extraction for Python, TypeScript and TSX (qualified method names, same-named symbols,
 imported names), Python and TypeScript import resolution (`src/` layouts, relative and
@@ -454,7 +483,8 @@ embedding-model pinning, `/ask` context assembly, caching, answer checks, stream
 error handling for all three LLM backends, git history with renames, co-change, test-file
 matching, diff-level impact, deterministic ranking, incremental re-ingest, `.gitignore`-aware
 file selection, all three impact-analysis
-signals plus the batch/merge logic, FAISS storage/normalization/dimension-mismatch safety, and
+signals plus the batch/merge logic, vector index normalization/ranking/dimension-mismatch safety,
+the MCP server's tools and error messages, the web UI, and
 the full FastAPI surface (ingest → search → impact → repos → delete) driven through
 `TestClient` rather than mocked at the unit level.
 
@@ -468,9 +498,13 @@ the change — the numbers and outputs throughout this README come from those ac
 
 ## Design Decisions
 
-**Why FAISS over a hosted vector DB:** No infrastructure to run, no network calls, sufficient
-performance for repo-scale (~thousands of chunks). A flat `IndexFlatIP` with L2-normalized
-vectors gives exact cosine similarity.
+**Why a numpy vector index, not FAISS or a hosted vector DB:** No infrastructure to run and
+no network calls. At repo scale (thousands to ~100K chunks), an exact cosine search over a
+normalized numpy matrix is as fast as FAISS's flat index and gives the same results. This
+project used FAISS until it caused crashes: `faiss-cpu` and `torch` each bundle their own
+OpenMP runtime on macOS, and once both initialize in one process it aborts. A server whose
+first request was `/impact` died on the next `/search`. Dropping FAISS removed the whole
+class of problem. (The storage class is still named `FAISSStore` for compatibility.)
 
 **Why NetworkX over Neo4j:** Same reasoning — no server, no schema migrations, sufficient
 for file-level dependency DAGs. The graph is saved as a small JSON file (not a pickle, which
@@ -553,7 +587,7 @@ dependency tracking to get wrong: if a chunk's text is unchanged its vector is t
 via tree-sitter, proper import resolution) beats six languages done poorly.
 
 **Why route handlers are sync `def`, not `async def`:** Every endpoint does CPU-bound work
-(embedding, FAISS search, tree-sitter parsing) with no `await` in the body. FastAPI runs sync
+(embedding, vector search, tree-sitter parsing) with no `await` in the body. FastAPI runs sync
 path operations in a worker thread automatically; leaving them `async def` would run that
 CPU-bound work directly on the single asyncio event loop and block every other in-flight
 request — including `/health` — for the duration.
@@ -563,7 +597,7 @@ time:** `EMBEDDING_BACKEND` can change between when a repo was ingested and when
 queried (e.g. switching `.env` to try OpenAI embeddings on a new repo). Reading the *current*
 env var at query time would silently mis-embed the query, either producing meaningless
 results or crashing on a dimension mismatch. The backend and model used at ingest time are
-recorded alongside the FAISS index and reused for every query against that `repo_id`.
+recorded alongside the vector index and reused for every query against that `repo_id`.
 
 ---
 
@@ -571,7 +605,7 @@ recorded alongside the FAISS index and reused for every query against that `repo
 
 ```bash
 pytest tests/ -v
-# 179 passed
+# 187 passed
 ```
 
 ---
@@ -596,6 +630,9 @@ python eval/run_eval.py --repo-id requests --out eval/results/<name>.json   # sa
 - **24 definition lookups** (bare and `Class.method` names), **12 reference sets**
   (every file that uses a symbol), **10 impact targets** (their true direct importers).
 - **The true import graph** (107 edges), to score the dependency graph directly.
+
+CI (`.github/workflows/ci.yml`) re-runs these evals on every push against a fresh clone of
+`psf/requests` and fails if any metric falls below its floor in `eval/thresholds.yaml`.
 
 Labels are hand-written in `eval/build_requests_bench.py`. Line spans, the import graph and
 reference sets are derived from the `requests` source with Python's own `ast` module, which
