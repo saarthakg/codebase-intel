@@ -213,3 +213,12 @@ def test_ollama_not_running_or_model_missing_are_config_errors():
     with patch("httpx.post", return_value=MagicMock(status_code=404, text="model not found")):
         with pytest.raises(LLMConfigError, match="ollama pull m"):
             answer._call_ollama("prompt", "m")
+
+
+def test_ollama_timeout_explains_what_to_do(monkeypatch):
+    import httpx
+    monkeypatch.setenv("OLLAMA_TIMEOUT", "5")
+    with patch("httpx.post", side_effect=httpx.ReadTimeout("slow")) as post:
+        with pytest.raises(LLMCallError, match="too large for this machine"):
+            answer._call_ollama("prompt", "big-model")
+    assert post.call_args.kwargs["timeout"] == 5.0

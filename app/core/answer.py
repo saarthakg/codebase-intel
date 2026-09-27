@@ -212,6 +212,10 @@ def _ollama_host() -> str:
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
 
+def _ollama_timeout() -> float:
+    return float(os.environ.get("OLLAMA_TIMEOUT", "600"))
+
+
 def _call_ollama(prompt: str, model: str) -> str:
     """Local model via Ollama's /api/chat. Free; needs `ollama serve` + `ollama pull`."""
     import httpx
@@ -228,11 +232,19 @@ def _call_ollama(prompt: str, model: str) -> str:
         "options": {"temperature": 0, "num_ctx": 8192},
     }
     try:
-        resp = httpx.post(f"{host}/api/chat", json=body, timeout=600)
+        resp = httpx.post(f"{host}/api/chat", json=body, timeout=_ollama_timeout())
     except httpx.ConnectError as e:
         raise LLMConfigError(
             f"Can't reach Ollama at {host}. Start it with `ollama serve`, "
             f"then `ollama pull {model}` (or set OLLAMA_HOST)."
+        ) from e
+    except httpx.TimeoutException as e:
+        # Seen with a 13 GB model on a 16 GB machine: it doesn't fit in GPU
+        # memory, spills onto the CPU, and a ~3K-token prompt takes 10+ minutes.
+        raise LLMCallError(
+            f"Ollama model '{model}' didn't answer within {_ollama_timeout():.0f}s. It may be too "
+            f"large for this machine (check `ollama ps` for CPU offload); try a smaller model "
+            f"such as qwen2.5-coder:7b, or raise OLLAMA_TIMEOUT."
         ) from e
     except httpx.HTTPError as e:
         raise LLMCallError(f"Ollama request failed: {type(e).__name__}") from e
