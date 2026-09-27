@@ -75,6 +75,16 @@ class MetadataStore:
                 PRIMARY KEY (repo_id, source_file, target_file, edge_type)
             );
 
+            -- /ask answers keyed by a hash of (prompt version, backend, model,
+            -- system prompt, full prompt). The prompt embeds the excerpt text,
+            -- so a key can only match while the code it was answered from is
+            -- unchanged; entries therefore survive re-ingest safely.
+            CREATE TABLE IF NOT EXISTS answer_cache (
+                cache_key   TEXT PRIMARY KEY,
+                response    TEXT NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_chunks_repo_file ON chunks (repo_id, file_path);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_name ON symbols (repo_id, symbol_name);
             CREATE INDEX IF NOT EXISTS idx_symbols_repo_qualified ON symbols (repo_id, qualified_name);
@@ -403,6 +413,34 @@ class MetadataStore:
             "SELECT COUNT(*) FROM edges WHERE repo_id = ?", (repo_id,)
         ).fetchone()
         return row[0]
+
+    def get_cached_answer(self, cache_key: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT response FROM answer_cache WHERE cache_key = ?", (cache_key,)
+        ).fetchone()
+        return json.loads(row["response"]) if row else None
+
+    def put_cached_answer(self, cache_key: str, response: dict) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO answer_cache (cache_key, response) VALUES (?, ?)",
+            (cache_key, json.dumps(response)),
+        )
+        self._conn.commit()
+
+    def symbol_exists(self, repo_id: str, name: str) -> bool:
+        return self._conn.execute(
+            "SELECT 1 FROM symbols WHERE repo_id = ? AND (symbol_name = ? OR qualified_name = ?) LIMIT 1",
+            (repo_id, name, name),
+        ).fetchone() is not None
+
+    def file_exists(self, repo_id: str, path: str) -> bool:
+        """True if an indexed file is `path` or ends with it ("adapters.py" matches
+        "src/requests/adapters.py")."""
+        return self._conn.execute(
+            """SELECT 1 FROM chunks WHERE repo_id = ?
+               AND (file_path = ? OR file_path LIKE ? ESCAPE '\\') LIMIT 1""",
+            (repo_id, path, "%/" + _like_escape(path)),
+        ).fetchone() is not None
 
     def count_references(self, repo_id: str) -> int:
         row = self._conn.execute(

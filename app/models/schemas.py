@@ -138,6 +138,9 @@ class ImpactBatchResponse(BaseModel):
 class AskRequest(_RepoScoped):
     question: str
     top_k: int = 8
+    # Serve a cached answer when the same question hits the same code with the
+    # same model. Set false to force a fresh LLM call.
+    use_cache: bool = True
 
 
 class Citation(BaseModel):
@@ -151,6 +154,15 @@ class AskResponse(BaseModel):
     answer: str
     citations: list[Citation]
     uncertainty: Optional[str] = None  # null if confident; else a caveat
+    # Code names / file paths in the answer found neither in the excerpts nor in
+    # the repo index — likely invented.
+    unverified_mentions: list[str] = []
+    backend: Optional[str] = None
+    model: Optional[str] = None
+    cached: bool = False               # true when served from the answer cache (no LLM call)
+    excerpts_used: int = 0
+    excerpts_omitted: int = 0          # retrieved but dropped to stay within the context budget
+    context_chars: int = 0
 
 
 # --- Repos ---

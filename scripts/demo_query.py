@@ -136,24 +136,25 @@ def mode_impact_batch(repo_id: str, targets: list[str], depth: int = 3):
     _print_impact_buckets(response)
 
 
-def mode_ask(repo_id: str, question: str, top_k: int = 8):
+def mode_ask(repo_id: str, question: str, top_k: int = 8, use_cache: bool = True):
     faiss_store, metadata_store, _ = load_state(repo_id)
-    from app.core.answer import generate_answer
-    chunks_results = search_chunks(question, repo_id, top_k, faiss_store, metadata_store)
-    # Convert SearchResult back to ChunkMetadata for generate_answer
-    chunk_metas = [metadata_store.get_chunk(r.chunk_id) for r in chunks_results]
-    chunk_metas = [c for c in chunk_metas if c is not None]
-
-    response = generate_answer(question, chunk_metas, repo_id)
+    from app.core.answer import LLMCallError, LLMConfigError, answer_question
+    try:
+        response = answer_question(question, repo_id, faiss_store, metadata_store, top_k, use_cache)
+    except (LLMConfigError, LLMCallError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    source = "cache" if response.cached else f"{response.backend}/{response.model}"
     print(f"\nQ: {question}\n")
     print(f"A: {response.answer}\n")
     if response.citations:
         print("Citations:")
         for c in response.citations:
-            print(f"  {c.file_path}  lines {c.start_line}–{c.end_line}")
-            print(f"    {c.relevance}")
+            print(f"  {c.file_path}  lines {c.start_line}–{c.end_line}  ({c.relevance})")
     if response.uncertainty:
         print(f"\nNote: {response.uncertainty}")
+    print(f"\n[{source}; {response.excerpts_used} excerpts, {response.context_chars} chars"
+          f"{f', {response.excerpts_omitted} dropped for budget' if response.excerpts_omitted else ''}]")
 
 
 def main():
@@ -166,14 +167,15 @@ def main():
     parser.add_argument("--target", help="File path or symbol (for --mode impact)")
     parser.add_argument("--targets", help="Comma-separated file paths (for --mode impact-batch)")
     parser.add_argument("--depth", type=int, default=3, help="Graph traversal depth")
-    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--top-k", type=int, default=None, help="Results/chunks (default 10; 8 for ask)")
+    parser.add_argument("--no-cache", action="store_true", help="Ask mode: bypass the answer cache")
     parser.add_argument("query", nargs="?", help="Search query or question")
     args = parser.parse_args()
 
     if args.mode == "search":
         if not args.query:
             parser.error("Provide a query string for search mode")
-        mode_search(args.repo_id, args.query, args.top_k)
+        mode_search(args.repo_id, args.query, args.top_k or 10)
     elif args.mode == "definition":
         if not args.symbol:
             parser.error("--symbol required for definition mode")
@@ -189,7 +191,7 @@ def main():
     elif args.mode == "ask":
         if not args.query:
             parser.error("Provide a question for ask mode")
-        mode_ask(args.repo_id, args.query, args.top_k)
+        mode_ask(args.repo_id, args.query, args.top_k or 8, use_cache=not args.no_cache)
 
 
 if __name__ == "__main__":
