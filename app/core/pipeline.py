@@ -16,9 +16,15 @@ from typing import Callable, Optional
 from app.core import paths
 from app.core.chunking import chunk_file
 from app.core.embeddings import embed_texts, get_embedding_dim, get_embedding_model_name
-from app.core.graph import DependencyGraph, resolve_python_import, resolve_ts_import
+from app.core.graph import (
+    DependencyGraph,
+    find_python_source_roots,
+    load_ts_config,
+    resolve_python_import,
+    resolve_ts_import,
+)
 from app.core.ingest import detect_language, load_file, walk_repo
-from app.core.symbols import extract_imports, extract_symbols
+from app.core.symbols import analyze_file
 from app.core.validation import validate_repo_id
 from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
@@ -56,6 +62,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     _report(f"Walking repo: {resolved_repo_path}")
     file_paths = walk_repo(resolved_repo_path)
     _report(f"Found {len(file_paths)} files")
+    python_roots = find_python_source_roots(resolved_repo_path)
+    ts_config = load_ts_config(resolved_repo_path)
 
     all_chunks = []
     total_symbols = 0
@@ -68,8 +76,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         language = detect_language(file_path)
         graph.add_file(rel_path)
 
-        symbols = extract_symbols(content, rel_path, language)
-        imports = extract_imports(content, rel_path, language)
+        analysis = analyze_file(content, rel_path, language)
+        symbols, imports = analysis.symbols, analysis.imports
 
         for sym in symbols:
             metadata_store.upsert_symbol(
@@ -84,13 +92,19 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         all_chunks.extend(chunks)
 
         for imp in imports:
-            resolved = None
+            targets: list[str] = []
             if language == "python":
-                resolved = resolve_python_import(imp.imported_module, file_path, resolved_repo_path)
+                targets = resolve_python_import(
+                    imp.imported_module, file_path, resolved_repo_path,
+                    names=imp.names, source_roots=python_roots,
+                )
             elif language in ("typescript", "javascript"):
-                resolved = resolve_ts_import(imp.imported_module, file_path, resolved_repo_path)
-            if resolved:
-                rel_target = os.path.relpath(resolved, resolved_repo_path)
+                hit = resolve_ts_import(imp.imported_module, file_path, resolved_repo_path, ts_config)
+                targets = [hit] if hit else []
+            for target in targets:
+                rel_target = os.path.relpath(target, resolved_repo_path)
+                if rel_target == rel_path:
+                    continue  # e.g. `from . import x` inside __init__.py where x is an attribute
                 graph.add_import_edge(rel_path, rel_target)
                 metadata_store.upsert_edge(repo_id, rel_path, rel_target, "import")
 

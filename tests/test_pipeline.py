@@ -92,3 +92,22 @@ def test_empty_repo_still_creates_loadable_index(mock_embed, tmp_path):
     assert summary["chunks_indexed"] == 0
     assert paths.index_path("myrepo").exists()
     assert paths.idmap_path("myrepo").exists()
+
+
+@patch("app.core.pipeline.embed_texts", side_effect=_fake_embed_texts)
+def test_package_init_does_not_get_self_edges(mock_embed, tmp_path):
+    """`from . import helper_attr` inside __init__.py resolves to __init__.py itself;
+    that must not become a self-edge, and `from . import mod` must link to mod.py."""
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("VERSION = 1\nfrom . import VERSION\nfrom . import mod\n")
+    (repo / "pkg" / "mod.py").write_text("from . import VERSION\n")
+    run_ingestion(str(repo), "myrepo")
+
+    from app.core.graph import DependencyGraph
+    g = DependencyGraph()
+    g.load(str(paths.graph_path("myrepo")))
+    edges = set(g.G.edges)
+    assert ("pkg/__init__.py", "pkg/__init__.py") not in edges
+    assert ("pkg/__init__.py", "pkg/mod.py") in edges
+    assert ("pkg/mod.py", "pkg/__init__.py") in edges
