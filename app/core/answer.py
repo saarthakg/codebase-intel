@@ -12,6 +12,20 @@ using ONLY the provided code excerpts. You must cite the specific files and line
 that support your answer. If the evidence is insufficient, say so explicitly. \
 Never invent code, function names, or behavior not present in the excerpts."""
 
+# Upper bound per excerpt, as a guard against pathological chunks. Chunks are
+# ~1600 chars today; this used to be a hard 800-char cut, which silently
+# dropped half of every retrieved chunk before the model ever saw it.
+MAX_EXCERPT_CHARS = 4000
+
+
+class LLMConfigError(RuntimeError):
+    """The LLM backend isn't configured (e.g. missing API key)."""
+
+
+class LLMCallError(RuntimeError):
+    """The LLM provider returned an error or an unusable response."""
+
+
 _CITATION_RE = re.compile(r'\[(\d+)\]')
 _UNCERTAINTY_PHRASES = (
     "insufficient", "unclear", "cannot determine", "not enough",
@@ -24,7 +38,7 @@ def build_prompt(question: str, chunks: list[ChunkMetadata]) -> str:
     for i, chunk in enumerate(chunks):
         block = (
             f"[{i + 1}] File: {chunk.file_path} (lines {chunk.start_line}–{chunk.end_line})\n"
-            f"```\n{chunk.content[:800]}\n```"
+            f"```\n{chunk.content[:MAX_EXCERPT_CHARS]}\n```"
         )
         context_blocks.append(block)
     context = "\n\n".join(context_blocks)
@@ -35,31 +49,57 @@ def build_prompt(question: str, chunks: list[ChunkMetadata]) -> str:
     )
 
 
+def _require_key(env_var: str) -> str:
+    key = os.environ.get(env_var, "").strip()
+    if not key:
+        raise LLMConfigError(
+            f"{env_var} is not set. /ask needs an LLM API key — set it in .env "
+            f"(search, definition and impact work without one)."
+        )
+    return key
+
+
 def _call_anthropic(prompt: str) -> str:
     import anthropic
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    message = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=1000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text
+    client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY"))
+    try:
+        message = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=1000,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as e:
+        raise LLMCallError(f"Anthropic API error: {e}") from e
+    text = "".join(block.text for block in message.content if getattr(block, "type", None) == "text")
+    if not text:
+        raise LLMCallError("Anthropic returned no text content.")
+    return text
 
 
 def _call_gemini(prompt: str) -> str:
     import httpx
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={gemini_key}"
+    gemini_key = _require_key("GEMINI_API_KEY")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     body = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"maxOutputTokens": 1000},
     }
-    resp = httpx.post(url, json=body, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    try:
+        # Key goes in a header, not the query string, so it can't leak into
+        # proxy/access logs or exception messages that include the URL.
+        resp = httpx.post(url, json=body, headers={"x-goog-api-key": gemini_key}, timeout=60)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise LLMCallError(f"Gemini API error: HTTP {e.response.status_code}") from e
+    except httpx.HTTPError as e:
+        raise LLMCallError(f"Gemini request failed: {type(e).__name__}") from e
+    try:
+        data = resp.json()
+        return "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
+    except (ValueError, KeyError, IndexError) as e:
+        raise LLMCallError("Gemini returned no answer (the response may have been blocked).") from e
 
 
 def generate_answer(

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.core.answer import generate_answer
+from app.core.answer import LLMCallError, LLMConfigError, generate_answer
 from app.core.search import search_chunks
 from app.models.schemas import AskRequest, AskResponse
 
@@ -26,5 +26,9 @@ def ask(request: AskRequest):
     chunk_metas = [state.metadata_store.get_chunk(r.chunk_id) for r in search_results]
     chunk_metas = [c for c in chunk_metas if c is not None]
 
-    response = generate_answer(request.question, chunk_metas, request.repo_id)
-    return response
+    try:
+        return generate_answer(request.question, chunk_metas, request.repo_id)
+    except LLMConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except LLMCallError as e:
+        raise HTTPException(status_code=502, detail=str(e))
