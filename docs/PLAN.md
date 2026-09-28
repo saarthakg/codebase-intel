@@ -125,8 +125,12 @@ ingestion, completeness checks, TypeScript.
 - **Test-selection safety** on NameRTS (500 Python commits with ground truth). Its repos (sympy,
   scikit-learn, matplotlib, …) must not also be used to tune against SWE-smith.
 - **Tamper detection:**
-  - ImpossibleBench's *published* transcripts and patches (no model calls) as positives;
-  - legitimate test edits from real commits, plus SWE-bench gold `test_patch`, as negatives.
+  - positives: seeded tampers on real bugs in real repos (`eval/notyet_tamper.py`). ImpossibleBench
+    publishes its tasks (HF `fjzzq2002/impossible_swebench`) and harness, but not agent
+    transcripts or patches (checked 2026-09-28), so agent-made positives need agent runs: the
+    paid A/B below, or dogfooding;
+  - negatives: legitimate test edits from real merged commits, replayed with execution
+    (`eval/notyet_replay.py`).
 - **Dogfooding.** Our own Claude Code sessions, on your subscription: 40–50 sessions, every finding
   hand-labeled.
 - **Case study.** About 30 real cross-file follow-up fixes to merged agent PRs (AIDev), hand-labeled
