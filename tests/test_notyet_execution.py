@@ -302,3 +302,16 @@ def test_a_nested_pytest_ini_does_not_change_node_ids(repo):
     _git(repo, "commit", "-qm", "nested ini")
     _write(repo, "pkg/calc.py", BROKEN_ADD)
     assert {r for r, _, _ in rules(check(repo))} == {"test-regression"}
+
+
+def test_a_venv_that_cannot_import_the_project_is_not_blamed_on_the_session(repo):
+    """src layout with no working install (macOS flagged the editable .pth
+    hidden mid-run): the session-start checkout imports its source through
+    PYTHONPATH, so the working tree must too, or a harmless edit blocks."""
+    (repo / "src").mkdir()
+    _git(repo, "mv", "pkg", "src/pkg")
+    _git(repo, "commit", "-qm", "src layout")
+    _write(repo, "src/pkg/calc.py", (repo / "src/pkg/calc.py").read_text() + "\n# a comment\n")
+    result = check(repo)
+    assert [r for r in rules(result) if r[1] == "block"] == []
+    assert "3 passed" in result.checks[0]

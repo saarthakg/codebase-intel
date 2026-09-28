@@ -76,6 +76,17 @@ def pytest_testpaths(root: str) -> list[str]:
     return []
 
 
+def source_path_env(root: str, env: dict | None = None) -> dict:
+    """`env` with PYTHONPATH led by the checkout's own source roots. The
+    session-start checkout is always run this way; running the working tree
+    the same way means both sides import alike, and a venv whose install
+    broke (or points elsewhere) mid-session isn't blamed on the session."""
+    env = dict(env or {})
+    rest = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = os.pathsep.join([str(r) for r in find_python_source_roots(root)] + ([rest] if rest else []))
+    return env
+
+
 def select_tests(ctx: Context, graph: pyimports.ImportGraph) -> tuple[list[tuple[str, int, str]], list[str]]:
     """[(test file, priority, why)] and notes about the selection."""
     notes = []
@@ -190,6 +201,7 @@ def run(ctx: Context) -> EngineResult:
         if changed_src:
             env, trace_out = coverage.setup(trace_dir, ctx.root, changed_src)
             extra = ["-p", coverage.PLUGIN]
+        env = source_path_env(ctx.root, env)
         for batch in _batches(tests):
             remaining = cfg.budget_seconds - (time.monotonic() - started)
             if remaining <= 1:
@@ -226,7 +238,7 @@ def run(ctx: Context) -> EngineResult:
     failing = current.failures
     flaky: list[str] = []
     if failing:  # re-run failures once: a pass means flaky, not broken
-        rerun = testrun.run_pytest(command, ctx.root, [f.nodeid for f in failing],
+        rerun = testrun.run_pytest(command, ctx.root, [f.nodeid for f in failing], env=source_path_env(ctx.root),
                                    timeout=max(30, cfg.budget_seconds / 2))
         for f in list(failing):
             again = rerun.results.get(f.nodeid)
@@ -309,7 +321,8 @@ def run(ctx: Context) -> EngineResult:
 
     # ── were the changed tests actually collected, and did any disappear? ─────
     if changed_tests:
-        now_collected = testrun.collect(command, ctx.root, changed_tests, timeout=60) or set()
+        now_collected = testrun.collect(command, ctx.root, changed_tests, env=source_path_env(ctx.root),
+                                        timeout=60) or set()
         for path in changed_tests:
             source = snapshot.show(ctx.root, ctx.current_tree, path) or ""
             before_source = snapshot.show(ctx.root, ctx.baseline_tree, path) or ""
@@ -385,7 +398,7 @@ def _infra_check(ctx: Context, command: str, current: testrun.Run, infra: list[s
     """A conftest hook, an addopts `--deselect`/`-k`, or an autouse skip can
     switch tests off without touching a test file. Compare the whole suite's
     collection with session start, and re-run newly skipped tests there."""
-    now = testrun.collect(command, ctx.root, [], timeout=90)
+    now = testrun.collect(command, ctx.root, [], env=source_path_env(ctx.root), timeout=90)
     with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
         tmp = os.path.realpath(tmp)
         snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)

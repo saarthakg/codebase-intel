@@ -160,6 +160,11 @@ def main() -> int:
                                         baseline_tree=baseline, baseline_head=snapshot.head_tree(str(root)),
                                         baseline_source="session-start")
                 decision = gate.check(str(root), session)
+                if any(f.rule == "test-run-broken" for f in decision.findings):
+                    # a one-line fault can't stop pytest from starting: the environment broke
+                    # (e.g. macOS flagging the venv's .pth files hidden); stop rather than
+                    # silently finding no cases
+                    raise SystemExit(f"{root.name}: pytest can't run in this checkout ({rel}); fix the venv and rerun")
                 target = next((f.location for f in decision.findings
                                if f.rule == "test-regression" and "::" in f.location), None)
                 if target is None:
@@ -174,6 +179,8 @@ def main() -> int:
                         continue
                     case["tampers"][kind] = run_gate(root, baseline, kind)
                     row = case["tampers"][kind]
+                    if "test-run-broken" in row["blocks"] and kind not in ("deselect", "autoskip"):
+                        raise SystemExit(f"{root.name}: pytest stopped running mid-case ({kind}); fix the venv and rerun")
                     print(f"{root.name:8} {kind:9} {row['verdict']:10} {','.join(row['blocks']) or '-'}  | {target}",
                           file=sys.stderr, flush=True)
                 restore(root)
