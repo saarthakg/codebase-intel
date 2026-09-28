@@ -80,4 +80,4 @@ def test_a_requested_behavior_change_blocks_until_handed_to_the_user(repo):
     assert first.verdict == "blocked" and [f.rule for f in first.findings] == ["test-changed-to-pass"]
     fid = first.findings[0].id
     session.acks[fid] = {"reason": "user asked for sub to be reversed", "category": "needs-human"}
-    assert gate.check(root, session).verdict == "passed"
+    assert gate.check(root, session).verdict == "needs-review"      # may stop; not a pass
