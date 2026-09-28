@@ -3,9 +3,9 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core import paths
-from app.core.pipeline import IngestError, run_ingestion
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.core import paths
+from codebase_intel.core.pipeline import IngestError, run_ingestion
+from codebase_intel.storage.metadata_store import MetadataStore
 
 
 def _make_repo(tmp_path):
@@ -19,8 +19,7 @@ def _make_repo(tmp_path):
 @pytest.fixture(autouse=True)
 def _isolated_data_dirs(tmp_path, monkeypatch):
     """Point the shared paths module at a scratch dir so tests don't touch real data/."""
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
     yield
 
 
@@ -73,7 +72,7 @@ def test_rejects_non_directory_repo_path(tmp_path):
 
 
 def test_empty_repo_still_creates_loadable_index(tmp_path):
-    from app.state import get_repo_state
+    from codebase_intel.state import get_repo_state
     repo = tmp_path / "empty_repo"
     repo.mkdir()
     (repo / "image.png").write_bytes(b"\x89PNG")  # filtered out, no indexable files
@@ -92,7 +91,7 @@ def test_package_init_does_not_get_self_edges(tmp_path):
     (repo / "pkg" / "mod.py").write_text("from . import VERSION\n")
     run_ingestion(str(repo), "myrepo")
 
-    from app.core.graph import DependencyGraph
+    from codebase_intel.core.graph import DependencyGraph
     g = DependencyGraph()
     g.load(str(paths.graph_path("myrepo")))
     edges = set(g.G.edges)
@@ -132,7 +131,7 @@ def test_failed_index_leaves_previous_index_intact(tmp_path):
     run_ingestion(str(repo), "myrepo")
 
     (repo / "b.py").write_text("def renamed():\n    return 1\n")
-    with patch("app.core.pipeline.cochange_for_repo", side_effect=RuntimeError("git crashed")):
+    with patch("codebase_intel.core.pipeline.cochange_for_repo", side_effect=RuntimeError("git crashed")):
         with pytest.raises(RuntimeError):
             run_ingestion(str(repo), "myrepo")
 

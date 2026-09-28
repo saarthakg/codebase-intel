@@ -1,5 +1,5 @@
 import pytest
-from app.core.graph import DependencyGraph
+from codebase_intel.core.graph import DependencyGraph
 
 
 def make_chain() -> DependencyGraph:
@@ -122,7 +122,7 @@ def test_node_count():
 import json
 from pathlib import Path
 
-from app.core.graph import (
+from codebase_intel.core.graph import (
     find_python_source_roots, load_ts_config, resolve_python_import, resolve_ts_import,
 )
 
@@ -255,9 +255,9 @@ def test_legacy_index_graph_is_rebuilt_from_sqlite_not_unpickled(tmp_path, monke
     """An index from before the JSON format has a .graph.pkl; it must be
     ignored (never unpickled) and the graph rebuilt from the edges table."""
     import pickle
-    from app.core import paths
-    from app.state import load_graph
-    from app.storage.metadata_store import MetadataStore
+    from codebase_intel.core import paths
+    from codebase_intel.state import load_graph
+    from codebase_intel.storage.metadata_store import MetadataStore
 
     monkeypatch.setattr(paths, "DATA_METADATA", tmp_path)
     store = MetadataStore(str(tmp_path / "old.db"))

@@ -2,8 +2,8 @@ import os
 import tempfile
 import pytest
 
-from app.storage.metadata_store import MetadataStore
-from app.core.ingest import walk_repo, detect_language, load_file
+from codebase_intel.storage.metadata_store import MetadataStore
+from codebase_intel.core.ingest import walk_repo, detect_language, load_file
 
 
 # ── MetadataStore tests ───────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ def test_load_file_missing_returns_none():
 import os
 import subprocess
 
-from app.core.ingest import scan_repo
+from codebase_intel.core.ingest import scan_repo
 
 
 def _rel(scan, root):
@@ -178,7 +178,7 @@ def test_schema_is_versioned_and_newer_dbs_are_refused(tmp_path):
     import sqlite3
 
     import pytest
-    from app.storage.metadata_store import SchemaVersionError
+    from codebase_intel.storage.metadata_store import SchemaVersionError
 
     db = tmp_path / "v.db"
     store = MetadataStore(str(db))

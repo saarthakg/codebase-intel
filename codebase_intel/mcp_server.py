@@ -7,11 +7,10 @@ plus which tests to run and who calls the functions it touched. Repos are
 found from a path (default: the directory the client started the server in)
 and indexed automatically, at HEAD, whenever HEAD moves.
 
-Run over stdio (what MCP clients launch):
-  /path/to/codebase-intel/.venv/bin/python -m app.cli mcp
+Run over stdio (what MCP clients launch):  codebase-intel mcp
 
 Register with Claude Code (from inside the project to analyze):
-  claude mcp add codebase-intel -- /path/to/codebase-intel/.venv/bin/python -m app.cli mcp
+  claude mcp add codebase-intel -- codebase-intel mcp
 """
 import os
 import sys
@@ -26,9 +25,9 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from app.core.check import check_change as run_check
-from app.core.impact import analyze_impact
-from app.core.workspace import NotAGitRepo, ensure_index
+from codebase_intel.core.check import check_change as run_check
+from codebase_intel.core.impact import analyze_impact
+from codebase_intel.core.workspace import NotAGitRepo, ensure_index
 
 # Keep tool results small: they land in the calling agent's context window.
 MAX_FILES = 12

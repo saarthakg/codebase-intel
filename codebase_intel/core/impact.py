@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING, Optional
 
-from app.core.definitions import best_definition, is_test_path, tests_named_for
-from app.core.graph import DependencyGraph
-from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.core.definitions import best_definition, is_test_path, tests_named_for
+from codebase_intel.core.graph import DependencyGraph
+from codebase_intel.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
+from codebase_intel.storage.metadata_store import MetadataStore
 
 if TYPE_CHECKING:
-    from app.core.history import CoChange
+    from codebase_intel.core.history import CoChange
 
 # Each signal gives a file a confidence, and a file found by several signals
 # gets their noisy-OR, 1 − ∏(1 − cᵢ): the chance at least one is right if they
@@ -105,7 +105,7 @@ def analyze_impact(
     if target not in graph.G.nodes and defining_file is not None:
         if defining_entry.get("kind") == "method" and "." in (defining_entry.get("qualified_name") or ""):
             # Methods: callers by inferred receiver type (app/core/usages.py)
-            from app.core.usages import symbol_users
+            from codebase_intel.core.usages import symbol_users
             users = set(symbol_users(repo_id, defining_entry["qualified_name"], defining_file, graph, metadata_store))
         else:
             users = {r["file_path"] for r in metadata_store.find_references(repo_id, target)}

@@ -5,9 +5,9 @@ import anyio
 import pytest
 from mcp import Client
 
-from app.core import paths
-from app.mcp_server import mcp
-from app.state import _loaded_repos
+from codebase_intel.core import paths
+from codebase_intel.mcp_server import mcp
+from codebase_intel.state import _loaded_repos
 
 _ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t"}
@@ -15,8 +15,7 @@ _ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_CO
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "data" / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data" / "metadata")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
     monkeypatch.delenv("CODEBASE_INTEL_REPO", raising=False)
     _loaded_repos.clear()
     repo = tmp_path / "proj"

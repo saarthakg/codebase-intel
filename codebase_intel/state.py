@@ -2,11 +2,11 @@
 process and shared by the CLI, the MCP server and the evals."""
 from dataclasses import dataclass
 
-from app.core import paths
-from app.core.graph import DependencyGraph
-from app.core.history import CoChange
-from app.core.validation import validate_repo_id
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.core import paths
+from codebase_intel.core.graph import DependencyGraph
+from codebase_intel.core.history import CoChange
+from codebase_intel.core.validation import validate_repo_id
+from codebase_intel.storage.metadata_store import MetadataStore
 
 
 class RepoNotIndexed(FileNotFoundError):

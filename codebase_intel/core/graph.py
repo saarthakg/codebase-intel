@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 if TYPE_CHECKING:
-    from app.storage.metadata_store import MetadataStore
+    from codebase_intel.storage.metadata_store import MetadataStore
 
 
 class DependencyGraph:
@@ -112,7 +112,7 @@ def find_python_source_roots(repo_root: str) -> list[Path]:
     (`src/requests/__init__.py` → root `src/`) and monorepos with several
     package roots, without needing to parse pyproject/setup.cfg.
     """
-    from app.core.ingest import SKIP_DIRS
+    from codebase_intel.core.ingest import SKIP_DIRS
 
     repo = Path(repo_root).resolve()
     roots = [repo]

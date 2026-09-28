@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 
-from app.core.symbols import (
+from codebase_intel.core.symbols import (
     extract_symbols, extract_imports,
     _regex_extract_symbols, _regex_extract_imports,
     SymbolInfo, ImportInfo,
@@ -156,14 +156,14 @@ def test_regex_fallback_typescript_symbols():
 
 def test_extract_symbols_falls_back_on_tree_sitter_error():
     """If tree-sitter raises, we fall back to regex without crashing."""
-    with patch("app.core.symbols._get_parser", side_effect=RuntimeError("no parser")):
+    with patch("codebase_intel.core.symbols._get_parser", side_effect=RuntimeError("no parser")):
         syms = extract_symbols(PYTHON_FIXTURE, "service.py", "python")
         names = [s.name for s in syms]
         assert "submit_order" in names
 
 
 def test_extract_imports_falls_back_on_tree_sitter_error():
-    with patch("app.core.symbols._get_parser", side_effect=RuntimeError("no parser")):
+    with patch("codebase_intel.core.symbols._get_parser", side_effect=RuntimeError("no parser")):
         imps = extract_imports(PYTHON_FIXTURE, "service.py", "python")
         modules = [i.imported_module for i in imps]
         assert "os" in modules
@@ -171,7 +171,7 @@ def test_extract_imports_falls_back_on_tree_sitter_error():
 
 # ── Qualified names, imports with names, references (single-parse analysis) ──
 
-from app.core.symbols import analyze_file
+from codebase_intel.core.symbols import analyze_file
 
 NESTED_PY_FIXTURE = """\
 from . import certs, utils as u
@@ -278,7 +278,7 @@ def test_typescript_declarations_and_qualified_methods():
 # ── Test-file naming ──────────────────────────────────────────────────────────
 
 # aliased: pytest would collect names starting with "test" as tests
-from app.core.definitions import tested_module_stem as module_stem, tests_named_for as named_tests
+from codebase_intel.core.definitions import tested_module_stem as module_stem, tests_named_for as named_tests
 
 
 def test_module_stem():

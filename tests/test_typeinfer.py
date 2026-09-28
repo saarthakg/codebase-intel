@@ -5,7 +5,7 @@ import pytest
 warnings.filterwarnings("ignore", category=FutureWarning)
 tree_sitter_languages = pytest.importorskip("tree_sitter_languages")
 
-from app.core.typeinfer import EXTERNAL, UNKNOWN, TypeIndex, attribute_refs, collect_facts
+from codebase_intel.core.typeinfer import EXTERNAL, UNKNOWN, TypeIndex, attribute_refs, collect_facts
 
 LIB = b'''
 from typing import IO, Optional

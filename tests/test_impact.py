@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import MagicMock
 
-from app.core.graph import DependencyGraph
-from app.core.impact import analyze_impact, analyze_impact_batch
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.core.graph import DependencyGraph
+from codebase_intel.core.impact import analyze_impact, analyze_impact_batch
+from codebase_intel.storage.metadata_store import MetadataStore
 
 
 def make_graph_abc() -> DependencyGraph:
@@ -91,7 +91,7 @@ def test_symbol_reference_medium_confidence():
 def test_evidence_from_several_signals_combines():
     """A file found by the graph and by history gets their noisy-OR and both
     reasons, and outranks files found by one signal."""
-    from app.core.history import CoChange, Commit
+    from codebase_intel.core.history import CoChange, Commit
     g = make_graph_abc()
     meta = make_mock_metadata()
 
@@ -196,7 +196,7 @@ def test_batch_lists_tests_too():
 def test_equal_confidence_ties_prefer_frequently_changed_files_then_path():
     """Ranking must not depend on graph insertion order; among equal evidence,
     files that change more often (base rate) come first."""
-    from app.core.history import CoChange, Commit
+    from codebase_intel.core.history import CoChange, Commit
     g = DependencyGraph()
     for f in ["t.py", "z_busy.py", "a_quiet.py", "m_quiet.py"]:
         g.add_file(f)

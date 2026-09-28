@@ -30,10 +30,10 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.definitions import lookup_definition
-from app.core.impact import analyze_impact
-from app.core.pipeline import run_ingestion
-from app.state import forget_repo, get_repo_state
+from codebase_intel.core.definitions import lookup_definition
+from codebase_intel.core.impact import analyze_impact
+from codebase_intel.core.pipeline import run_ingestion
+from codebase_intel.state import forget_repo, get_repo_state
 
 IMPACT_DEPTH = 3
 

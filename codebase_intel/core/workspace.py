@@ -15,9 +15,9 @@ import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.core import paths
-from app.core.pipeline import run_ingestion
-from app.state import RepoState, forget_repo, get_repo_state
+from codebase_intel.core import paths
+from codebase_intel.core.pipeline import run_ingestion
+from codebase_intel.state import RepoState, forget_repo, get_repo_state
 
 
 class NotAGitRepo(ValueError):

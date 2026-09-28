@@ -12,9 +12,9 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel
 
-from app.core.definitions import is_test_path
-from app.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
-from app.core.workspace import NotAGitRepo, ensure_index, git
+from codebase_intel.core.definitions import is_test_path
+from codebase_intel.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
+from codebase_intel.core.workspace import NotAGitRepo, ensure_index, git
 
 
 class ChangedSymbolReport(BaseModel):

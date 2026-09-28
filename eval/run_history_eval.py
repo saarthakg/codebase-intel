@@ -26,14 +26,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.definitions import is_test_path
+from codebase_intel.core.definitions import is_test_path
 import subprocess
 
-from app.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
-from app.core.history import CoChange, read_history
-from app.core.impact import analyze_impact
-from app.core.symbols import analyze_file
-from app.state import get_repo_state
+from codebase_intel.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
+from codebase_intel.core.history import CoChange, read_history
+from codebase_intel.core.impact import analyze_impact
+from codebase_intel.core.symbols import analyze_file
+from codebase_intel.state import get_repo_state
 
 KS = (5, 10)
 

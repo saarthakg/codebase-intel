@@ -6,19 +6,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.core import paths
-from app.core.graph import (
+from codebase_intel.core import paths
+from codebase_intel.core.graph import (
     DependencyGraph,
     find_python_source_roots,
     load_ts_config,
     resolve_python_import,
     resolve_ts_import,
 )
-from app.core.history import cochange_for_repo
-from app.core.ingest import RepoScan, detect_language, load_file, scan_repo
-from app.core.symbols import analyze_file, python_parser
-from app.core.validation import validate_repo_id
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.core.history import cochange_for_repo
+from codebase_intel.core.ingest import RepoScan, detect_language, load_file, scan_repo
+from codebase_intel.core.symbols import analyze_file, python_parser
+from codebase_intel.core.validation import validate_repo_id
+from codebase_intel.storage.metadata_store import MetadataStore
 
 ProgressFn = Optional[Callable[[str], None]]
 
@@ -63,8 +63,7 @@ def run_ingestion(
     metadata_store.close()
 
     graph.save(str(paths.graph_path(repo_id)))
-    for stale in (paths.legacy_graph_path(repo_id), *paths.legacy_index_paths(repo_id)):
-        stale.unlink(missing_ok=True)  # formats this version no longer uses
+    paths.legacy_graph_path(repo_id).unlink(missing_ok=True)  # superseded by the JSON graph
 
     summary = {
         "repo_id": repo_id,
@@ -86,7 +85,7 @@ def run_ingestion(
 def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: MetadataStore) -> None:
     """Two passes over the Python files: collect class/return/attribute facts
     repo-wide, then infer each method reference's receiver type."""
-    from app.core.typeinfer import TypeIndex, attribute_refs, collect_facts
+    from codebase_intel.core.typeinfer import TypeIndex, attribute_refs, collect_facts
     parser = python_parser()
     if parser is None or not sources:
         return

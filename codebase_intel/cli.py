@@ -10,8 +10,8 @@ import argparse
 import json
 import sys
 
-from app.core.check import CheckResult, check_change
-from app.core.workspace import NotAGitRepo
+from codebase_intel.core.check import CheckResult, check_change
+from codebase_intel.core.workspace import NotAGitRepo
 
 
 def _progress(msg: str) -> None:
@@ -62,8 +62,8 @@ def cmd_check(args) -> int:
 
 
 def cmd_impact(args) -> int:
-    from app.core.impact import analyze_impact
-    from app.core.workspace import ensure_index
+    from codebase_intel.core.impact import analyze_impact
+    from codebase_intel.core.workspace import ensure_index
     _, repo_id, state = ensure_index(args.path, _progress)
     if args.target not in state.graph.G.nodes and not state.metadata_store.find_symbol(repo_id, args.target):
         print(f"'{args.target}' isn't a file (path from the repo root) or a symbol in this repo.", file=sys.stderr)
@@ -81,14 +81,14 @@ def cmd_impact(args) -> int:
 
 
 def cmd_index(args) -> int:
-    from app.core.workspace import ensure_index
+    from codebase_intel.core.workspace import ensure_index
     root, repo_id, state = ensure_index(args.path, _progress)
     print(f"{root}: {state.graph.G.number_of_nodes()} files indexed ({repo_id})")
     return 0
 
 
 def cmd_mcp(args) -> int:
-    from app.mcp_server import main as mcp_main
+    from codebase_intel.mcp_server import main as mcp_main
     mcp_main()
     return 0
 

@@ -23,9 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.history import CoChange, read_history
-from app.core.impact import analyze_impact_batch
-from app.state import get_repo_state
+from codebase_intel.core.history import CoChange, read_history
+from codebase_intel.core.impact import analyze_impact_batch
+from codebase_intel.state import get_repo_state
 
 KS = (1, 3, 5, 10)
 

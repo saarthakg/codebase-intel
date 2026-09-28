@@ -4,10 +4,10 @@ import subprocess
 
 import pytest
 
-from app.core import paths
-from app.core.check import check_change
-from app.core.workspace import NotAGitRepo, ensure_index, indexed_head, repo_id_for
-from app.state import _loaded_repos
+from codebase_intel.core import paths
+from codebase_intel.core.check import check_change
+from codebase_intel.core.workspace import NotAGitRepo, ensure_index, indexed_head, repo_id_for
+from codebase_intel.state import _loaded_repos
 
 _ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t"}
@@ -29,8 +29,7 @@ def _commit(repo, msg="c"):
 
 @pytest.fixture(autouse=True)
 def data_dirs(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "data" / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data" / "metadata")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
     _loaded_repos.clear()
     yield
     _loaded_repos.clear()
@@ -137,7 +136,7 @@ def test_not_a_git_repo(tmp_path):
 
 
 def test_cli_check_text_json_and_exit_code(repo, capsys):
-    from app.cli import main
+    from codebase_intel.cli import main
     _write(repo, "pkg/api.py", "def fetch(url):\n    return None\n\n\ndef other():\n    return 1\n")
     assert main(["check", str(repo)]) == 0
     out = capsys.readouterr().out
@@ -156,7 +155,7 @@ def test_cli_check_text_json_and_exit_code(repo, capsys):
 
 
 def test_cli_impact(repo, capsys):
-    from app.cli import main
+    from codebase_intel.cli import main
     assert main(["impact", "pkg/api.py", "--path", str(repo)]) == 0
     out = capsys.readouterr().out
     assert "docs/api.md" in out and "changed together" in out

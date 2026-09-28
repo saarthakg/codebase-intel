@@ -1,4 +1,4 @@
-from app.core.diff_impact import parse_unified_diff, symbols_touched
+from codebase_intel.core.diff_impact import parse_unified_diff, symbols_touched
 
 DIFF = """\
 diff --git a/src/pkg/adapters.py b/src/pkg/adapters.py
@@ -56,12 +56,11 @@ def test_symbols_touched_reports_innermost():
 
 
 def _index(tmp_path, monkeypatch, files: dict[str, str], repo_id: str):
-    from app.core import paths
-    from app.core.pipeline import run_ingestion
-    from app.state import _loaded_repos, get_repo_state
+    from codebase_intel.core import paths
+    from codebase_intel.core.pipeline import run_ingestion
+    from codebase_intel.state import _loaded_repos, get_repo_state
 
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
     _loaded_repos.clear()
     repo = tmp_path / "repo"
     for rel, text in files.items():
@@ -93,7 +92,7 @@ def _listed(resp):
 
 
 def test_diff_impact_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
-    from app.core.diff_impact import analyze_diff
+    from codebase_intel.core.diff_impact import analyze_diff
     state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
     diff = (
         "--- a/pkg/adapters.py\n+++ b/pkg/adapters.py\n"
@@ -117,7 +116,7 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     """Callers of Adapter.send: a file calling it via the base type counts
     (dispatch), a file calling a *different* class's send doesn't, and an
     untyped receiver in an importing file falls back to name matching."""
-    from app.core.usages import symbol_users
+    from codebase_intel.core.usages import symbol_users
     state = _index(tmp_path, monkeypatch, {
         "pkg/__init__.py": "",
         "pkg/adapters.py": (
@@ -148,7 +147,7 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
 
 
 def test_file_symbol_and_batch_impact_end_to_end(tmp_path, monkeypatch):
-    from app.core.impact import analyze_impact, analyze_impact_batch
+    from codebase_intel.core.impact import analyze_impact, analyze_impact_batch
     state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
     args = ("dif", state.graph, state.metadata_store)
 

@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[dev]"
       - name: Run tests
         run: pytest -q
 
@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[dev]"
       - name: Clone benchmark repos at their pinned commits (full history)
         run: |
           for spec in "requests eval/requests_bench.yaml https://github.com/psf/requests" \

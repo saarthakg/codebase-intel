@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from app.core.history import CoChange
-    from app.core.symbols import ReferenceInfo, SymbolInfo
+    from codebase_intel.core.history import CoChange
+    from codebase_intel.core.symbols import ReferenceInfo, SymbolInfo
 
 
 class SchemaVersionError(RuntimeError):
@@ -360,7 +360,7 @@ class MetadataStore:
         )
 
     def load_cochange(self, repo_id: str) -> "CoChange":
-        from app.core.history import CoChange
+        from codebase_intel.core.history import CoChange
         files = self._conn.execute(
             "SELECT file_path, commits FROM cochange_files WHERE repo_id = ?", (repo_id,)
         ).fetchall()

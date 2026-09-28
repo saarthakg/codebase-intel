@@ -1,7 +1,0 @@
-pydantic>=2.0.0
-networkx>=3.3
-tree-sitter==0.21.3
-tree-sitter-languages>=1.10.2
-mcp>=2.2,<3
-pyyaml>=6.0      # evals
-pytest>=8.0.0    # tests

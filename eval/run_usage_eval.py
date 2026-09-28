@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.usages import symbol_users
-from app.state import get_repo_state
+from codebase_intel.core.usages import symbol_users
+from codebase_intel.state import get_repo_state
 
 
 def main() -> None:

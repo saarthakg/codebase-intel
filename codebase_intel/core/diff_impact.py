@@ -8,13 +8,13 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from app.core.usages import symbol_users
-from app.models.schemas import ChangedSymbol, DiffImpactResponse
+from codebase_intel.core.usages import symbol_users
+from codebase_intel.models.schemas import ChangedSymbol, DiffImpactResponse
 
 if TYPE_CHECKING:
-    from app.core.graph import DependencyGraph
-    from app.core.history import CoChange
-    from app.storage.metadata_store import MetadataStore
+    from codebase_intel.core.graph import DependencyGraph
+    from codebase_intel.core.history import CoChange
+    from codebase_intel.storage.metadata_store import MetadataStore
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
@@ -169,9 +169,9 @@ def analyze_symbol_changes(
     files that depend on the changed file (within `depth` import hops) or are
     the file itself, so an unrelated class's `send` doesn't match.
     """
-    from app.core.impact import analyze_impact_batch, combine_evidence
-    from app.models.schemas import BatchImpactedFile
-    from app.core.definitions import is_test_path
+    from codebase_intel.core.impact import analyze_impact_batch, combine_evidence
+    from codebase_intel.models.schemas import BatchImpactedFile
+    from codebase_intel.core.definitions import is_test_path
 
     files = sorted(changes)
     base = analyze_impact_batch(
@@ -205,7 +205,7 @@ def analyze_symbol_changes(
                 else:
                     existing.triggered_by = sorted(set(existing.triggered_by) | {file_path})
 
-    from app.core.impact import _rank_key
+    from codebase_intel.core.impact import _rank_key
     ordered = sorted(merged.values(), key=lambda f: _rank_key(f.file_path, f.confidence, f.depth, cochange))
     high = [f for f in ordered if f.confidence >= 0.7]
     medium = [f for f in ordered if 0.4 <= f.confidence < 0.7]

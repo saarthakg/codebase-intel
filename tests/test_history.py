@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from app.core.history import CoChange, Commit, cochange_for_repo, read_history
+from codebase_intel.core.history import CoChange, Commit, cochange_for_repo, read_history
 
 _ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t"}
@@ -94,14 +94,13 @@ def test_not_a_git_repo_gives_no_history(tmp_path):
 # ── Integration: ingest stores it, impact uses it ────────────────────────────
 
 def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
-    from app.core import paths
-    from app.core.graph import DependencyGraph
-    from app.core.impact import analyze_impact
-    from app.core.pipeline import run_ingestion
-    from app.storage.metadata_store import MetadataStore
+    from codebase_intel.core import paths
+    from codebase_intel.core.graph import DependencyGraph
+    from codebase_intel.core.impact import analyze_impact
+    from codebase_intel.core.pipeline import run_ingestion
+    from codebase_intel.storage.metadata_store import MetadataStore
 
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
     summary = run_ingestion(str(repo), "hist")
     assert summary["files_with_history"] == 3
 
@@ -131,7 +130,7 @@ def test_commits_record_path_at_the_time(repo):
 
 def test_sparse_history_is_not_high_confidence():
     """3-of-3 commits (a shallow clone) must not look like near-certain coupling."""
-    from app.core.history import CONFIDENCE_PRIOR_COMMITS
+    from codebase_intel.core.history import CONFIDENCE_PRIOR_COMMITS
     cc = CoChange.from_commits([Commit(str(i), "d", ["a.py", "b.py"]) for i in range(3)])
     [(other, p, n)] = cc.related("a.py")
     assert (other, n) == ("b.py", 3) and p == 3 / (3 + CONFIDENCE_PRIOR_COMMITS) == 0.5

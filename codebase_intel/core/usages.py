@@ -2,10 +2,10 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.core.graph import DependencyGraph
-    from app.storage.metadata_store import MetadataStore
+    from codebase_intel.core.graph import DependencyGraph
+    from codebase_intel.storage.metadata_store import MetadataStore
 
-from app.core.typeinfer import UNKNOWN
+from codebase_intel.core.typeinfer import UNKNOWN
 
 
 def symbol_users(

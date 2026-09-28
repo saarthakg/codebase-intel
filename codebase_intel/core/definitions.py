@@ -2,8 +2,8 @@
 from pathlib import PurePosixPath
 from typing import Optional
 
-from app.models.schemas import DefinitionResponse, ReferenceLocation, SymbolLocation
-from app.storage.metadata_store import MetadataStore
+from codebase_intel.models.schemas import DefinitionResponse, ReferenceLocation, SymbolLocation
+from codebase_intel.storage.metadata_store import MetadataStore
 
 DEFINITION_KINDS = ("class", "function", "method", "interface", "type", "enum")
 
@@ -104,7 +104,7 @@ def lookup_definition(
     ]
     qualified = best.get("qualified_name") or ""
     if graph is not None and best.get("kind") == "method" and "." in qualified:
-        from app.core.usages import symbol_users
+        from codebase_intel.core.usages import symbol_users
         users = set(symbol_users(repo_id, qualified, best["file_path"], graph, metadata_store))
         users.add(best["file_path"])  # calls within the defining file stay listed
         refs = [r for r in refs if r["file_path"] in users]
