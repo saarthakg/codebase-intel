@@ -93,6 +93,7 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
         junit = os.path.join(tmp, "junit.xml")
         argv = shlex.split(command) + [
             *targets, "-q", "-p", "no:cacheprovider", "--continue-on-collection-errors", f"--junitxml={junit}",
+            f"--rootdir={cwd}",   # node ids relative to the repo, even with a nested tests/pytest.ini
             "-o", "junit_family=xunit1", *(extra or []),
         ]
         start = time.monotonic()
@@ -127,7 +128,7 @@ def collect(command: str, cwd: str, targets: list[str], timeout: float,
     """Node ids pytest collects from `targets` (and files it couldn't), or
     None if pytest itself failed."""
     argv = shlex.split(command) + [*targets, "--collect-only", "-q", "-p", "no:cacheprovider",
-                                   "--continue-on-collection-errors"]
+                                   "--continue-on-collection-errors", f"--rootdir={cwd}"]
     try:
         proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout,
                               env={**os.environ, **(env or {}), "PYTHONDONTWRITEBYTECODE": "1"})

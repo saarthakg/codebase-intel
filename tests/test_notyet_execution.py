@@ -292,3 +292,13 @@ def test_session_start_results_are_reused_by_later_checks(repo, monkeypatch):
     second = check(repo)
     assert rules(second) == rules(first) and {r for r, _, _ in rules(second)} == {"test-regression"}
     assert calls == []          # no new checkout of the session-start tree
+
+
+def test_a_nested_pytest_ini_does_not_change_node_ids(repo):
+    """rich keeps its pytest.ini in tests/, which makes pytest's rootdir tests/;
+    ids must stay relative to the repo or every failure looks new."""
+    _write(repo, "tests/pytest.ini", "[pytest]\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "nested ini")
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    assert {r for r, _, _ in rules(check(repo))} == {"test-regression"}
