@@ -164,7 +164,7 @@ against the session-start code:
     regression or characterization tests, so they're only counted on the receipt.
   - Sessions that only add tests aren't compared.
 
-**Results.** `eval/notyet_replay.py` ran on the same 30 click and attrs commits as §2. Raw
+**Results.** `eval/notyet_replay.py` ran on the same 30 click and attrs commits as §2, with the final code. Raw
 results are in `results/2026-09-28/replay_vacuous.json`.
 
 - **Compared: 25 of 30 commits.** The other 5 had no new test passing on the new code, or
@@ -186,8 +186,35 @@ results are in `results/2026-09-28/replay_vacuous.json`.
     targeted result (notyet now re-runs by file);
   - the session-start cache kept results computed by an older notyet (it's now keyed on
     notyet's own code).
-- **Known gap:** tests whose test data changed at module level, with no function edited, aren't
-  seen as new tests (click b5464b7).
+- **Test data changed at module level** (click b5464b7 changes an expected dict) now counts as an
+  edited test.
+
+**The replay also exposed two gaps in the tamper rules. Both are fixed:**
+- **Test edits the integrity engine didn't see.** It compared only function bodies, so a changed
+  `parametrize` expectation, or a module-level expected value, got past `test-changed-to-pass`.
+  Both now count as test edits (`integrity.changed_functions`, shared with the vacuous check).
+- **Lost results.** When one edited test file couldn't import, pytest silently dropped the other
+  files' results, and a changed expectation elsewhere wasn't caught.
+
+**Cost in friction:** 12 of 30 commits now get a block-tier finding, up from 10.
+- The 2 new ones (click 19fd4d6e, b5464b7) change expected values in a `parametrize` list or a
+  module-level dict, along with a deliberate behavior change.
+- Other commits gained more findings, all the same kind of accurate detection.
+- This adds weight to open decision 1 below.
+
+**Tamper suite (§3), re-run after all of these changes: still 120 of 120**, each caught by the
+rule meant for it. Raw results: `results/2026-09-28/tamper_after_fixes.json.gz`.
+
+**An environment problem this uncovered.**
+- **The cause:** the machine's `~/Documents` is synced by iCloud Drive, which sets the hidden flag
+  on files under dot-directories, including `.venv/…/*.pth`. Python then skips them, so editable
+  installs stop importing within minutes. That explains the earlier ".pth quirk".
+- **The false blocks it caused:** the gate ran the working tree through the venv's install, but
+  the session-start checkout through `PYTHONPATH`. So a venv breaking mid-session was blamed on
+  the session (`test-run-broken`).
+- **The fix:** both sides now import the checkout's own source.
+- **Verification:** the tamper suite and the replay above both ran with the flags set, and
+  produced no broken-environment results.
 
 ## 6. Open decisions these results raise
 

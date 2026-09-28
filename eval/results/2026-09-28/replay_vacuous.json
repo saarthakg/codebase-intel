@@ -2,12 +2,12 @@
  "click": {
   "commits": 15,
   "verdicts": {
-   "blocked": 10,
-   "passed": 5
+   "blocked": 12,
+   "passed": 3
   },
   "commits_with_rule": {
    "suppression-added/resolve": 1,
-   "test-changed-to-pass/block": 4,
+   "test-changed-to-pass/block": 7,
    "test-failing/resolve": 1,
    "test-failing-before/note": 13,
    "test-not-collected/resolve": 1,
@@ -17,7 +17,7 @@
   },
   "findings_by_rule": {
    "suppression-added/resolve": 1,
-   "test-changed-to-pass/block": 8,
+   "test-changed-to-pass/block": 11,
    "test-failing/resolve": 1,
    "test-failing-before/note": 13,
    "test-not-collected/resolve": 3,
@@ -29,13 +29,18 @@
    {
     "sha": "c3535905c7",
     "subject": "Fix broken fish completion and multiline help string",
-    "seconds": 5.2,
+    "seconds": 6.1,
     "verdict": "blocked",
     "findings": [
      {
       "rule": "test-removed",
       "severity": "block",
       "title": "tests/test_shell_completion.py::test_fish_multiline_help_complete existed at session start and is gone now"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_shell_completion.py::test_full_complete as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "test-failing-before",
@@ -47,13 +52,14 @@
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
      "tests: ran 1568 test(s) in 20 file(s) (1541 passed, 1 failed, 26 skipped) in 5s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
-     "coverage: recorded which changed lines in 1 file(s) ran"
+     "coverage: recorded which changed lines in 1 file(s) ran",
+     "ran the session-start version of 1 edited test(s) against the new code (1 failed)"
     ]
    },
    {
     "sha": "fc6c7c47ed",
     "subject": "`FuncParamType` should use `ValueError` message in `self.fail()` (#3211)",
-    "seconds": 5.0,
+    "seconds": 4.8,
     "verdict": "blocked",
     "findings": [
      {
@@ -69,7 +75,7 @@
     ],
     "checks": [
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 1430 test(s) in 20 file(s) (1404 passed, 1 failed, 25 skipped) in 5s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
+     "tests: ran 1430 test(s) in 20 file(s) (1404 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran"
     ]
@@ -77,18 +83,18 @@
    {
     "sha": "831c8f0948",
     "subject": "Add NoSuchCommand exception with suggestions for misspelled commands (#3228)",
-    "seconds": 6.1,
+    "seconds": 6.5,
     "verdict": "blocked",
     "findings": [
      {
       "rule": "test-changed-to-pass",
       "severity": "block",
-      "title": "tests/test_options.py::test_unknown_options[--foo] as it was at session start fails on the new code; the test was edited instead"
+      "title": "tests/test_options.py::test_suggest_possible_options as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "test-changed-to-pass",
       "severity": "block",
-      "title": "tests/test_options.py::test_unknown_options[-f] as it was at session start fails on the new code; the test was edited instead"
+      "title": "tests/test_options.py::test_unknown_options as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "test-failing-before",
@@ -101,15 +107,20 @@
      "tests: ran 1428 test(s) in 20 file(s) (1402 passed, 1 failed, 25 skipped) in 5s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 4 file(s) ran",
-     "ran the session-start version of 1 edited test(s) against the new code (2 failed)"
+     "ran the session-start version of 2 edited test(s) against the new code (2 failed)"
     ]
    },
    {
     "sha": "19fd4d6e18",
     "subject": "Fix: Ensure fish completion handles multiline help strings correctly (#3126)",
-    "seconds": 4.8,
-    "verdict": "passed",
+    "seconds": 5.7,
+    "verdict": "blocked",
     "findings": [
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_shell_completion.py::test_full_complete as it was at session start fails on the new code; the test was edited instead"
+     },
      {
       "rule": "test-failing-before",
       "severity": "note",
@@ -118,15 +129,16 @@
     ],
     "checks": [
      "new tests against the session-start code: 2 of 2 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 1425 test(s) in 20 file(s) (1399 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
+     "tests: ran 1425 test(s) in 20 file(s) (1399 passed, 1 failed, 25 skipped) in 5s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
-     "coverage: recorded which changed lines in 1 file(s) ran"
+     "coverage: recorded which changed lines in 1 file(s) ran",
+     "ran the session-start version of 1 edited test(s) against the new code (1 failed)"
     ]
    },
    {
     "sha": "2468b70997",
     "subject": "Fix readline backspace/line-wrapping on linux (#2969)",
-    "seconds": 5.4,
+    "seconds": 5.7,
     "verdict": "blocked",
     "findings": [
      {
@@ -152,7 +164,7 @@
     ],
     "checks": [
      "new tests against the session-start code: 3 of 3 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 1424 test(s) in 20 file(s) (1398 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module (2 steps), imports a changed module (3 steps), named after a changed module",
+     "tests: ran 1424 test(s) in 20 file(s) (1398 passed, 1 failed, 25 skipped) in 5s; selected because: changed test, imports a changed module (2 steps), imports a changed module (3 steps), named after a changed module",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran",
      "ran the session-start version of 2 edited test(s) against the new code (2 failed)"
@@ -161,7 +173,7 @@
    {
     "sha": "701b313160",
     "subject": "Fix completions for quoted/escaped parameters in Fish (#3013)",
-    "seconds": 3.5,
+    "seconds": 4.1,
     "verdict": "passed",
     "findings": [
      {
@@ -174,13 +186,14 @@
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
      "tests: ran 864 test(s) in 18 file(s) (840 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
-     "coverage: recorded which changed lines in 1 file(s) ran"
+     "coverage: recorded which changed lines in 1 file(s) ran",
+     "ran the session-start version of 1 edited test(s) against the new code (0 failed)"
     ]
    },
    {
     "sha": "a1235aacb1",
     "subject": "Fix Zsh completions with colons (#2846)",
-    "seconds": 3.4,
+    "seconds": 4.2,
     "verdict": "passed",
     "findings": [
      {
@@ -191,7 +204,7 @@
     ],
     "checks": [
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 836 test(s) in 18 file(s) (812 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
+     "tests: ran 836 test(s) in 18 file(s) (812 passed, 1 failed, 23 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran"
     ]
@@ -199,7 +212,7 @@
    {
     "sha": "f14b75063f",
     "subject": "update dev dependencies",
-    "seconds": 3.2,
+    "seconds": 4.3,
     "verdict": "blocked",
     "findings": [
      {
@@ -224,20 +237,25 @@
      }
     ],
     "checks": [
-     "tests: ran 684 test(s) in 20 file(s) (660 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps), named after a changed module",
+     "tests: ran 684 test(s) in 20 file(s) (660 passed, 1 failed, 23 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), named after a changed module",
      "coverage: recorded which changed lines in 4 file(s) ran"
     ]
    },
    {
     "sha": "4ece17a107",
     "subject": "Expand `Choice` token normalization + make generic (#2796)",
-    "seconds": 4.1,
+    "seconds": 5.2,
     "verdict": "blocked",
     "findings": [
      {
       "rule": "test-changed-to-pass",
       "severity": "block",
       "title": "tests/test_formatting.py::test_formatting_custom_type_metavar as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_info_dict.py::test_parameter as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "test-changed-to-pass",
@@ -267,18 +285,23 @@
     ],
     "checks": [
      "new tests against the session-start code: 3 of 4 fail there, so they test the change; 1 pass on both sides (regression or characterization tests)",
-     "tests: ran 591 test(s) in 18 file(s) (567 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
+     "tests: ran 591 test(s) in 18 file(s) (567 passed, 1 failed, 23 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 3 file(s) ran",
-     "ran the session-start version of 3 edited test(s) against the new code (2 failed)"
+     "ran the session-start version of 4 edited test(s) against the new code (3 failed)"
     ]
    },
    {
     "sha": "b5464b7e06",
     "subject": "Only try to set flag_value if is_flag is true (#2829)",
-    "seconds": 2.6,
-    "verdict": "passed",
+    "seconds": 4.0,
+    "verdict": "blocked",
     "findings": [
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_info_dict.py::test_parameter as it was at session start fails on the new code; the test was edited instead"
+     },
      {
       "rule": "test-failing-before",
       "severity": "note",
@@ -286,15 +309,17 @@
      }
     ],
     "checks": [
-     "tests: ran 591 test(s) in 18 file(s) (567 passed, 1 failed, 23 skipped) in 2s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
+     "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
+     "tests: ran 591 test(s) in 18 file(s) (567 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
-     "coverage: recorded which changed lines in 1 file(s) ran"
+     "coverage: recorded which changed lines in 1 file(s) ran",
+     "ran the session-start version of 1 edited test(s) against the new code (1 failed)"
     ]
    },
    {
     "sha": "88328fc874",
     "subject": "Add CliRunner default `catch_exceptions` parameter (#2818)",
-    "seconds": 1.4,
+    "seconds": 1.7,
     "verdict": "passed",
     "findings": [],
     "checks": [
@@ -307,18 +332,13 @@
    {
     "sha": "5961d31fb5",
     "subject": "Introduce Parameter.deprecated + Command.deprecated message customization (#2271)",
-    "seconds": 4.2,
+    "seconds": 5.1,
     "verdict": "blocked",
     "findings": [
      {
       "rule": "test-changed-to-pass",
       "severity": "block",
-      "title": "tests/test_commands.py::test_deprecated_in_help_messages[CLI HELP] as it was at session start fails on the new code; the test was edited instead"
-     },
-     {
-      "rule": "test-changed-to-pass",
-      "severity": "block",
-      "title": "tests/test_commands.py::test_deprecated_in_help_messages[None] as it was at session start fails on the new code; the test was edited instead"
+      "title": "tests/test_commands.py::test_deprecated_in_help_messages as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "untested-change",
@@ -333,16 +353,16 @@
     ],
     "checks": [
      "new tests against the session-start code: 9 of 9 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 590 test(s) in 18 file(s) (566 passed, 1 failed, 23 skipped) in 3s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
+     "tests: ran 590 test(s) in 18 file(s) (566 passed, 1 failed, 23 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran",
-     "ran the session-start version of 2 edited test(s) against the new code (2 failed)"
+     "ran the session-start version of 2 edited test(s) against the new code (1 failed)"
     ]
    },
    {
     "sha": "3b06e0b75a",
     "subject": "Improve echo_via_pager behaviour in face of errors (#2775)",
-    "seconds": 93.0,
+    "seconds": 93.6,
     "verdict": "blocked",
     "findings": [
      {
@@ -357,7 +377,7 @@
      }
     ],
     "checks": [
-     "tests: ran 577 test(s) in 18 file(s) (553 passed, 1 failed, 23 skipped) in 92s; selected because: changed test, imports a changed module, imports a changed module (3 steps), imports a changed module (4 steps)",
+     "tests: ran 577 test(s) in 18 file(s) (553 passed, 1 failed, 23 skipped) in 93s; selected because: changed test, imports a changed module, imports a changed module (3 steps), imports a changed module (4 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran",
      "ran the session-start version of 1 edited test(s) against the new code (0 failed)"
@@ -366,7 +386,7 @@
    {
     "sha": "0d69b6ce8b",
     "subject": "Adds support for editing multiple files (#2068)",
-    "seconds": 2.9,
+    "seconds": 3.2,
     "verdict": "blocked",
     "findings": [
      {
@@ -389,7 +409,7 @@
    {
     "sha": "0ef55fda47",
     "subject": "Close contexts created during shell completion #2644. (#2800)",
-    "seconds": 2.9,
+    "seconds": 3.0,
     "verdict": "blocked",
     "findings": [
      {
@@ -421,7 +441,7 @@
   "commits_with_rule": {
    "assertions-removed/resolve": 1,
    "suppression-added/resolve": 3,
-   "test-changed-to-pass/block": 3,
+   "test-changed-to-pass/block": 4,
    "test-failing-before/note": 14,
    "test-removed/block": 3,
    "test-vacuous/resolve": 3,
@@ -430,7 +450,7 @@
   "findings_by_rule": {
    "assertions-removed/resolve": 1,
    "suppression-added/resolve": 3,
-   "test-changed-to-pass/block": 16,
+   "test-changed-to-pass/block": 20,
    "test-failing-before/note": 14,
    "test-removed/block": 17,
    "test-vacuous/resolve": 3,
@@ -440,7 +460,7 @@
    {
     "sha": "f53fc5440d",
     "subject": "Stop evolve dunders from being modified (#1606)",
-    "seconds": 8.3,
+    "seconds": 8.5,
     "verdict": "blocked",
     "findings": [
      {
@@ -463,7 +483,7 @@
    {
     "sha": "9b98a730bf",
     "subject": "Drop Python 3.9 (#1603)",
-    "seconds": 17.7,
+    "seconds": 19.4,
     "verdict": "blocked",
     "findings": [
      {
@@ -522,9 +542,34 @@
       "title": "tests/test_dunders.py::TestEqOrder::test_ge[C0] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
      },
      {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestCountingAttr::test_converter_decorator as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestCountingAttr::test_validator_decorator as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestMetadata::test_empty_metadata_singleton as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestMetadata::test_metadata_present as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestMetadata::test_not_none_metadata as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
       "rule": "test-vacuous",
       "severity": "resolve",
-      "title": "none of the 10 new or edited test(s) fails on the session-start code, so none of them tests what this session changed"
+      "title": "none of the 22 new or edited test(s) fails on the session-start code, so none of them tests what this session changed"
      },
      {
       "rule": "test-failing-before",
@@ -537,13 +582,13 @@
      "tests: ran 1412 test(s) in 25 file(s) (1401 passed, 1 failed, 10 skipped) in 13s; selected because: changed test, imports a changed module, imports a changed module (2 steps), under changed conftest.py",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 3 file(s) ran",
-     "ran the session-start version of 5 edited test(s) against the new code (1 failed)"
+     "ran the session-start version of 22 edited test(s) against the new code (5 failed)"
     ]
    },
    {
     "sha": "116681b67e",
     "subject": "update",
-    "seconds": 8.9,
+    "seconds": 8.6,
     "verdict": "blocked",
     "findings": [
      {
@@ -566,7 +611,7 @@
    {
     "sha": "5aa76a4450",
     "subject": "Add `ne` validator (#1571)",
-    "seconds": 4.6,
+    "seconds": 4.7,
     "verdict": "blocked",
     "findings": [
      {
@@ -605,7 +650,7 @@
    {
     "sha": "4b5b295bb8",
     "subject": "Make on_setattr hooks accept generators (#1592)",
-    "seconds": 8.6,
+    "seconds": 8.8,
     "verdict": "blocked",
     "findings": [
      {
@@ -629,7 +674,7 @@
    {
     "sha": "97f8d17565",
     "subject": "Fix ClassVar forward reference detection (#1593)",
-    "seconds": 8.3,
+    "seconds": 8.7,
     "verdict": "blocked",
     "findings": [
      {
@@ -647,13 +692,14 @@
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
      "tests: ran 1390 test(s) in 23 file(s) (1381 passed, 1 failed, 8 skipped) in 8s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
-     "coverage: recorded which changed lines in 1 file(s) ran"
+     "coverage: recorded which changed lines in 1 file(s) ran",
+     "ran the session-start version of 1 edited test(s) against the new code (0 failed)"
     ]
    },
    {
     "sha": "6851ab593c",
     "subject": "Defer imports on the cold import path (#1600)",
-    "seconds": 7.9,
+    "seconds": 8.1,
     "verdict": "blocked",
     "findings": [
      {
@@ -673,7 +719,7 @@
      }
     ],
     "checks": [
-     "tests: ran 1387 test(s) in 23 file(s) (1380 passed, 1 failed, 6 skipped) in 7s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
+     "tests: ran 1387 test(s) in 23 file(s) (1380 passed, 1 failed, 6 skipped) in 8s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 5 file(s) ran"
     ]
@@ -700,7 +746,7 @@
    {
     "sha": "48b8611c27",
     "subject": "Add instance support to attrs.fields() (#1529)",
-    "seconds": 19.9,
+    "seconds": 19.5,
     "verdict": "blocked",
     "findings": [
      {
@@ -730,7 +776,7 @@
    {
     "sha": "a572c3a4c5",
     "subject": "Allow field(on_setattr=NO_OP) on frozen classes",
-    "seconds": 9.0,
+    "seconds": 8.2,
     "verdict": "passed",
     "findings": [
      {
@@ -741,7 +787,7 @@
     ],
     "checks": [
      "new tests against the session-start code: 1 of 1 fail there, so they test the change; 0 pass on both sides (regression or characterization tests)",
-     "tests: ran 1379 test(s) in 23 file(s) (1372 passed, 1 failed, 6 skipped) in 9s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
+     "tests: ran 1379 test(s) in 23 file(s) (1372 passed, 1 failed, 6 skipped) in 8s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran"
     ]
@@ -749,7 +795,7 @@
    {
     "sha": "af9c510912",
     "subject": "Fix validators.disabled() to save/restore state on nesting (#1513)",
-    "seconds": 8.3,
+    "seconds": 8.2,
     "verdict": "passed",
     "findings": [
      {
@@ -788,18 +834,13 @@
    {
     "sha": "862696afb5",
     "subject": "Resolve field aliases before calling field_transformer (#1509)",
-    "seconds": 11.1,
+    "seconds": 11.0,
     "verdict": "blocked",
     "findings": [
      {
       "rule": "test-changed-to-pass",
       "severity": "block",
-      "title": "tests/test_functional.py::TestFunctional::test_fields[C2] as it was at session start fails on the new code; the test was edited instead"
-     },
-     {
-      "rule": "test-changed-to-pass",
-      "severity": "block",
-      "title": "tests/test_functional.py::TestFunctional::test_fields[C2Slots] as it was at session start fails on the new code; the test was edited instead"
+      "title": "tests/test_functional.py::TestFunctional::test_fields as it was at session start fails on the new code; the test was edited instead"
      },
      {
       "rule": "test-changed-to-pass",
@@ -827,13 +868,13 @@
      "tests: ran 1383 test(s) in 25 file(s) (1373 passed, 1 failed, 9 skipped) in 9s; selected because: changed test, imports a changed module, imports a changed module (2 steps), under changed utils.py",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran",
-     "ran the session-start version of 4 edited test(s) against the new code (5 failed)"
+     "ran the session-start version of 4 edited test(s) against the new code (4 failed)"
     ]
    },
    {
     "sha": "c44b8b0052",
     "subject": "update dev (#1507)",
-    "seconds": 9.8,
+    "seconds": 9.1,
     "verdict": "blocked",
     "findings": [
      {
@@ -853,16 +894,16 @@
      }
     ],
     "checks": [
-     "tests: ran 1365 test(s) in 23 file(s) (1358 passed, 1 failed, 6 skipped) in 9s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
+     "tests: ran 1365 test(s) in 23 file(s) (1358 passed, 1 failed, 6 skipped) in 8s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 1 file(s) ran",
-     "ran the session-start version of 1 edited test(s) against the new code (0 failed)"
+     "ran the session-start version of 2 edited test(s) against the new code (0 failed)"
     ]
    },
    {
     "sha": "112dd1d498",
     "subject": "Expose effective class construction properties (#1454)",
-    "seconds": 11.6,
+    "seconds": 11.2,
     "verdict": "blocked",
     "findings": [
      {
@@ -938,7 +979,7 @@
     ],
     "checks": [
      "new tests against the session-start code: 16 of 17 fail there, so they test the change; 1 pass on both sides (regression or characterization tests)",
-     "tests: ran 1365 test(s) in 23 file(s) (1358 passed, 1 failed, 6 skipped) in 10s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
+     "tests: ran 1365 test(s) in 23 file(s) (1358 passed, 1 failed, 6 skipped) in 9s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps)",
      "failures and changed tests compared with an isolated checkout of the session-start tree",
      "coverage: recorded which changed lines in 4 file(s) ran",
      "ran the session-start version of 10 edited test(s) against the new code (10 failed)"

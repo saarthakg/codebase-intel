@@ -52,7 +52,10 @@ Notes on the 2026-09-28 raw results:
 
 - `tamper.json.gz` covers flask, click, attrs and httpx. rich's entry there is empty because of
   the rootdir bug. `tamper_rich.json.gz` is the rerun after the fix.
-- `replay_vacuous.json` is the replay after the vacuous-test rule was added (EVAL.md §5); `replay.json` is
-  from before it.
+- `replay_vacuous.json` is the replay with the vacuous-test rule and the integrity fixes (EVAL.md §5);
+  `replay.json` is from before them. `tamper_after_fixes.json.gz` is the tamper suite re-run after them.
+- If the clones live under an iCloud-synced folder (like `~/Documents`), iCloud hides `.venv/*.pth` and editable
+  installs stop importing. The gate doesn't depend on them, but scripts that call `.venv/bin/python`
+  directly (sessions grading) do. Keep the clones outside synced folders.
 - `sessions_*.json` are the 6 sessions in docs/EVAL.md §4. The 2 smoke sessions before those ran
   with a PYTHONPATH leak and aren't counted.
