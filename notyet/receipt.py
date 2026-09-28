@@ -102,7 +102,7 @@ def summary(verdict: str, standing: list[Finding], result: EngineResult, path: s
     return f"{head}. {detail} (receipt: {path})"
 
 
-def agent_message(standing: list[Finding], last_chance: bool) -> str:
+def agent_message(standing: list[Finding], last_chance: bool, advice: list[str] = ()) -> str:
     cmd = invocation()
     lines = [f"notyet: not done yet. {len(standing)} item(s) to resolve before stopping.", ""]
     for i, f in enumerate(standing[:MAX_AGENT_FINDINGS], 1):
@@ -118,6 +118,8 @@ def agent_message(standing: list[Finding], last_chance: bool) -> str:
         f"reason, which the user will see: `{cmd} ack <id> \"<reason>\"`. Items marked [block] can only be "
         f"fixed or handed to the user: `{cmd} ack <id> --needs-human \"<reason>\"`.",
     ]
+    if advice:
+        lines += ["", "Also worth a look (from history; not required):"] + [f"- {a}" for a in advice[:3]]
     if last_chance:
         lines.append("This is the last automatic check for these items: anything still open will be "
                      "reported to the user as unresolved.")

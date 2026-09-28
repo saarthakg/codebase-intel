@@ -25,8 +25,8 @@ Engine = Callable[[Context], EngineResult]
 
 
 def default_engines() -> list[Engine]:
-    from notyet.engines import execution, integrity, static, undone
-    return [execution.run, integrity.run, static.run, undone.run]
+    from notyet.engines import execution, history, integrity, static, undone
+    return [execution.run, integrity.run, static.run, undone.run, history.run]
 
 
 @dataclass
@@ -108,7 +108,8 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
     decision = Decision(verdict=verdict, receipt_path=path, findings=result.findings,
                         summary=receipt_mod.summary(verdict, standing, result, path))
     if verdict == "blocked":
-        decision.block_reason = receipt_mod.agent_message(standing, last_chance=repeats + 1 >= MAX_SAME_SET_BLOCKS)
+        decision.block_reason = receipt_mod.agent_message(standing, last_chance=repeats + 1 >= MAX_SAME_SET_BLOCKS,
+                                                            advice=result.advice)
     return decision
 
 
