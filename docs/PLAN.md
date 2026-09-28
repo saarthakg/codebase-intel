@@ -162,8 +162,8 @@ ingestion, completeness checks, TypeScript.
    down-ranks the ones it disproves.
 6. **TypeScript:** tsc and jest/vitest. AIDev has more TypeScript repos than Python ones, so this
    matters for reach.
-7. **Restructure and rename** of the repo and packages once the product has taken shape; renaming
-   the GitHub repo needs your approval first.
+7. **Restructure and rename:** done. The old package was removed, and the GitHub repo is
+   `saarthakg/notyet` (renamed 2026-09-28).
 
 ## 7. Architecture (MVP)
 

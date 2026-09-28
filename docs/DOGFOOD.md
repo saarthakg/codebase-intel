@@ -7,7 +7,7 @@ use session quota.
 ## Setup, per repo (asks before changing anything)
 
 ```sh
-pip install git+https://github.com/saarthakg/codebase-intel   # or: pip install -e <this checkout>
+pip install git+https://github.com/saarthakg/notyet   # or: pip install -e <this checkout>
 cd <repo>
 notyet init              # proposes .notyet.toml (test command, budget); review it
 notyet install claude    # shows the diff to .claude/settings.local.json; asks first

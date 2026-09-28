@@ -15,7 +15,7 @@ from notyet import snapshot
 CONFIG_FILE = ".notyet.toml"
 
 TEMPLATE = """\
-# notyet: a completion gate for AI coding agents. https://github.com/saarthakg/codebase-intel
+# notyet: a completion gate for AI coding agents. https://github.com/saarthakg/notyet
 
 [test]
 # How to run this repo's tests. notyet adds its own flags (test selection,

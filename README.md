@@ -51,7 +51,7 @@ It stays out of the way:
 ## Try it
 
 ```sh
-pip install git+https://github.com/saarthakg/codebase-intel
+pip install git+https://github.com/saarthakg/notyet
 cd your-repo
 notyet init                 # writes .notyet.toml; detects your pytest command; asks first
 notyet install claude       # adds the hooks to .claude/settings.local.json; shows the diff, asks first
