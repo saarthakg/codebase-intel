@@ -11,17 +11,14 @@ from app.core.answer import (
     stream_answer_question,
 )
 from app.models.schemas import AskRequest, AskResponse
+from app.state import get_repo_state
 
 router = APIRouter()
 
 
 @router.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest):
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
 
     try:
         return answer_question(
@@ -42,11 +39,7 @@ def ask_stream(request: AskRequest):
     AskResponse. Failures after the stream has started arrive as an `error`
     event: {"type": "error", "status": 502|503, "detail": "..."}.
     """
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
     try:
         check_llm_config()  # a missing key is a plain 503, not a stream error
     except LLMConfigError as e:

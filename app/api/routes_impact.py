@@ -11,17 +11,14 @@ from app.models.schemas import (
     ImpactRequest,
     ImpactResponse,
 )
+from app.state import get_repo_state
 
 router = APIRouter()
 
 
 @router.post("/impact", response_model=ImpactResponse)
 def impact(request: ImpactRequest):
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
 
     return analyze_impact(
         target=request.target,
@@ -42,11 +39,7 @@ def impact_batch(request: ImpactBatchRequest):
     Pass the output of `git diff --name-only` as `targets` to see everything a
     set of changes is likely to affect, merged into one ranked result.
     """
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
 
     if not request.targets:
         raise HTTPException(status_code=400, detail="targets must be non-empty")
@@ -70,11 +63,7 @@ def impact_diff(request: ImpactDiffRequest):
     Maps changed lines to the innermost functions/classes they touch, then
     ranks files that use those symbols above other importers of the file.
     """
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
     if not request.diff.strip():
         raise HTTPException(status_code=400, detail="diff must be non-empty")
 

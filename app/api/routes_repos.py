@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.core import paths
 from app.core.validation import validate_repo_id
 from app.models.schemas import DeleteRepoResponse, RepoInfo, RepoListResponse
+from app.state import forget_repo
 
 router = APIRouter()
 
@@ -59,7 +60,6 @@ def delete_repo(repo_id: str):
     for p in artifact_paths:
         p.unlink(missing_ok=True)
 
-    from app.main import _loaded_repos
-    _loaded_repos.pop(repo_id, None)
+    forget_repo(repo_id)
 
     return DeleteRepoResponse(repo_id=repo_id, deleted=True)

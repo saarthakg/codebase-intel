@@ -4,17 +4,14 @@ from app.core.definitions import lookup_definition
 from app.core.search import search_chunks
 from app.core.validation import validate_repo_id
 from app.models.schemas import DefinitionResponse, SearchRequest, SearchResponse
+from app.state import get_repo_state
 
 router = APIRouter()
 
 
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest):
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(request.repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(request.repo_id)
 
     results = search_chunks(
         query=request.query,
@@ -37,11 +34,7 @@ def definition(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    from app.main import get_repo_state
-    try:
-        state = get_repo_state(repo_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    state = get_repo_state(repo_id)
 
     response = lookup_definition(symbol, state.metadata_store, repo_id, state.graph)
     if response is None:

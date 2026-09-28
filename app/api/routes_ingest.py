@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.pipeline import IngestError, run_ingestion
 from app.models.schemas import IngestRequest, IngestResponse
+from app.state import forget_repo
 
 router = APIRouter()
 
@@ -22,8 +23,7 @@ def ingest(request: IngestRequest):
 
     # Invalidate any cached in-memory state for this repo_id — the artifacts
     # on disk it points to have just been replaced.
-    from app.main import _loaded_repos
-    _loaded_repos.pop(request.repo_id, None)
+    forget_repo(request.repo_id)
 
     return IngestResponse(
         repo_id=summary["repo_id"],

@@ -163,3 +163,39 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     reader_users = symbol_users("typed", "Reader.read", "pkg/proto.py", state.graph, state.metadata_store)
     assert reader_users == ["pkg/proto.py"]
     _loaded_repos.clear()
+
+
+def _listed(body):
+    return {f["file_path"]: f for f in body["high_confidence"] + body["medium_confidence"] + body["related"]}
+
+
+def test_impact_endpoints_over_http(tmp_path, monkeypatch):
+    client = _ingest(tmp_path, monkeypatch)
+
+    by_file = _listed(client.post("/impact", json={"repo_id": "dif", "target": "pkg/adapters.py"}).json())
+    assert by_file["pkg/sender.py"]["reason"] == "direct import"
+    assert by_file["pkg/closer.py"]["reason"] == "direct import"
+    assert "pkg/adapters.py" not in by_file
+
+    by_symbol = client.post("/impact", json={"repo_id": "dif", "target": "Adapter.send"}).json()
+    ranked = list(_listed(by_symbol))
+    assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # only sender calls send
+    assert _listed(by_symbol)["pkg/sender.py"]["reason"].startswith("references symbol")
+
+    batch = client.post("/impact/batch", json={"repo_id": "dif", "targets": ["pkg/sender.py", "pkg/adapters.py"]})
+    assert "pkg/adapters.py" in _listed(batch.json())["pkg/closer.py"]["triggered_by"]
+    assert client.post("/impact/batch", json={"repo_id": "dif", "targets": []}).status_code == 400
+
+
+def test_unindexed_repo_is_404_everywhere(tmp_path, monkeypatch):
+    client = _ingest(tmp_path, monkeypatch)
+    for path, body in [
+        ("/impact", {"repo_id": "nope", "target": "a.py"}),
+        ("/impact/batch", {"repo_id": "nope", "targets": ["a.py"]}),
+        ("/impact/diff", {"repo_id": "nope", "diff": "x"}),
+        ("/search", {"repo_id": "nope", "query": "x"}),
+        ("/ask", {"repo_id": "nope", "question": "x"}),
+    ]:
+        r = client.post(path, json=body)
+        assert r.status_code == 404 and "No index found" in r.json()["detail"], path
+    assert client.get("/definition", params={"repo_id": "nope", "symbol": "x"}).status_code == 404
