@@ -45,7 +45,7 @@ def cmd_init(args) -> int:
     if not command:
         print("Couldn't find a pytest setup. Pass --test-command, e.g. --test-command 'python -m pytest'.")
         return 1
-    text = config_mod.TEMPLATE.format(command=command)
+    text = config_mod.render_template(root, command)
     print(f"Will write {path}:\n\n{text}")
     if not _confirm("Write it?", args.yes):
         return 1

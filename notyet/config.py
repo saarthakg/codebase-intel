@@ -4,6 +4,7 @@ During a session the gate reads the file as it was when the session started
 (from the baseline snapshot), so an agent editing it mid-session can't
 loosen its own gate; a changed config is reported on the receipt instead.
 """
+import shutil
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,6 +24,10 @@ command = "{command}"
 # Seconds the gate may spend running tests at each check.
 budget_seconds = 60
 
+[static]
+# Optional: linters/type checkers diffed against the session-start tree.
+# Only diagnostics the session introduced are reported. Uncomment to enable.
+{static}
 [gate]
 # "report": never block; leave a receipt and a short summary.
 # "enforce": block the agent's stop on execution evidence (see docs/PLAN.md).
@@ -35,6 +40,9 @@ class Config:
     test_command: Optional[str] = None
     budget_seconds: int = 60
     mode: str = "report"                      # report | enforce
+    ruff: Optional[str] = None                # command that runs ruff, e.g. ".venv/bin/ruff"
+    pyright: Optional[str] = None             # command that runs pyright
+    static_budget_seconds: int = 60
     source: str = "defaults"                  # where the config was read from
     problems: list[str] = field(default_factory=list)
 
@@ -56,6 +64,10 @@ def parse(text: Optional[str], source: str) -> Config:
     gate = data.get("gate", {})
     cfg.test_command = (test.get("command") or "").strip() or None
     cfg.budget_seconds = int(test.get("budget_seconds", cfg.budget_seconds))
+    static = data.get("static", {})
+    cfg.ruff = (static.get("ruff") or "").strip() or None
+    cfg.pyright = (static.get("pyright") or "").strip() or None
+    cfg.static_budget_seconds = int(static.get("budget_seconds", cfg.static_budget_seconds))
     mode = gate.get("mode", cfg.mode)
     if mode not in ("report", "enforce"):
         cfg.problems.append(f"gate.mode {mode!r} isn't report or enforce; using report")
@@ -91,6 +103,34 @@ def detect_test_command(root: str) -> Optional[str]:
         if py.exists():
             return f"{venv}/bin/python -m pytest"
     return "python -m pytest"
+
+
+def detect_static_tools(root: str) -> dict[str, str]:
+    """ruff/pyright commands, for tools the repo configures and has installed."""
+    r = Path(root)
+    pyproject = _read(r / "pyproject.toml")
+    configured = {
+        "ruff": "[tool.ruff" in pyproject or (r / "ruff.toml").exists() or (r / ".ruff.toml").exists(),
+        "pyright": "[tool.pyright" in pyproject or (r / "pyrightconfig.json").exists(),
+    }
+    found = {}
+    for tool, wanted in configured.items():
+        if not wanted:
+            continue
+        for venv in (".venv", "venv", "env"):
+            if (r / venv / "bin" / tool).exists():
+                found[tool] = f"{venv}/bin/{tool}"
+                break
+        else:
+            if shutil.which(tool):
+                found[tool] = tool
+    return found
+
+
+def render_template(root: str, command: str) -> str:
+    tools = detect_static_tools(root)
+    lines = [f'{t} = "{tools[t]}"' if t in tools else f'# {t} = "{t}"' for t in ("ruff", "pyright")]
+    return TEMPLATE.format(command=command, static="\n".join(lines))
 
 
 def _read(path: Path) -> str:

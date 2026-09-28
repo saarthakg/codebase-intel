@@ -25,8 +25,8 @@ Engine = Callable[[Context], EngineResult]
 
 
 def default_engines() -> list[Engine]:
-    from notyet.engines import execution
-    return [execution.run]
+    from notyet.engines import execution, static
+    return [execution.run, static.run]
 
 
 @dataclass
@@ -80,7 +80,7 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
         result = run_engines(ctx, engines)
         result.not_checked = cfg.problems + result.not_checked
         live = config_mod.load(root)
-        if (live.test_command, live.mode, live.budget_seconds) != (cfg.test_command, cfg.mode, cfg.budget_seconds):
+        if _gate_settings(live) != _gate_settings(cfg):
             result.advice.append(f"{config_mod.CONFIG_FILE} changed during this session; "
                                  f"the gate used the version from session start")
 
@@ -110,6 +110,10 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
     if verdict == "blocked":
         decision.block_reason = receipt_mod.agent_message(standing, last_chance=repeats + 1 >= MAX_SAME_SET_BLOCKS)
     return decision
+
+
+def _gate_settings(cfg: config_mod.Config) -> tuple:
+    return (cfg.test_command, cfg.mode, cfg.budget_seconds, cfg.ruff, cfg.pyright, cfg.static_budget_seconds)
 
 
 def _same_set_streak(session: store.Session, ids: list[str]) -> int:

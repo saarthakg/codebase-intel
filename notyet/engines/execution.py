@@ -230,6 +230,26 @@ def run(ctx: Context) -> EngineResult:
                         action="Restore it, or if removing it is right, hand it to the user: "
                                "`ack <id> --needs-human \"why\"`."))
 
+    # ── deleted or renamed test files: compare their test functions statically ─
+    # (a test that reappears in a test file added this session was moved, not removed;
+    # git reports a heavily edited rename as a delete plus an add)
+    added_elsewhere = {f for d in ctx.deltas if d.status == "A" and is_test_module(d.path)
+                       for f in _test_functions(snapshot.show(ctx.root, ctx.current_tree, d.path) or "")}
+    for d in ctx.deltas:
+        old = d.path if d.status == "D" else d.old_path
+        if not old or not is_test_module(old):
+            continue
+        before_funcs = _test_functions(snapshot.show(ctx.root, ctx.baseline_tree, old) or "")
+        after_funcs = set() if d.status == "D" else _test_functions(snapshot.show(ctx.root, ctx.current_tree, d.path) or "")
+        for func in sorted(before_funcs - after_funcs - added_elsewhere):
+            nid = f"{old}::{func}"
+            result.findings.append(Finding(
+                rule="test-removed", severity="block", location=nid,
+                title=f"{nid} existed at session start and is gone now"
+                      + (" (its file was deleted)" if d.status == "D" else f" (file renamed to {d.path})"),
+                action="Restore it, or if removing it is right, hand it to the user: "
+                       "`ack <id> --needs-human \"why\"`."))
+
     passed = sum(1 for r in current.results.values() if r.outcome == "passed")
     bad = sum(1 for r in current.results.values() if r.bad)
     skipped = sum(1 for r in current.results.values() if r.outcome == "skipped")

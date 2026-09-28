@@ -101,6 +101,15 @@ def test_removed_test_blocks(repo):
     assert rules(check(repo)) == [("test-removed", "block", "tests/test_calc.py::test_sub")]
 
 
+def test_deleting_or_renaming_a_test_file_is_a_removal(repo):
+    (repo / "tests/test_strings.py").unlink()
+    (repo / "tests/test_calc.py").rename(repo / "tests/test_arith.py")
+    _write(repo, "tests/test_arith.py", "from pkg.calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n")
+    assert [r for r in rules(check(repo)) if r[0] == "test-removed"] == [
+        ("test-removed", "block", "tests/test_calc.py::test_sub"),
+        ("test-removed", "block", "tests/test_strings.py::test_shout")]
+
+
 def test_added_test_that_pytest_never_collects(repo):
     _write(repo, "pytest.ini", "[pytest]\npython_functions = check_*\n")
     _git(repo, "add", "-A")
