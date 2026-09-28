@@ -1,0 +1,373 @@
+{
+  "n": 60,
+  "hit@k": {
+    "literal.semantic": 0.8166666666666667,
+    "literal.hybrid": 0.8833333333333333,
+    "literal.keyword": 0.8833333333333333,
+    "rendered.semantic": 0.8166666666666667,
+    "rendered.hybrid": 0.8833333333333333,
+    "rendered.keyword": 0.8833333333333333
+  },
+  "questions": [
+    {
+      "literal": "Tag '{}' is already registered.",
+      "rendered": "Tag 'example' is already registered.",
+      "file": "src/flask/json/tag.py",
+      "line": 280
+    },
+    {
+      "literal": "The port to bind to.",
+      "rendered": "The port to bind to.",
+      "file": "src/flask/cli.py",
+      "line": 884
+    },
+    {
+      "literal": "' can no longer be called on the blueprint '",
+      "rendered": "' can no longer be called on the blueprint '",
+      "file": "src/flask/sansio/blueprints.py",
+      "line": 216
+    },
+    {
+      "literal": "Function reference must be a simple name: ",
+      "rendered": "Function reference must be a simple name: ",
+      "file": "src/flask/cli.py",
+      "line": 143
+    },
+    {
+      "literal": "Warning: multiple loaders returned a match for the template.",
+      "rendered": "Warning: multiple loaders returned a match for the template.",
+      "file": "src/flask/debughelpers.py",
+      "line": 168
+    },
+    {
+      "literal": "The interface to bind to.",
+      "rendered": "The interface to bind to.",
+      "file": "src/flask/cli.py",
+      "line": 883
+    },
+    {
+      "literal": "No root path can be found for the provided module ",
+      "rendered": "No root path can be found for the provided module ",
+      "file": "src/flask/helpers.py",
+      "line": 632
+    },
+    {
+      "literal": "View function mapping is overwriting an existing endpoint function: {}",
+      "rendered": "View function mapping is overwriting an existing endpoint function: example",
+      "file": "src/flask/sansio/app.py",
+      "line": 658
+    },
+    {
+      "literal": "Failed to parse arguments as literal values: ",
+      "rendered": "Failed to parse arguments as literal values: ",
+      "file": "src/flask/cli.py",
+      "line": 160
+    },
+    {
+      "literal": "Create a tagger for the given serializer.",
+      "rendered": "Create a tagger for the given serializer.",
+      "file": "src/flask/json/tag.py",
+      "line": 70
+    },
+    {
+      "literal": "Locating template {}:",
+      "rendered": "Locating template example:",
+      "file": "src/flask/debughelpers.py",
+      "line": 136
+    },
+    {
+      "literal": "Unimplemented method {}",
+      "rendered": "Unimplemented method example",
+      "file": "src/flask/views.py",
+      "line": 190
+    },
+    {
+      "literal": "Use the 'route' decorator to use the 'methods' argument.",
+      "rendered": "Use the 'route' decorator to use the 'methods' argument.",
+      "file": "src/flask/sansio/scaffold.py",
+      "line": 291
+    },
+    {
+      "literal": "<{} {} of {}, {} {}>",
+      "rendered": "<example example of example, example example>",
+      "file": "src/flask/ctx.py",
+      "line": 521
+    },
+    {
+      "literal": "Flask Documentation (",
+      "rendered": "Flask Documentation (",
+      "file": "docs/conf.py",
+      "line": 63
+    },
+    {
+      "literal": "'name' may not contain a dot '.' character.",
+      "rendered": "'name' may not contain a dot '.' character.",
+      "file": "src/flask/sansio/blueprints.py",
+      "line": 199
+    },
+    {
+      "literal": "Cannot pop this context ({}), there is no active context.",
+      "rendered": "Cannot pop this context (example), there is no active context.",
+      "file": "src/flask/ctx.py",
+      "line": 472
+    },
+    {
+      "literal": "Username is required.",
+      "rendered": "Username is required.",
+      "file": "examples/tutorial/flaskr/auth.py",
+      "line": 60
+    },
+    {
+      "literal": "Show the routes for the app.",
+      "rendered": "Show the routes for the app.",
+      "file": "src/flask/cli.py",
+      "line": 1048
+    },
+    {
+      "literal": "' is already registered.",
+      "rendered": "' is already registered.",
+      "file": "src/flask/json/tag.py",
+      "line": 280
+    },
+    {
+      "literal": "Object of type {} is not JSON serializable",
+      "rendered": "Object of type example is not JSON serializable",
+      "file": "src/flask/json/provider.py",
+      "line": 121
+    },
+    {
+      "literal": "The global data for this context. Accessed through :data:`.g`.",
+      "rendered": "The global data for this context. Accessed through :data:`.g`.",
+      "file": "src/flask/ctx.py",
+      "line": 313
+    },
+    {
+      "literal": "Cannot nest client invocations",
+      "rendered": "Cannot nest client invocations",
+      "file": "src/flask/testing.py",
+      "line": 251
+    },
+    {
+      "literal": "INSERT INTO post (title, body, author_id) VALUES (?, ?, ?)",
+      "rendered": "INSERT INTO post (title, body, author_id) VALUES (?, ?, ?)",
+      "file": "examples/tutorial/flaskr/blog.py",
+      "line": 77
+    },
+    {
+      "literal": "SELECT * FROM user WHERE username = ?",
+      "rendered": "SELECT * FROM user WHERE username = ?",
+      "file": "examples/tutorial/flaskr/auth.py",
+      "line": 93
+    },
+    {
+      "literal": "You tried to access the file ",
+      "rendered": "You tried to access the file ",
+      "file": "src/flask/debughelpers.py",
+      "line": 31
+    },
+    {
+      "literal": "When specifying '_scheme', '_external' must be True.",
+      "rendered": "When specifying '_scheme', '_external' must be True.",
+      "file": "src/flask/app.py",
+      "line": 1203
+    },
+    {
+      "literal": "'view_func' name may not contain a dot '.' character.",
+      "rendered": "'view_func' name may not contain a dot '.' character.",
+      "file": "src/flask/sansio/blueprints.py",
+      "line": 431
+    },
+    {
+      "literal": "Clear the current session, including the stored user id.",
+      "rendered": "Clear the current session, including the stored user id.",
+      "file": "examples/tutorial/flaskr/auth.py",
+      "line": 114
+    },
+    {
+      "literal": "View function mapping is overwriting an existing endpoint function: ",
+      "rendered": "View function mapping is overwriting an existing endpoint function: ",
+      "file": "src/flask/sansio/app.py",
+      "line": 658
+    },
+    {
+      "literal": "Show all registered routes with endpoints and methods.",
+      "rendered": "Show all registered routes with endpoints and methods.",
+      "file": "src/flask/cli.py",
+      "line": 1062
+    },
+    {
+      "literal": "\"--cert\" must also be specified.",
+      "rendered": "\"--cert\" must also be specified.",
+      "file": "src/flask/cli.py",
+      "line": 856
+    },
+    {
+      "literal": "Run a development server.",
+      "rendered": "Run a development server.",
+      "file": "src/flask/cli.py",
+      "line": 882
+    },
+    {
+      "literal": "Cookies are disabled. Create a client with 'use_cookies=True'.",
+      "rendered": "Cookies are disabled. Create a client with 'use_cookies=True'.",
+      "file": "src/flask/testing.py",
+      "line": 157
+    },
+    {
+      "literal": "Failed to find attribute {} in {}.",
+      "rendered": "Failed to find attribute example in example.",
+      "file": "src/flask/cli.py",
+      "line": 171
+    },
+    {
+      "literal": "Install Flask with the 'async' extra in order to use async views.",
+      "rendered": "Install Flask with the 'async' extra in order to use async views.",
+      "file": "src/flask/app.py",
+      "line": 1100
+    },
+    {
+      "literal": "The key file to use when specifying a certificate.",
+      "rendered": "The key file to use when specifying a certificate.",
+      "file": "src/flask/cli.py",
+      "line": 896
+    },
+    {
+      "literal": "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
+      "rendered": "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
+      "file": "src/flask/logging.py",
+      "line": 54
+    },
+    {
+      "literal": "Expands a basic dictionary with session attributes.",
+      "rendered": "Expands a basic dictionary with session attributes.",
+      "file": "src/flask/sessions.py",
+      "line": 25
+    },
+    {
+      "literal": "Convert a tagged representation back to the original type.",
+      "rendered": "Convert a tagged representation back to the original type.",
+      "file": "src/flask/json/tag.py",
+      "line": 298
+    },
+    {
+      "literal": "No routes were registered.",
+      "rendered": "No routes were registered.",
+      "file": "src/flask/cli.py",
+      "line": 1066
+    },
+    {
+      "literal": "Password is required.",
+      "rendered": "Password is required.",
+      "file": "examples/tutorial/flaskr/auth.py",
+      "line": 62
+    },
+    {
+      "literal": "Initialized the database.",
+      "rendered": "Initialized the database.",
+      "file": "examples/tutorial/flaskr/db.py",
+      "line": 45
+    },
+    {
+      "literal": "When \"--cert\" is \"adhoc\", \"--key\" is not used.",
+      "rendered": "When \"--cert\" is \"adhoc\", \"--key\" is not used.",
+      "file": "src/flask/cli.py",
+      "line": 845
+    },
+    {
+      "literal": "Extra files that trigger a reload on change. Multiple paths are separated by ",
+      "rendered": "Extra files that trigger a reload on change. Multiple paths are separated by ",
+      "file": "src/flask/cli.py",
+      "line": 920
+    },
+    {
+      "literal": "app.json.response() takes either args or kwargs, not both",
+      "rendered": "app.json.response() takes either args or kwargs, not both",
+      "file": "src/flask/json/provider.py",
+      "line": 79
+    },
+    {
+      "literal": "Cannot pass \"subdomain\" or \"url_scheme\" with \"base_url\".",
+      "rendered": "Cannot pass \"subdomain\" or \"url_scheme\" with \"base_url\".",
+      "file": "src/flask/testing.py",
+      "line": 62
+    },
+    {
+      "literal": " is already registered.",
+      "rendered": " is already registered.",
+      "file": "examples/tutorial/flaskr/auth.py",
+      "line": 74
+    },
+    {
+      "literal": "The view function for ",
+      "rendered": "The view function for ",
+      "file": "src/flask/app.py",
+      "line": 1311
+    },
+    {
+      "literal": "  The template was looked up from an endpoint that belongs to the blueprint ",
+      "rendered": "  The template was looked up from an endpoint that belongs to the blueprint ",
+      "file": "src/flask/debughelpers.py",
+      "line": 173
+    },
+    {
+      "literal": "' is already registered for ",
+      "rendered": "' is already registered for ",
+      "file": "src/flask/sansio/blueprints.py",
+      "line": 311
+    },
+    {
+      "literal": "Errors during app teardown",
+      "rendered": "Errors during app teardown",
+      "file": "src/flask/app.py",
+      "line": 1482
+    },
+    {
+      "literal": "Open the session if it is not already open for this request context.",
+      "rendered": "Open the session if it is not already open for this request context.",
+      "file": "src/flask/ctx.py",
+      "line": 382
+    },
+    {
+      "literal": "  Maybe you did not place a template in the right folder?",
+      "rendered": "  Maybe you did not place a template in the right folder?",
+      "file": "src/flask/debughelpers.py",
+      "line": 176
+    },
+    {
+      "literal": "The previous state to restore when popping.",
+      "rendered": "The previous state to restore when popping.",
+      "file": "src/flask/ctx.py",
+      "line": 332
+    },
+    {
+      "literal": "Find the path that contains the package or module.",
+      "rendered": "Find the path that contains the package or module.",
+      "file": "src/flask/sansio/scaffold.py",
+      "line": 718
+    },
+    {
+      "literal": "The environment variable ",
+      "rendered": "The environment variable ",
+      "file": "src/flask/config.py",
+      "line": 119
+    },
+    {
+      "literal": "Base class for defining type tags for :class:`TaggedJSONSerializer`.",
+      "rendered": "Base class for defining type tags for :class:`TaggedJSONSerializer`.",
+      "file": "src/flask/json/tag.py",
+      "line": 61
+    },
+    {
+      "literal": "Convert a value to a tagged representation if necessary.",
+      "rendered": "Convert a value to a tagged representation if necessary.",
+      "file": "src/flask/json/tag.py",
+      "line": 290
+    },
+    {
+      "literal": " is not JSON serializable",
+      "rendered": " is not JSON serializable",
+      "file": "src/flask/json/provider.py",
+      "line": 121
+    }
+  ]
+}

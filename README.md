@@ -19,7 +19,8 @@ followed?") and identifiers (`get_netrc_auth`, `HTTPAdapter.send`) both work. Co
 chunked along function and class boundaries and embedded with its file and class context.
 On 25 held-out questions never used for tuning, the exact function that answers the question
 is in the top 5 results 96% of the time, up from 72% at the start. On Flask, a repo nothing
-was ever tuned on, it's 95%. Keyword (BM25) and hybrid modes are there for exact strings.
+was ever tuned on, it's 95%. For a pasted error message or other exact string, use keyword
+(BM25) mode: it finds the line 88–98% of the time, against 78–82% for semantic.
 
 **Jump to a definition and every usage.** `Class.method` or bare names, with other matching
 definitions listed, source preferred over tests. Usages come from the parse tree, not text
@@ -674,8 +675,19 @@ function too big to fit falls back to windows.
 misses exact identifiers that BM25 finds, so fusing the two (by rank, which avoids comparing
 cosine and BM25 scores) was a big win with MiniLM. With bge-small and per-chunk context
 headers, embeddings already find identifiers, and the BM25 list mostly added noise: semantic
-alone matched or beat hybrid on every question set on both benchmark repos. Hybrid and keyword
-stay available for exact strings and weaker models.
+alone matched or beat hybrid on every question set on both benchmark repos.
+
+Keyword mode is kept for exact strings, where it measurably wins. `eval/run_exact_eval.py`
+samples 60 string literals that occur once in each repo's source (seeded, not hand-picked)
+and searches for each as written and as rendered at runtime (`{url}` → a value, like a pasted
+error message). Top-5 hit rate:
+
+| Exact-string lookup | semantic | hybrid | keyword |
+|---|---|---|---|
+| requests, as written / rendered | 0.78 / 0.80 | 0.92 / 0.90 | **0.98 / 0.98** |
+| Flask, as written / rendered | 0.82 / 0.82 | **0.88 / 0.88** | **0.88 / 0.88** |
+
+The keyword index is about 30% of a repo's database, which is the price of this.
 
 **Why `bge-small-en-v1.5`.** Same size and speed as `all-MiniLM-L6-v2`, but it reads 512
 tokens instead of 256, which lets the per-chunk context header (file, enclosing class,

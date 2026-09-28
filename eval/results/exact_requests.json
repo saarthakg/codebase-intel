@@ -1,0 +1,373 @@
+{
+  "n": 60,
+  "hit@k": {
+    "literal.semantic": 0.7833333333333333,
+    "literal.hybrid": 0.9166666666666666,
+    "literal.keyword": 0.9833333333333333,
+    "rendered.semantic": 0.8,
+    "rendered.hybrid": 0.9,
+    "rendered.keyword": 0.9833333333333333
+  },
+  "questions": [
+    {
+      "literal": "Updates this jar with cookies from another CookieJar or dict-like",
+      "rendered": "Updates this jar with cookies from another CookieJar or dict-like",
+      "file": "src/requests/cookies.py",
+      "line": 394
+    },
+    {
+      "literal": "Header part ({}) from {} must be of type str or bytes, not {}",
+      "rendered": "Header part (example) from example must be of type str or bytes, not example",
+      "file": "src/requests/utils.py",
+      "line": 1110
+    },
+    {
+      "literal": "The header value provided was somehow invalid.",
+      "rendered": "The header value provided was somehow invalid.",
+      "file": "src/requests/exceptions.py",
+      "line": 123
+    },
+    {
+      "literal": "You can only merge into CookieJar",
+      "rendered": "You can only merge into CookieJar",
+      "file": "src/requests/cookies.py",
+      "line": 614
+    },
+    {
+      "literal": "Invalid percent-escape sequence: '",
+      "rendered": "Invalid percent-escape sequence: '",
+      "file": "src/requests/utils.py",
+      "line": 693
+    },
+    {
+      "literal": ") may cause slowdown.",
+      "rendered": ") may cause slowdown.",
+      "file": "src/requests/__init__.py",
+      "line": 107
+    },
+    {
+      "literal": "Could not find a suitable TLS CA certificate bundle, invalid path: {}",
+      "rendered": "Could not find a suitable TLS CA certificate bundle, invalid path: example",
+      "file": "src/requests/adapters.py",
+      "line": 333
+    },
+    {
+      "literal": "Prepare Content-Length header based on request method and body",
+      "rendered": "Prepare Content-Length header based on request method and body",
+      "file": "src/requests/models.py",
+      "line": 655
+    },
+    {
+      "literal": "Old version of cryptography (",
+      "rendered": "Old version of cryptography (",
+      "file": "src/requests/__init__.py",
+      "line": 107
+    },
+    {
+      "literal": "Invalid URL {}: No host supplied",
+      "rendered": "Invalid URL example: No host supplied",
+      "file": "src/requests/models.py",
+      "line": 522
+    },
+    {
+      "literal": "The server did not send any data in the allotted amount of time.",
+      "rendered": "The server did not send any data in the allotted amount of time.",
+      "file": "src/requests/exceptions.py",
+      "line": 99
+    },
+    {
+      "literal": "Unsupported event specified, with event name \"",
+      "rendered": "Unsupported event specified, with event name \"",
+      "file": "src/requests/models.py",
+      "line": 263
+    },
+    {
+      "literal": "Couldn't decode the text into json",
+      "rendered": "Couldn't decode the text into json",
+      "file": "src/requests/exceptions.py",
+      "line": 43
+    },
+    {
+      "literal": "No connection adapters were found for {}",
+      "rendered": "No connection adapters were found for example",
+      "file": "src/requests/sessions.py",
+      "line": 881
+    },
+    {
+      "literal": "Failed to decode response content.",
+      "rendered": "Failed to decode response content.",
+      "file": "src/requests/exceptions.py",
+      "line": 135
+    },
+    {
+      "literal": "Properly register a hook.",
+      "rendered": "Properly register a hook.",
+      "file": "src/requests/models.py",
+      "line": 260
+    },
+    {
+      "literal": "Closes all adapters and as such the session",
+      "rendered": "Closes all adapters and as such the session",
+      "file": "src/requests/sessions.py",
+      "line": 884
+    },
+    {
+      "literal": "One line description of project.",
+      "rendered": "One line description of project.",
+      "file": "docs/conf.py",
+      "line": 295
+    },
+    {
+      "literal": "An imported dependency doesn't match the expected version range.",
+      "rendered": "An imported dependency doesn't match the expected version range.",
+      "file": "src/requests/exceptions.py",
+      "line": 162
+    },
+    {
+      "literal": "Could not find the TLS key file, invalid path: ",
+      "rendered": "Could not find the TLS key file, invalid path: ",
+      "file": "src/requests/adapters.py",
+      "line": 362
+    },
+    {
+      "literal": "{} Server Error: {} for url: {}",
+      "rendered": "example Server Error: example for url: example",
+      "file": "src/requests/models.py",
+      "line": 1167
+    },
+    {
+      "literal": "The content for this response was already consumed.",
+      "rendered": "The content for this response was already consumed.",
+      "file": "src/requests/exceptions.py",
+      "line": 139
+    },
+    {
+      "literal": "A valid URL is required to make a request.",
+      "rendered": "A valid URL is required to make a request.",
+      "file": "src/requests/exceptions.py",
+      "line": 103
+    },
+    {
+      "literal": "RequestCookieJar's __iter__ comes from CookieJar not MutableMapping.",
+      "rendered": "RequestCookieJar's __iter__ comes from CookieJar not MutableMapping.",
+      "file": "src/requests/cookies.py",
+      "line": 349
+    },
+    {
+      "literal": "There are multiple cookies with name, {}",
+      "rendered": "There are multiple cookies with name, example",
+      "file": "src/requests/cookies.py",
+      "line": 445
+    },
+    {
+      "literal": "Could not find a suitable TLS CA certificate bundle, invalid path: ",
+      "rendered": "Could not find a suitable TLS CA certificate bundle, invalid path: ",
+      "file": "src/requests/adapters.py",
+      "line": 333
+    },
+    {
+      "literal": "Prepares the given HTTP auth data.",
+      "rendered": "Prepares the given HTTP auth data.",
+      "file": "src/requests/models.py",
+      "line": 675
+    },
+    {
+      "literal": "The Base Transport Adapter",
+      "rendered": "The Base Transport Adapter",
+      "file": "src/requests/adapters.py",
+      "line": 123
+    },
+    {
+      "literal": "Receives a Response. Returns a generator of Responses or Requests.",
+      "rendered": "Receives a Response. Returns a generator of Responses or Requests.",
+      "file": "src/requests/sessions.py",
+      "line": 198
+    },
+    {
+      "literal": "Attaches HTTP Basic Authentication to the given Request object.",
+      "rendered": "Attaches HTTP Basic Authentication to the given Request object.",
+      "file": "src/requests/auth.py",
+      "line": 86
+    },
+    {
+      "literal": "Custom retries logic failed",
+      "rendered": "Custom retries logic failed",
+      "file": "src/requests/exceptions.py",
+      "line": 143
+    },
+    {
+      "literal": "True if this Response one of the permanent versions of redirect.",
+      "rendered": "True if this Response one of the permanent versions of redirect.",
+      "file": "src/requests/models.py",
+      "line": 885
+    },
+    {
+      "literal": "The URL scheme provided is either invalid or unsupported.",
+      "rendered": "The URL scheme provided is either invalid or unsupported.",
+      "file": "src/requests/exceptions.py",
+      "line": 115
+    },
+    {
+      "literal": "A JSON error occurred.",
+      "rendered": "A JSON error occurred.",
+      "file": "src/requests/exceptions.py",
+      "line": 39
+    },
+    {
+      "literal": "Returns the parsed header links of the response, if any.",
+      "rendered": "Returns the parsed header links of the response, if any.",
+      "file": "src/requests/models.py",
+      "line": 1128
+    },
+    {
+      "literal": "Dictionary lookup object.",
+      "rendered": "Dictionary lookup object.",
+      "file": "src/requests/structures.py",
+      "line": 97
+    },
+    {
+      "literal": "No connection adapters were found for ",
+      "rendered": "No connection adapters were found for ",
+      "file": "src/requests/sessions.py",
+      "line": 881
+    },
+    {
+      "literal": "Prepares the given HTTP method.",
+      "rendered": "Prepares the given HTTP method.",
+      "file": "src/requests/models.py",
+      "line": 468
+    },
+    {
+      "literal": "The content for this response was already consumed",
+      "rendered": "The content for this response was already consumed",
+      "file": "src/requests/models.py",
+      "line": 1041
+    },
+    {
+      "literal": "Write a file to the disk in an atomic fashion",
+      "rendered": "Write a file to the disk in an atomic fashion",
+      "file": "src/requests/utils.py",
+      "line": 330
+    },
+    {
+      "literal": "Iterate over slices of a string.",
+      "rendered": "Iterate over slices of a string.",
+      "file": "src/requests/utils.py",
+      "line": 624
+    },
+    {
+      "literal": "Data must not be a string.",
+      "rendered": "Data must not be a string.",
+      "file": "src/requests/models.py",
+      "line": 197
+    },
+    {
+      "literal": "Receives a Response. Returns a redirect URI or ``None``",
+      "rendered": "Receives a Response. Returns a redirect URI or ``None``",
+      "file": "src/requests/sessions.py",
+      "line": 135
+    },
+    {
+      "literal": "Reset num_401_calls counter on redirects.",
+      "rendered": "Reset num_401_calls counter on redirects.",
+      "file": "src/requests/auth.py",
+      "line": 269
+    },
+    {
+      "literal": "Cleans up adapter specific items.",
+      "rendered": "Cleans up adapter specific items.",
+      "file": "src/requests/adapters.py",
+      "line": 154
+    },
+    {
+      "literal": "Prepares the given HTTP headers.",
+      "rendered": "Prepares the given HTTP headers.",
+      "file": "src/requests/models.py",
+      "line": 566
+    },
+    {
+      "literal": "max-age: {} must be integer",
+      "rendered": "max-age: example must be integer",
+      "file": "src/requests/cookies.py",
+      "line": 539
+    },
+    {
+      "literal": "Kenneth Reitz and contributors",
+      "rendered": "Kenneth Reitz and contributors",
+      "file": "docs/conf.py",
+      "line": 61
+    },
+    {
+      "literal": "Prepares the entire request with the given parameters.",
+      "rendered": "Prepares the entire request with the given parameters.",
+      "file": "src/requests/models.py",
+      "line": 437
+    },
+    {
+      "literal": "create_cookie() got unexpected keyword arguments: {}",
+      "rendered": "create_cookie() got unexpected keyword arguments: example",
+      "file": "src/requests/cookies.py",
+      "line": 519
+    },
+    {
+      "literal": ": No scheme supplied. Perhaps you meant https://",
+      "rendered": ": No scheme supplied. Perhaps you meant https://",
+      "file": "src/requests/models.py",
+      "line": 517
+    },
+    {
+      "literal": "Return the CookiePolicy instance used.",
+      "rendered": "Return the CookiePolicy instance used.",
+      "file": "src/requests/cookies.py",
+      "line": 475
+    },
+    {
+      "literal": "%a, %d-%b-%Y %H:%M:%S GMT",
+      "rendered": "%a, example-%b-%Y %H:%M:%S GMT",
+      "file": "src/requests/cookies.py",
+      "line": 541
+    },
+    {
+      "literal": "A proxy error occurred.",
+      "rendered": "A proxy error occurred.",
+      "file": "src/requests/exceptions.py",
+      "line": 75
+    },
+    {
+      "literal": "chunk_size must be an int, it is instead a {}.",
+      "rendered": "chunk_size must be an int, it is instead a example.",
+      "file": "src/requests/models.py",
+      "line": 964
+    },
+    {
+      "literal": "Old version of cryptography ({}) may cause slowdown.",
+      "rendered": "Old version of cryptography (example) may cause slowdown.",
+      "file": "src/requests/__init__.py",
+      "line": 107
+    },
+    {
+      "literal": "The URL provided was somehow invalid.",
+      "rendered": "The URL provided was somehow invalid.",
+      "file": "src/requests/exceptions.py",
+      "line": 119
+    },
+    {
+      "literal": "Copyright Kenneth Reitz",
+      "rendered": "Copyright Kenneth Reitz",
+      "file": "src/requests/__version__.py",
+      "line": 13
+    },
+    {
+      "literal": "Decide whether Authorization header should be removed when redirecting",
+      "rendered": "Decide whether Authorization header should be removed when redirecting",
+      "file": "src/requests/sessions.py",
+      "line": 155
+    },
+    {
+      "literal": "A Connection error occurred.",
+      "rendered": "A Connection error occurred.",
+      "file": "src/requests/exceptions.py",
+      "line": 71
+    }
+  ]
+}
