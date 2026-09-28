@@ -5,6 +5,7 @@ The agent-facing message stays small (Claude Code caps hook text at 10,000
 characters, and long messages get skimmed): the top findings, what to do,
 and how to acknowledge.
 """
+import shlex
 import sys
 import time
 
@@ -26,7 +27,12 @@ VERDICT_TEXT = {
 
 def invocation() -> str:
     """How the agent should call notyet (the same interpreter the hook runs in)."""
-    return f"{sys.executable} -m notyet"
+    return f"{shlex.quote(sys.executable)} -m notyet"   # paths with spaces must survive a copy into a shell
+
+
+def _where(f: Finding) -> str:
+    """ " (location)", unless the title already names it."""
+    return f" ({f.location})" if f.location and f.location not in f.title else ""
 
 
 def write(root: str, session: store.Session, ctx: Context, result: EngineResult,
@@ -54,7 +60,7 @@ def render(session: store.Session, ctx: Context, result: EngineResult,
     if verdict == "unresolved" or needs_human:
         lines += ["## Needs your attention", ""]
         if verdict == "unresolved":
-            lines += [f"- **unresolved** `{f.id}` {f.title}" + (f" ({f.location})" if f.location else "")
+            lines += [f"- **unresolved** `{f.id}` {f.title}" + _where(f)
                       for f in standing]
         lines += [f"- **needs human** `{f.id}` {f.title}: {session.acks[f.id].get('reason', '')}"
                   for f in needs_human]
@@ -71,7 +77,7 @@ def render(session: store.Session, ctx: Context, result: EngineResult,
         lines += ["## Findings", ""]
         for f in result.findings:
             state = "open" if f.id in standing_ids else _ack_state(session, f)
-            lines.append(f"- [{f.severity}] `{f.id}` {f.title}" + (f" ({f.location})" if f.location else "")
+            lines.append(f"- [{f.severity}] `{f.id}` {f.title}" + _where(f)
                          + f": {state}")
             lines += [f"  - {e}" for e in f.evidence[:6]]
         lines.append("")
@@ -110,7 +116,7 @@ def agent_message(standing: list[Finding], last_chance: bool, advice: list[str] 
     cmd = invocation()
     lines = [f"notyet: not done yet. {len(standing)} item(s) to resolve before stopping.", ""]
     for i, f in enumerate(standing[:MAX_AGENT_FINDINGS], 1):
-        lines.append(f"{i}. [{f.severity}] {f.title}" + (f" ({f.location})" if f.location else "") + f"  id={f.id}")
+        lines.append(f"{i}. [{f.severity}] {f.title}" + _where(f) + f"  id={f.id}")
         lines += [f"   {e}" for e in f.evidence[:3]]
         if f.action:
             lines.append(f"   -> {f.action}")

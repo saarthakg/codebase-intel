@@ -256,3 +256,17 @@ def test_install_merges_asks_and_is_idempotent(repo):
 
     _, changed_again = claude.install(str(repo), "local", 240, confirm=lambda d: True)
     assert not changed_again                                   # nothing duplicated
+
+
+def test_ack_command_in_the_agent_message_survives_paths_with_spaces(monkeypatch):
+    import re
+    import shlex
+    import sys
+
+    from notyet import receipt
+    monkeypatch.setattr(sys, "executable", "/Users/x/My Project/.venv/bin/python")
+    f = Finding(rule="test-regression", severity="block", title="tests/t.py::test_a fails now", location="tests/t.py::test_a")
+    text = receipt.agent_message([f], last_chance=False)
+    cmd = re.search(r"`([^`]*ack <id> --needs-human[^`]*)`", text).group(1)
+    assert shlex.split(cmd)[:4] == ["/Users/x/My Project/.venv/bin/python", "-m", "notyet", "ack"]
+    assert text.count("tests/t.py::test_a") == 1          # the location isn't repeated after the title
