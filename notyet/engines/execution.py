@@ -25,6 +25,7 @@ from notyet.findings import Context, EngineResult, Finding
 
 DOC_SUFFIXES = (".md", ".rst", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
 BATCH_FILES = 12
+MAX_UNVERIFIED_ITEMS = 5
 CANARY = "test_notyet_baseline_canary.py"
 
 
@@ -126,6 +127,7 @@ def run(ctx: Context) -> EngineResult:
         result.checks.append("tests: not needed; only documentation changed")
         return result
 
+    command = testrun.anchored(cfg.test_command, ctx.root)
     started = time.monotonic()
     graph = pyimports.ImportGraph(ctx.root, ctx.current_tree)
     tests, notes = select_tests(ctx, graph)
@@ -142,7 +144,7 @@ def run(ctx: Context) -> EngineResult:
         if remaining <= 1:
             skipped_files += batch
             continue
-        run_ = testrun.run_pytest(cfg.test_command, ctx.root, batch, timeout=remaining)
+        run_ = testrun.run_pytest(command, ctx.root, batch, timeout=remaining)
         if run_.crashed:
             result.not_checked.append(f"tests: {run_.crashed}")
             return result
@@ -158,7 +160,7 @@ def run(ctx: Context) -> EngineResult:
     failing = current.failures
     flaky: list[str] = []
     if failing:  # re-run failures once: a pass means flaky, not broken
-        rerun = testrun.run_pytest(cfg.test_command, ctx.root, [f.nodeid for f in failing],
+        rerun = testrun.run_pytest(command, ctx.root, [f.nodeid for f in failing],
                                    timeout=max(30, cfg.budget_seconds / 2))
         for f in list(failing):
             again = rerun.results.get(f.nodeid)
@@ -177,6 +179,7 @@ def run(ctx: Context) -> EngineResult:
         if not baseline_ok:
             result.not_checked.append(f"comparison with session start: {baseline_note}")
 
+    unverified: list[testrun.TestResult] = []
     for f in failing:
         test_file = f.nodeid.split("::")[0]
         existed = baseline_ok and (_strip_params(f.nodeid) in {
@@ -199,17 +202,32 @@ def run(ctx: Context) -> EngineResult:
                 title=f"{f.nodeid} is new in this session and fails", evidence=evidence,
                 action="Make the code pass the test (or fix the test if the test itself is wrong)."))
         else:
+            unverified.append(f)
+    if len(unverified) > MAX_UNVERIFIED_ITEMS:
+        # one item, not hundreds: without a session-start comparison these are
+        # as likely to be environment failures as anything this session did
+        ids = sorted(f.nodeid for f in unverified)
+        result.findings.append(Finding(
+            rule="tests-failing-unverified", severity="resolve", location=ids[0],
+            title=f"{len(ids)} selected tests fail, and they couldn't be compared with session start",
+            evidence=[f"{f.nodeid}: {(f.message.splitlines() or [''])[0][:120]}" for f in unverified[:5]],
+            action="Check whether this session caused them (run them, or `git stash` and re-run); "
+                   "fix what it caused, then acknowledge the rest with what you found.",
+            key="|".join(ids)))
+    else:
+        for f in unverified:
             result.findings.append(Finding(
                 rule="test-failing", severity="resolve", location=f.nodeid,
                 title=f"{f.nodeid} fails (couldn't confirm whether it passed at session start)",
-                evidence=evidence, action="Fix it, or explain why it's expected to fail."))
+                evidence=[line for line in f.message.splitlines() if line.strip()][:3],
+                action="Fix it, or explain why it's expected to fail."))
     for nid in flaky:
         result.findings.append(Finding(rule="test-flaky", severity="note", location=nid,
                                        title=f"{nid} failed once and passed on re-run (flaky)"))
 
     # ── were the changed tests actually collected, and did any disappear? ─────
     if changed_tests:
-        now_collected = testrun.collect(cfg.test_command, ctx.root, changed_tests, timeout=60) or set()
+        now_collected = testrun.collect(command, ctx.root, changed_tests, timeout=60) or set()
         for path in changed_tests:
             source = snapshot.show(ctx.root, ctx.current_tree, path) or ""
             before_source = snapshot.show(ctx.root, ctx.baseline_tree, path) or ""
@@ -267,6 +285,7 @@ def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: li
     there the failing tests that existed then."""
     cfg = ctx.config
     results: dict[str, testrun.TestResult] = {}
+    command = testrun.anchored(cfg.test_command, ctx.root)
     collected: dict[str, set[str]] = {}
     with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
         # Resolve symlinks (macOS temp dirs live behind /var -> /private/var):
@@ -282,14 +301,14 @@ def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: li
         ok, why = _canary(ctx, tmp, present, env)
         if not ok:
             return False, why, results, collected
-        got = testrun.collect(cfg.test_command, tmp, present, env=env, timeout=60)
+        got = testrun.collect(command, tmp, present, env=env, timeout=60)
         if got is None:
             return False, "couldn't collect the relevant test files at session start", results, collected
         for p in present:
             collected[p] = {n for n in got if n.startswith(p + "::")}
         existed = [f.nodeid for f in failing if f.nodeid in got]
         if existed:
-            run = testrun.run_pytest(cfg.test_command, tmp, existed, env=env, timeout=max(30, cfg.budget_seconds))
+            run = testrun.run_pytest(command, tmp, existed, env=env, timeout=max(30, cfg.budget_seconds))
             if run.crashed:
                 return False, f"the test command failed on the session-start tree ({run.crashed})", results, collected
             results = run.results
@@ -300,6 +319,7 @@ def _canary(ctx: Context, tmp: str, test_files: list[str], env) -> tuple[bool, s
     """Prove the session-start checkout imports its own copy of the changed
     modules. The canary sits next to each test file being compared, so pytest
     sets up imports exactly as it will for those tests."""
+    command = testrun.anchored(ctx.config.test_command, ctx.root)
     roots = find_python_source_roots(tmp)
     modules = []
     for d in ctx.deltas:
@@ -323,7 +343,7 @@ def _canary(ctx: Context, tmp: str, test_files: list[str], env) -> tuple[bool, s
         with open(path, "w") as f:
             f.write(body)
         canaries.append(os.path.relpath(path, tmp))
-    run = testrun.run_pytest(ctx.config.test_command, tmp, canaries, env=env, timeout=60)
+    run = testrun.run_pytest(command, tmp, canaries, env=env, timeout=60)
     if run.crashed or not run.results:
         return False, "couldn't verify the session-start checkout imports its own code"
     if any(r.bad for r in run.results.values()):

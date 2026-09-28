@@ -70,6 +70,19 @@ def parse_junit(path: str) -> dict[str, TestResult]:
     return results
 
 
+def anchored(command: str, root: str) -> str:
+    """`command` with a repo-relative interpreter or tool (".venv/bin/python -m
+    pytest") made absolute, so it also runs from a checkout elsewhere."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return command
+    if argv and "/" in argv[0] and not os.path.isabs(argv[0]) and os.path.exists(os.path.join(root, argv[0])):
+        argv[0] = os.path.abspath(os.path.join(root, argv[0]))
+        return shlex.join(argv)
+    return command
+
+
 def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
                env: Optional[dict] = None, extra: Optional[list[str]] = None) -> Run:
     """Run `command` (a pytest invocation) on `targets` (files or node ids)."""
@@ -88,10 +101,11 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
         except FileNotFoundError as e:
             return Run(crashed=f"couldn't start the test command: {e}")
         run = Run(results=parse_junit(junit), seconds=time.monotonic() - start)
-        # pytest exit codes: 0 ok, 1 test failures, 5 no tests; 2-4 are usage/internal errors
-        if proc.returncode in (2, 3, 4) and not run.results:
+        # pytest exit codes: 0 ok, 1 test failures, 5 no tests; 2-4 are usage/internal errors.
+        # No results with any other code means pytest never ran (e.g. "No module named pytest").
+        if not run.results and proc.returncode not in (0, 5):
             tail = (proc.stdout + proc.stderr).strip().splitlines()[-6:]
-            run.crashed = f"pytest exited {proc.returncode}: " + " | ".join(tail)
+            run.crashed = f"the test command exited {proc.returncode} without results: " + " | ".join(tail)
         return run
 
 

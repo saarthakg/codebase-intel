@@ -168,3 +168,42 @@ def test_end_to_end_through_the_gate(repo):
     _write(repo, "pkg/extra.py", "from pkg.calc import add\n\n\ndef twice(x):\n    return add(x, x)\n")
     out = claude.handle("stop", {**payload, "stop_hook_active": True})
     assert "decision" not in out
+
+
+def test_repo_relative_test_command_works_in_the_baseline_checkout(repo):
+    """`notyet init` writes ".venv/bin/python -m pytest"; the session-start
+    checkout lives elsewhere and has no .venv of its own."""
+    (repo / ".venv/bin").mkdir(parents=True)
+    (repo / ".venv/bin/python").write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} \"$@\"\n")
+    (repo / ".venv/bin/python").chmod(0o755)
+    _write(repo, ".gitignore", ".venv/\n")
+    _write(repo, ".notyet.toml", '[test]\ncommand = ".venv/bin/python -m pytest"\nbudget_seconds = 60\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "relative command")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert {f.rule for f in result.findings} == {"test-regression"}, (result.checks, result.not_checked)
+    assert not result.not_checked
+
+
+def test_a_test_command_that_cannot_run_pytest_is_not_a_pass(repo):
+    _write(repo, ".notyet.toml", '[test]\ncommand = "python3 -c \'raise SystemExit(1)\'"\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "broken command")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert result.checks == [] and any("exited 1 without results" in n for n in result.not_checked)
+
+
+def test_many_unverified_failures_are_one_item(repo):
+    code = f"import sys; sys.path.insert(0, {str(repo)!r}); import pytest; raise SystemExit(pytest.main())"
+    forced = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+    tests = "".join(f"def test_{i}():\n    assert add(1, 1) == 2\n\n\n" for i in range(8))
+    _write(repo, "tests/test_many.py", "from pkg.calc import add\n\n\n" + tests)
+    _write(repo, ".notyet.toml", f"[test]\ncommand = {json.dumps(forced)}\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "many")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert [f.rule for f in result.findings] == ["tests-failing-unverified"]
+    assert result.findings[0].title.startswith("10 selected tests fail")
