@@ -86,6 +86,12 @@ def latest_session(root: str) -> Optional[Session]:
     return load_session(root, json.loads(files[-1].read_text())["session_id"]) if files else None
 
 
+def all_sessions(root: str) -> list[Session]:
+    d = state_dir(root) / "sessions"
+    files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime) if d.exists() else []
+    return [s for s in (load_session(root, json.loads(f.read_text())["session_id"]) for f in files) if s]
+
+
 def receipts_dir(root: str) -> Path:
     d = state_dir(root) / "receipts"
     d.mkdir(exist_ok=True)

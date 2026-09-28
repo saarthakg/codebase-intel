@@ -5,6 +5,7 @@
   notyet status               the current session and its last check
   notyet receipt              print the latest receipt
   notyet check [--base REF]   run the gate now, outside a hook
+  notyet export [--out F]     every finding from every session as CSV, for hand-labeling
   notyet ack ID[,ID] "reason" acknowledge findings (what agents run when blocked)
   notyet hook claude EVENT    hook entry point (used by the installed hooks)
 """
@@ -86,6 +87,37 @@ def cmd_status(args) -> int:
         print(f"Last check: {last.verdict} · {len(last.finding_ids)} open finding(s) · receipt: {last.receipt}")
     else:
         print("No checks run yet.")
+    return 0
+
+
+EXPORT_COLUMNS = ["repo", "session", "check", "at", "verdict", "finding_id", "rule", "severity", "location",
+                  "title", "ack_category", "ack_reason", "label", "label_note"]
+
+
+def cmd_export(args) -> int:
+    """Every finding from every check, one row each, for hand-labeling (dogfooding).
+    `label` is left empty: fill in true-positive / false-positive / unclear."""
+    import csv
+    root = _root(args.path)
+    out = open(args.out, "w", newline="") if args.out else sys.stdout
+    writer = csv.DictWriter(out, fieldnames=EXPORT_COLUMNS)
+    writer.writeheader()
+    rows = 0
+    for session in store.all_sessions(root):
+        for n, run in enumerate(session.runs, 1):
+            for d in run.result.get("findings", []):
+                f = Finding(**d)
+                ack = session.acks.get(f.id, {})
+                writer.writerow({
+                    "repo": Path(root).name, "session": session.session_id, "check": n,
+                    "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(run.at)), "verdict": run.verdict,
+                    "finding_id": f.id, "rule": f.rule, "severity": f.severity, "location": f.location,
+                    "title": f.title, "ack_category": ack.get("category", ""), "ack_reason": ack.get("reason", ""),
+                    "label": "", "label_note": ""})
+                rows += 1
+    if args.out:
+        out.close()
+        print(f"Wrote {rows} finding(s) to {args.out}.", file=sys.stderr)
     return 0
 
 
@@ -180,6 +212,11 @@ def main(argv=None) -> int:
         p = sub.add_parser(name, help=help_)
         p.add_argument("--path", default=".")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("export", help="All findings from all sessions as CSV, for hand-labeling")
+    p.add_argument("--out", help="CSV file to write (default: stdout)")
+    p.add_argument("--path", default=".")
+    p.set_defaults(func=cmd_export)
 
     p = sub.add_parser("check", help="Run the gate now, against a git ref")
     p.add_argument("--base", default="HEAD")

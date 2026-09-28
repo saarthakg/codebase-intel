@@ -281,3 +281,19 @@ def test_engines_past_the_check_deadline_are_reported_not_run(repo):
                   deadline=_time.monotonic() - 1)
     result = gate.run_engines(ctx, [lambda c: ran.append(1)])
     assert ran == [] and "skipped; the check used its" in result.not_checked[0]
+
+
+def test_export_lists_every_finding_for_labeling(repo, monkeypatch, tmp_path):
+    import csv
+
+    from notyet import cli
+    _enforce(repo)
+    finding = Finding(rule="test-regression", severity="block", title="test_f fails now", location="t::test_f")
+    monkeypatch.setattr(gate, "default_engines", lambda: [fake_engine(lambda: [finding])])
+    hook(repo, "session-start", source="startup")
+    _write(repo, "app.py", "def f():\n    return 3\n")
+    hook(repo, "stop")
+    out = tmp_path / "labels.csv"
+    assert cli.main(["export", "--out", str(out), "--path", str(repo)]) == 0
+    rows = list(csv.DictReader(out.open()))
+    assert [(r["rule"], r["verdict"], r["label"]) for r in rows] == [("test-regression", "blocked", "")]
