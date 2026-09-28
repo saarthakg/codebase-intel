@@ -20,7 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 
 NOT_DONE = re.compile(r"\b(couldn't|could not|can't|cannot|unable to|wasn't able|was not able|failed to|"
-                      r"not (?:yet )?(?:done|finished|complete)|incomplete|still fail\w*|gave up|blocked)\b", re.I)
+                      r"not (?:yet )?(?:done|finished|complete)|incomplete|still fail\w*|gave up|blocked)\b", re.IGNORECASE)
 FLAG = ("block", "resolve")
 UNDONE_RULES = ("undone-work", "test-regression")
 

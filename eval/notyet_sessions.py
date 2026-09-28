@@ -334,6 +334,7 @@ def run_agent(work: Path, prompt: str, resume: str | None) -> dict:
     if resume:
         cmd[3:3] = ["--resume", resume]
     start = time.monotonic()
+    out: dict
     try:
         proc = sh(cmd, cwd=work, timeout=AGENT_TIMEOUT, check=False)
         out = json.loads(proc.stdout) if proc.stdout.strip().startswith("{") else {"raw": proc.stdout[-2000:]}
@@ -382,7 +383,7 @@ def grade_step(source: Path, work: Path, k: int, keys: list[dict], start_tree: s
                             "failed": sorted(set(want) - set(ok))[:10], "superseded": sorted(superseded)})
     # the agent's test edits this step, run on the step-start code: does any of them fail there?
     step_tests = [p for p in step_files if is_test_module(p)]
-    vacuous = {"test_files": step_tests, "source_changed": any(not is_test_side(p) for p in step_files)}
+    vacuous: dict = {"test_files": step_tests, "source_changed": any(not is_test_side(p) for p in step_files)}
     if step_tests:
         restore(work, start_tree)
         put(work, end_tree, work, step_tests)
@@ -470,7 +471,7 @@ def run_task(task: dict, source: Path, work: Path, prep: Prepared | None, mode: 
     session_id = None
     row["steps"] = []
     for k, s in enumerate(task["steps"], 1):
-        step = {"step": k}
+        step: dict = {"step": k}
         if "sha" in s:
             prompt = commit_prompt(source.name, prep.texts[k - 1], k == 1)
         else:
