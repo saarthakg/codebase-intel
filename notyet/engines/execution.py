@@ -497,11 +497,25 @@ def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: li
     return True, "", results, collected, errors
 
 
+def _code_fingerprint() -> str:
+    """notyet's own code that produces cached results: a new version of it
+    must not reuse results the old one computed."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    h = hashlib.sha1()
+    for rel in ("testrun.py", "snapshot.py", "engines/execution.py", "engines/vacuous.py"):
+        try:
+            with open(os.path.join(here, rel), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    return h.hexdigest()[:12]
+
+
 class _BaselineCache:
     KEEP = 8
 
     def __init__(self, root: str, tree: str, command: str):
-        key = hashlib.sha1(f"{tree}|{command}".encode()).hexdigest()[:16]
+        key = hashlib.sha1(f"{tree}|{command}|{_code_fingerprint()}".encode()).hexdigest()[:16]
         self.path = store.state_dir(root) / "cache" / f"baseline-{key}.json"
         self.path.parent.mkdir(exist_ok=True)
         try:
