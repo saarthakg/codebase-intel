@@ -6,32 +6,26 @@ from pathlib import Path
 from typing import Optional
 
 SKIP_DIRS = {
-    ".git", "node_modules", "dist", "build", "__pycache__",
-    ".venv", "venv", ".env", "coverage", ".next", ".nuxt",
-    "target", "out", "bin", "obj", ".idea", ".vscode",
+    ".git", "node_modules", "__pycache__", ".venv", "venv", ".env", ".next", ".nuxt",
+    ".idea", ".vscode", ".tox", ".nox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
 }
 
+# Binary formats: never part of an impact answer worth reading.
 SKIP_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf",
-    ".zip", ".tar", ".gz", ".lock", ".sum", ".whl", ".egg",
+    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".webp", ".pdf", ".psd",
+    ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".whl", ".egg", ".jar",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp3", ".mp4", ".mov", ".wav",
+    ".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe", ".o", ".a", ".class", ".bin",
 }
 
-INCLUDE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx",
-    ".md", ".txt", ".yaml", ".yml", ".toml", ".json",
-}
+# Code is parsed for symbols, references and imports; every other text file
+# (docs, changelogs, config, lockfiles) is indexed by path only, since what
+# matters for impact is that history can link it to the code it changes with.
+CODE_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx"}
 
-
-# Larger files are almost always generated, vendored or data.
-# Override with INGEST_MAX_FILE_BYTES.
+# Larger code files are almost always generated or vendored, and aren't
+# parsed. Override with INGEST_MAX_FILE_BYTES.
 DEFAULT_MAX_FILE_BYTES = 1_000_000
-
-# Dependency lockfiles: huge, generated, and never what a code question is about.
-LOCKFILE_NAMES = {
-    "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock",
-    "poetry.lock", "Pipfile.lock", "composer.lock", "Cargo.lock", "Gemfile.lock",
-    "uv.lock", "bun.lockb",
-}
 
 # Minified/bundled code: one enormous line. Checked on the first 64 KB.
 _MINIFIED_SAMPLE_BYTES = 65_536
@@ -69,7 +63,7 @@ def _walk_candidates(repo: Path) -> list[Path]:
     results = []
     for dirpath, dirnames, filenames in os.walk(repo):
         # Prune skip dirs in-place so os.walk doesn't descend into them
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         results += [Path(dirpath) / f for f in filenames]
     return results
 
@@ -93,9 +87,8 @@ def scan_repo(repo_path: str) -> RepoScan:
 
     Inside a git repo the candidates come from `git ls-files`, so every
     .gitignore (nested ones and global excludes too) is honored; otherwise
-    the tree is walked. Either way SKIP_DIRS, dot-directories and the
-    extension allow-list apply, and lockfiles, minified files and files over
-    INGEST_MAX_FILE_BYTES are skipped.
+    the tree is walked. Either way SKIP_DIRS and binary extensions are
+    skipped, and so are minified code and code over INGEST_MAX_FILE_BYTES.
     """
     repo = Path(repo_path).resolve()
     candidates = _git_candidates(repo)
@@ -107,13 +100,13 @@ def scan_repo(repo_path: str) -> RepoScan:
     scan = RepoScan(files=[], used_git=used_git)
     for path in sorted(candidates):
         rel_parts = path.relative_to(repo).parts
-        if any(p in SKIP_DIRS or p.startswith(".") for p in rel_parts[:-1]):
+        if any(p in SKIP_DIRS for p in rel_parts[:-1]):
             continue
         ext = path.suffix.lower()
-        if ext in SKIP_EXTENSIONS or ext not in INCLUDE_EXTENSIONS:
+        if ext in SKIP_EXTENSIONS:
             continue
-        if path.name in LOCKFILE_NAMES:
-            scan.skipped["lockfile"] += 1
+        if ext not in CODE_EXTENSIONS:
+            scan.files.append(str(path))  # path-only; binaries are dropped on reading
             continue
         try:
             size = path.stat().st_size
@@ -151,6 +144,26 @@ def detect_language(file_path: str) -> str:
         ".json": "unknown",
     }
     return mapping.get(ext, "unknown")
+
+
+def is_code(file_path: str) -> bool:
+    return Path(file_path).suffix.lower() in CODE_EXTENSIONS
+
+
+def looks_binary(file_path: str) -> bool:
+    """Null bytes, or not UTF-8, in the first 8 KB."""
+    try:
+        with open(file_path, "rb") as f:
+            head = f.read(8192)
+    except OSError:
+        return True
+    if b"\x00" in head:
+        return True
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return e.start < len(head) - 3  # a multi-byte character cut at the boundary is fine
+    return False
 
 
 def load_file(file_path: str) -> Optional[str]:

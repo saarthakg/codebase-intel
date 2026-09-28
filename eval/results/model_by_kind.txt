@@ -1,0 +1,5 @@
+  source       4349 hidden files   in top 5: 0.59   flagged at p>=0.2: 0.25
+  test         2331 hidden files   in top 5: 0.50   flagged at p>=0.2: 0.16
+  docs         1806 hidden files   in top 5: 0.34   flagged at p>=0.2: 0.05
+  other        1420 hidden files   in top 5: 0.62   flagged at p>=0.2: 0.31
+  changelog     896 hidden files   in top 5: 0.89   flagged at p>=0.2: 0.58

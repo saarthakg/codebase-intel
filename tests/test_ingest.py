@@ -139,7 +139,7 @@ def test_scan_respects_gitignore_including_nested(tmp_path):
     _git_init(repo)
     scan = scan_repo(str(repo))
     assert scan.used_git
-    assert _rel(scan, repo) == ["src/app.py", "untracked_but_not_ignored.py"]
+    assert _rel(scan, repo) == [".gitignore", "src/.gitignore", "src/app.py", "untracked_but_not_ignored.py"]
 
 
 def test_scan_without_git_falls_back_to_walk(tmp_path):
@@ -151,7 +151,9 @@ def test_scan_without_git_falls_back_to_walk(tmp_path):
     assert _rel(scan, tmp_path) == ["main.py"]
 
 
-def test_scan_skips_lockfiles_minified_and_large_files(tmp_path, monkeypatch):
+def test_scan_keeps_lockfiles_but_skips_minified_and_large_code(tmp_path, monkeypatch):
+    """Lockfiles change with dependency manifests, so they're candidates
+    (by path); only code is parsed, and generated code is skipped."""
     (tmp_path / "package-lock.json").write_text('{"lockfileVersion": 3}\n')
     (tmp_path / "vendor.min.js").write_text("var a=1;\n")
     (tmp_path / "bundle.js").write_text("var a=1;" * 2000 + "\n")        # one 16 KB line
@@ -159,8 +161,23 @@ def test_scan_skips_lockfiles_minified_and_large_files(tmp_path, monkeypatch):
     (tmp_path / "huge.py").write_text("x = 1\n" * 50_000)                 # ~300 KB
     monkeypatch.setenv("INGEST_MAX_FILE_BYTES", "100000")
     scan = scan_repo(str(tmp_path))
-    assert _rel(scan, tmp_path) == ["normal.js"]
-    assert dict(scan.skipped) == {"lockfile": 1, "minified": 2, "too_large": 1}
+    assert _rel(scan, tmp_path) == ["normal.js", "package-lock.json"]
+    assert dict(scan.skipped) == {"minified": 2, "too_large": 1}
+
+
+def test_docs_and_config_are_indexed_by_path_and_binaries_dropped(tmp_path, monkeypatch):
+    from codebase_intel.core import paths
+    from codebase_intel.core.pipeline import run_ingestion
+    from codebase_intel.storage.metadata_store import MetadataStore
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "a.py").write_text("def f():\n    pass\n")
+    (repo / "CHANGES.rst").write_text("Unreleased\n")
+    (repo / "setup.cfg").write_text("[metadata]\n")
+    (repo / "docs" / "logo.dat").write_bytes(b"\x89PNG\x00\x00binary")
+    run_ingestion(str(repo), "r")
+    assert MetadataStore(str(paths.db_path("r"))).indexed_files("r") == ["CHANGES.rst", "a.py", "setup.cfg"]
 
 
 def test_scan_of_git_subdirectory_lists_only_that_subtree(tmp_path):

@@ -15,7 +15,7 @@ from codebase_intel.core.graph import (
     resolve_ts_import,
 )
 from codebase_intel.core.history import cochange_for_repo
-from codebase_intel.core.ingest import RepoScan, detect_language, load_file, scan_repo
+from codebase_intel.core.ingest import RepoScan, detect_language, is_code, load_file, looks_binary, scan_repo
 from codebase_intel.core.symbols import analyze_file, python_parser
 from codebase_intel.core.validation import validate_repo_id
 from codebase_intel.storage.metadata_store import MetadataStore
@@ -25,7 +25,7 @@ ProgressFn = Optional[Callable[[str], None]]
 
 # Bump when an index built by an older version must be rebuilt (new stats,
 # changed meaning); workspace.ensure_index re-indexes on a mismatch.
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 
 
 class IngestError(ValueError):
@@ -128,10 +128,17 @@ def _index_files(
     indexed = 0
     python_sources: dict[str, str] = {}  # rel path → content, for typed method refs
     for file_path in file_paths:
+        rel_path = os.path.relpath(file_path, repo_path)
+        if not is_code(file_path):
+            if looks_binary(file_path):
+                continue
+            graph.add_file(rel_path)
+            metadata_store.add_files(repo_id, [(rel_path, detect_language(file_path))])
+            indexed += 1
+            continue
         content = load_file(file_path)
         if content is None:
             continue
-        rel_path = os.path.relpath(file_path, repo_path)
         language = detect_language(file_path)
         graph.add_file(rel_path)
         indexed += 1

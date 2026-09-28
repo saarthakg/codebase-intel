@@ -18,8 +18,8 @@ from codebase_intel.core.predict import predict
 from codebase_intel.core.workspace import NotAGitRepo, ensure_index, git
 
 # Show a file as likely missing at this probability. The model is calibrated:
-# on repos it wasn't trained on, about 1 in 3 files shown at >= 0.2 were
-# really missing, with ~0.6 false warnings per change that needed nothing more
+# on repos it wasn't trained on, 31% of files shown at >= 0.2 were really
+# missing, with ~0.6 false warnings per change that needed nothing more
 # (eval/results/model_loro.json).
 DEFAULT_MIN_CONFIDENCE = 0.2
 ALSO_CONSIDER = 0.1

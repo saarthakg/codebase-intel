@@ -1,0 +1,14 @@
+Calibration (hidden-file replays, all six repos, each scored by a model not trained on it):
+  p in [0.00,0.05): 791343 suggestions, 0.006 were the missing file
+  p in [0.05,0.10):  13575 suggestions, 0.085 were the missing file
+  p in [0.10,0.20):   7650 suggestions, 0.142 were the missing file
+  p in [0.20,0.30):   3283 suggestions, 0.218 were the missing file
+  p in [0.30,0.50):   2904 suggestions, 0.306 were the missing file
+  p in [0.50,1.01):   1978 suggestions, 0.470 were the missing file
+Thresholds:
+  p >= 0.05: recall 0.44  precision 0.16  per incomplete change 2.7 shown  per complete change 2.38 false alarms
+  p >= 0.10: recall 0.34  precision 0.23  per incomplete change 1.5 shown  per complete change 1.18 false alarms
+  p >= 0.15: recall 0.28  precision 0.27  per incomplete change 1.0 shown  per complete change 0.79 false alarms
+  p >= 0.20: recall 0.23  precision 0.31  per incomplete change 0.8 shown  per complete change 0.57 false alarms
+  p >= 0.30: recall 0.17  precision 0.37  per incomplete change 0.5 shown  per complete change 0.30 false alarms
+  p >= 0.40: recall 0.12  precision 0.42  per incomplete change 0.3 shown  per complete change 0.18 false alarms

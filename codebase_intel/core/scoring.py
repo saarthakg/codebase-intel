@@ -4,7 +4,7 @@ that it belongs in the change, and into reasons a person can check.
 The model is a logistic regression trained by eval/train_model.py on real
 changes replayed from several open-source repos (eval/build_replay.py). Its
 probabilities are calibrated: on repos it wasn't trained on, suggestions
-scored 0.2-0.3 were right 23% of the time, 0.3-0.5 32%, above 0.5 49%.
+scored 0.2-0.3 were right 22% of the time, 0.3-0.5 31%, above 0.5 47%.
 """
 import math
 from typing import Any, Mapping

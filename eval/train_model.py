@@ -59,7 +59,7 @@ def main() -> None:
     parser.add_argument("--out", help="Save the leave-one-repo-out results as JSON")
     args = parser.parse_args()
 
-    data = {Path(p).name.split("_")[0]: sr.load(p) for p in args.datasets}
+    data = {Path(p).name.split("_")[0].split(".")[0]: sr.load(p) for p in args.datasets}
     history = lambda c: min(0.9, 0.4 + 0.5 * c["cc_p"]) if c["cc_n"] >= 2 else 0.0
     results = {}
     for test, queries in data.items():
