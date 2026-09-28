@@ -54,12 +54,14 @@ class EngineResult:
     checks: list[str] = field(default_factory=list)       # what was checked, for the receipt
     not_checked: list[str] = field(default_factory=list)  # negative space
     advice: list[str] = field(default_factory=list)       # advisory lines (history, etc.)
+    gaps: list[str] = field(default_factory=list)         # a core check that didn't run: the summary leads with it
 
     def extend(self, other: "EngineResult") -> None:
         self.findings += other.findings
         self.checks += other.checks
         self.not_checked += other.not_checked
         self.advice += other.advice
+        self.gaps += other.gaps
 
 
 def group(f: Finding) -> str:

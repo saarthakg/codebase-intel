@@ -98,6 +98,18 @@ def test_report_mode_summarizes_and_never_blocks(repo, monkeypatch):
     assert hook(repo, "stop", stop_hook_active=False) is None   # same tree: nothing re-run, nothing said
 
 
+def test_a_check_whose_tests_did_not_run_says_so_first(repo, monkeypatch):
+    gap = "tests NOT run: the 60s budget ran out before any of the 7 selected test file(s) finished"
+    monkeypatch.setattr(gate, "default_engines",
+                        lambda: [lambda ctx: EngineResult(checks=["ruff: 0 new diagnostic(s)"], gaps=[gap])])
+    hook(repo, "session-start", source="startup")
+    _write(repo, "app.py", "def f():\n    return 3\n")
+    out = hook(repo, "stop")
+    assert out["systemMessage"].startswith(f"notyet: PASSED (incomplete). {gap}")
+    receipt = (store.receipts_dir(str(repo)) / "latest.md").read_text()
+    assert "**(incomplete)**" in receipt and f"**Not checked:** {gap}" in receipt
+
+
 def test_conversation_only_turns_are_not_checked(repo, monkeypatch):
     calls = []
     monkeypatch.setattr(gate, "default_engines", lambda: [lambda ctx: calls.append(1) or EngineResult()])

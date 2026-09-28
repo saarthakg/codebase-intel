@@ -139,10 +139,10 @@ def _same_set_streak(session: store.Session, ids: list[str]) -> int:
 
 def _result_to(result: EngineResult) -> dict:
     return {"findings": [asdict(f) for f in result.findings], "checks": result.checks,
-            "not_checked": result.not_checked, "advice": result.advice}
+            "not_checked": result.not_checked, "advice": result.advice, "gaps": result.gaps}
 
 
 def _result_from(data: dict) -> EngineResult:
     return EngineResult(findings=[Finding(**f) for f in data.get("findings", [])],
                         checks=data.get("checks", []), not_checked=data.get("not_checked", []),
-                        advice=data.get("advice", []))
+                        advice=data.get("advice", []), gaps=data.get("gaps", []))

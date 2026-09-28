@@ -50,8 +50,10 @@ def render(session: store.Session, ctx: Context, result: EngineResult,
     lines = [
         "# notyet receipt",
         "",
-        f"**Verdict: {VERDICT_TEXT.get(verdict, verdict)}**",
+        f"**Verdict: {VERDICT_TEXT.get(verdict, verdict)}**" + (" **(incomplete)**" if result.gaps else ""),
         "",
+        *[f"- **Not checked:** {g}" for g in result.gaps],
+        *([""] if result.gaps else []),
         f"Session `{session.session_id}` · checked {time.strftime('%Y-%m-%d %H:%M:%S')} · "
         f"compared with: {_baseline_label(session)}",
         "",
@@ -100,6 +102,8 @@ def render(session: store.Session, ctx: Context, result: EngineResult,
 
 def summary(verdict: str, standing: list[Finding], result: EngineResult, path: str) -> str:
     head = f"notyet: {VERDICT_TEXT.get(verdict, verdict)}"
+    if result.gaps:     # never let "didn't check" read as "checked"
+        head += f" (incomplete). {'; '.join(result.gaps)}"
     if verdict == "passed":
         detail = "; ".join(result.checks[:2])
     elif verdict == "needs-review":

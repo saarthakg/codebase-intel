@@ -46,6 +46,9 @@ pre-existing edits and already-failing tests are never blamed on the agent.
   - The receipt says how many lines changed since. More untested code than that raises the finding
     again.
 - Anything notyet couldn't check is listed as not checked, never reported as passed.
+  - If the tests themselves didn't run, for example because the time budget ran out, the verdict is
+    marked "(incomplete)" and the one-line summary says so first.
+  - When the budget cuts a run short, results are kept for every test file that finished.
 
 It stays out of the way:
 - it only runs when the tree changed;

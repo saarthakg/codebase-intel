@@ -104,6 +104,19 @@ def test_budget_is_respected_and_reported(repo):
     _write(repo, "tests/test_slow.py", "import time\nfrom pkg import calc\n\n\ndef test_slow():\n    time.sleep(30)  # touched\n")
     result = check(repo)
     assert any("budget ran out" in n for n in result.not_checked)
+    assert result.gaps == ["tests NOT run: the 3s budget ran out before any of the 1 selected test file(s) finished"]
+
+
+def test_a_timed_out_run_keeps_the_files_that_finished(tmp_path):
+    import time
+    from notyet import testrun
+    _write(tmp_path, "test_a.py", "def test_a():\n    pass\n")
+    _write(tmp_path, "test_b.py", "import time\n\n\ndef test_b1():\n    pass\n\n\ndef test_b2():\n    time.sleep(60)\n")
+    started = time.monotonic()
+    run = testrun.run_pytest(PYTEST, str(tmp_path), ["test_a.py", "test_b.py"], timeout=5)
+    assert run.timed_out
+    assert set(run.results) == {"test_a.py::test_a"}      # test_b.py was mid-run: incomplete, dropped
+    assert time.monotonic() - started < 5 + testrun.INTERRUPT_GRACE
 
 
 def test_baseline_that_imports_the_working_tree_is_not_trusted(repo):

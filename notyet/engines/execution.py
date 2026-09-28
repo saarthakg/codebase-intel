@@ -231,6 +231,11 @@ def run(ctx: Context) -> EngineResult:
         return result
     ran_files = sorted({n.split("::")[0] for n in current.results})
     if skipped_files:
+        selected = len({f for batch in _batches(tests) for f in batch})
+        result.gaps.append(f"tests NOT run: the {cfg.budget_seconds}s budget ran out before any of the {selected} "
+                           f"selected test file(s) finished" if not current.results else
+                           f"tests incomplete: the {cfg.budget_seconds}s budget ran out; {len(skipped_files)} of the "
+                           f"{selected} selected test file(s) didn't run")
         result.not_checked.append(f"tests: the {cfg.budget_seconds}s budget ran out before {len(skipped_files)} "
                                   f"selected test file(s) ran: " + ", ".join(skipped_files[:5])
                                   + (" …" if len(skipped_files) > 5 else ""))

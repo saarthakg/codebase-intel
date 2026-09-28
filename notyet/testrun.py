@@ -7,6 +7,7 @@ can't be trusted. Every run gets a hard timeout.
 import os
 import re
 import shlex
+import signal
 import subprocess
 import tempfile
 import time
@@ -98,19 +99,51 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
         ]
         start = time.monotonic()
         try:
-            proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout,
-                                  env={**os.environ, **(env or {}), "PYTHONDONTWRITEBYTECODE": "1"})
-        except subprocess.TimeoutExpired:
-            return Run(results=parse_junit(junit), seconds=time.monotonic() - start, timed_out=True)
+            proc = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    env={**os.environ, **(env or {}), "PYTHONDONTWRITEBYTECODE": "1"},
+                                    start_new_session=True)
         except FileNotFoundError as e:
             return Run(crashed=f"couldn't start the test command: {e}")
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _interrupt(proc)
+            return Run(results=_complete_files(parse_junit(junit)), seconds=time.monotonic() - start, timed_out=True)
         run = Run(results=parse_junit(junit), seconds=time.monotonic() - start)
         # pytest exit codes: 0 ok, 1 test failures, 5 no tests; 2-4 are usage/internal errors.
         # No results with any other code means pytest never ran (e.g. "No module named pytest").
         if not run.results and proc.returncode not in (0, 5):
-            tail = (proc.stdout + proc.stderr).strip().splitlines()[-6:]
+            tail = (stdout + stderr).strip().splitlines()[-6:]
             run.crashed = f"the test command exited {proc.returncode} without results: " + " | ".join(tail)
         return run
+
+
+INTERRUPT_GRACE = 10   # seconds pytest gets, after Ctrl-C, to write the junit file
+
+
+def _interrupt(proc: subprocess.Popen) -> None:
+    """Ctrl-C the run's process group, as a person would: pytest stops after the current test and
+    still writes its junit file. Killed outright if it doesn't exit within the grace period."""
+    try:
+        os.killpg(proc.pid, signal.SIGINT)
+        proc.communicate(timeout=INTERRUPT_GRACE)
+    except (subprocess.TimeoutExpired, ProcessLookupError):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+
+
+def _complete_files(results: dict[str, "TestResult"]) -> dict[str, "TestResult"]:
+    """An interrupted run's results without the file it was in the middle of (the last one
+    reported): pytest runs files in order, so every earlier file finished. The interrupted test
+    itself is an empty <testcase/> (node id "::"), which is dropped too."""
+    results = {n: r for n, r in results.items() if n.split("::")[0]}
+    if not results:
+        return results
+    last = next(reversed(results)).split("::")[0]
+    return {n: r for n, r in results.items() if n.split("::")[0] != last}
 
 
 def run_tests(command: str, cwd: str, node_ids: list[str], timeout: float, env: dict | None = None) -> Run:

@@ -5,7 +5,7 @@
 # junit output), so this must be a pytest invocation for now.
 command = ".venv/bin/python -m pytest"
 # Seconds the gate may spend running tests at each check.
-budget_seconds = 60
+budget_seconds = 150
 
 [static]
 # Optional: linters/type checkers diffed against the session-start tree.
