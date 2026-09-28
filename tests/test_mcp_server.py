@@ -1,35 +1,38 @@
+import os
+import subprocess
+
 import anyio
 import pytest
 from mcp import Client
 
 from app.core import paths
-from app.state import _loaded_repos
 from app.mcp_server import mcp
+from app.state import _loaded_repos
+
+_ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t"}
 
 
 @pytest.fixture
-def data_dirs(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
-    monkeypatch.delenv("CODEBASE_INTEL_REPO_ID", raising=False)
+def repo(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "data" / "indexes")
+    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data" / "metadata")
+    monkeypatch.delenv("CODEBASE_INTEL_REPO", raising=False)
     _loaded_repos.clear()
-    yield tmp_path
-    _loaded_repos.clear()
-
-
-def _make_repo(root):
-    repo = root / "repo"
+    repo = tmp_path / "proj"
     (repo / "pkg").mkdir(parents=True)
     (repo / "tests").mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, env=_ENV)
+    git("init", "-q")
     (repo / "pkg" / "__init__.py").write_text("")
-    (repo / "pkg" / "netrc.py").write_text(
-        "def get_netrc_auth(url):\n    return None\n\n\ndef other():\n    return 1\n"
-    )
+    (repo / "pkg" / "netrc.py").write_text("def get_netrc_auth(url):\n    return None\n")
     (repo / "pkg" / "session.py").write_text(
-        "from pkg.netrc import get_netrc_auth\n\n\ndef request(url):\n    return get_netrc_auth(url)\n"
-    )
+        "from pkg.netrc import get_netrc_auth\n\n\ndef request(url):\n    return get_netrc_auth(url)\n")
     (repo / "tests" / "test_netrc.py").write_text("from pkg.netrc import get_netrc_auth\n")
-    return repo
+    git("add", "-A")
+    git("commit", "-qm", "init")
+    yield repo
+    _loaded_repos.clear()
 
 
 def call(tool, args=None):
@@ -44,45 +47,30 @@ def test_tools_and_annotations():
         async with Client(mcp) as client:
             return (await client.list_tools()).tools
     tools = {t.name: t for t in anyio.run(run)}
-    assert set(tools) == {"list_repos", "impact", "impact_of_diff", "ingest_repo"}
-    assert all(tools[n].annotations.read_only_hint for n in tools if n != "ingest_repo")
-    assert tools["ingest_repo"].annotations.read_only_hint is False
+    assert set(tools) == {"check_change", "impact"}
+    assert all(t.annotations.read_only_hint for t in tools.values())
 
 
-def test_no_repos_yet_tells_the_agent_to_ingest(data_dirs):
-    r = call("impact", {"target": "anything"})
-    assert r.is_error and "Call ingest_repo first" in r.content[0].text
+def test_check_change_and_impact(repo):
+    (repo / "pkg" / "netrc.py").write_text("def get_netrc_auth(url):\n    return ()\n")
+    r = call("check_change", {"repo_path": str(repo)}).structured_content
+    assert r["changed_files"] == ["pkg/netrc.py"]
+    assert r["callers_of_changed_code"] == {"get_netrc_auth": ["pkg/session.py", "tests/test_netrc.py"]}
+    assert "tests/test_netrc.py" in r["tests_to_run"]
+    assert r["compared_to"] == "HEAD, uncommitted changes"
+
+    imp = call("impact", {"target": "pkg/netrc.py", "repo_path": str(repo)}).structured_content
+    assert imp["impacted"][0]["file"] == "tests/test_netrc.py"
+    assert imp["impacted"][0]["why"][0] == "test named for this file"
 
 
-def test_ingest_then_query_end_to_end(data_dirs):
-    repo = _make_repo(data_dirs)
-    r = call("ingest_repo", {"repo_path": str(repo), "repo_id": "demo"})
-    assert not r.is_error and r.structured_content["files_indexed"] >= 4
-
-    assert call("list_repos").structured_content["repos"][0]["repo_id"] == "demo"
-
-    imp = call("impact", {"target": "pkg/netrc.py"}).structured_content
-    top = imp["impacted"][0]
-    assert top["file"] == "tests/test_netrc.py" and top["reason"].startswith("test named for this file")
-    assert "pkg/session.py" in {i["file"] for i in imp["impacted"]}
-    assert imp["tests_to_run"] == ["tests/test_netrc.py"]
-
-    diff = "--- a/pkg/netrc.py\n+++ b/pkg/netrc.py\n@@ -2 +2 @@\n-    return None\n+    return ()\n"
-    di = call("impact_of_diff", {"diff": diff}).structured_content
-    assert di["changed_symbols"] == [{"file": "pkg/netrc.py", "symbol": "get_netrc_auth",
-                                      "used_in": ["pkg/session.py", "tests/test_netrc.py"]}]
+def test_repo_defaults_to_env_or_cwd(repo, monkeypatch):
+    monkeypatch.setenv("CODEBASE_INTEL_REPO", str(repo))
+    assert call("check_change").structured_content["changed_files"] == []
 
 
-def test_errors_are_readable_by_the_agent(data_dirs):
-    repo = _make_repo(data_dirs)
-    call("ingest_repo", {"repo_path": str(repo), "repo_id": "one"})
-    call("ingest_repo", {"repo_path": str(repo), "repo_id": "two"})
-
-    r = call("impact", {"target": "pkg/netrc.py"})
-    assert r.is_error and "pass repo_id, one of: one, two" in r.content[0].text
-    r = call("impact", {"target": "missing.py", "repo_id": "one"})
+def test_errors_are_readable_by_the_agent(repo, tmp_path):
+    r = call("check_change", {"repo_path": str(tmp_path / "elsewhere")})
+    assert r.is_error and "not inside a git repository" in r.content[0].text
+    r = call("impact", {"target": "missing.py", "repo_path": str(repo)})
     assert r.is_error and "isn't a file or symbol" in r.content[0].text
-    r = call("ingest_repo", {"repo_path": str(data_dirs / "nowhere"), "repo_id": "x"})
-    assert r.is_error and "not a directory" in r.content[0].text
-    r = call("impact_of_diff", {"diff": "   ", "repo_id": "one"})
-    assert r.is_error and "diff is empty" in r.content[0].text

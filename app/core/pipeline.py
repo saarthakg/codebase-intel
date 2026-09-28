@@ -27,10 +27,15 @@ class IngestError(ValueError):
     """Raised for user-fixable indexing problems (bad path, bad repo_id, etc.)."""
 
 
-def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> dict:
+def run_ingestion(
+    repo_path: str, repo_id: str, progress: ProgressFn = None,
+    history_path: Optional[str] = None, extra_meta: Optional[dict] = None,
+) -> dict:
     """Index `repo_path` under `repo_id`. Returns a dict of summary counts.
 
-    Each run fully replaces the previous one for this repo_id.
+    Each run fully replaces the previous one for this repo_id. Git history is
+    read from `history_path` (default `repo_path`): a snapshot of a commit
+    has the files but not the history.
     """
     validate_repo_id(repo_id)
     resolved_repo_path = str(Path(repo_path).resolve())
@@ -44,7 +49,8 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     paths.ensure_data_dirs()
     metadata_store = MetadataStore(str(paths.db_path(repo_id)))
     try:
-        graph, scan = _index_files(resolved_repo_path, repo_id, metadata_store, _report)
+        graph, scan = _index_files(resolved_repo_path, repo_id, metadata_store, _report,
+                                   history_path or resolved_repo_path)
         # Commit only once everything has succeeded: an error mid-index leaves
         # the previous index intact instead of a half-cleared database.
         metadata_store.commit()
@@ -70,6 +76,7 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         "files_with_history": history_files,
         "edges_in_graph": graph.edge_count,
         "ingested_at": datetime.now(timezone.utc).isoformat(),
+        **(extra_meta or {}),
     }
     with open(paths.meta_path(repo_id), "w") as f:
         json.dump(summary, f)
@@ -95,7 +102,8 @@ def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: Me
 
 
 def _index_files(
-    repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None]
+    repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None],
+    history_path: str,
 ) -> tuple[DependencyGraph, "RepoScan"]:
     """Walk, parse and link every file. Writes to `metadata_store` without
     committing; returns (graph, scan)."""
@@ -152,7 +160,7 @@ def _index_files(
     metadata_store.prune_references(repo_id)
     _index_method_refs(repo_id, python_sources, metadata_store)
 
-    cochange = cochange_for_repo(repo_path, keep=set(graph.G.nodes))
+    cochange = cochange_for_repo(history_path, keep=set(graph.G.nodes))
     metadata_store.save_cochange(repo_id, cochange)
     if cochange.commits_used:
         report(f"Co-change history: {cochange.commits_used} commits")
