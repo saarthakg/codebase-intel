@@ -19,6 +19,7 @@ from notyet import snapshot, store
 from notyet.findings import Context, EngineResult, Finding
 
 MAX_BLOCKS = 6
+SEVERITY_ORDER = {"block": 0, "resolve": 1, "note": 2}
 MAX_SAME_SET_BLOCKS = 2
 
 Engine = Callable[[Context], EngineResult]
@@ -84,6 +85,7 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
             result.advice.append(f"{config_mod.CONFIG_FILE} changed during this session; "
                                  f"the gate used the version from session start")
 
+    result.findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 9))   # blocks first, for agent and receipt
     standing = outstanding(result.findings, session.acks)
     repeats = _same_set_streak(session, [f.id for f in standing])
 
