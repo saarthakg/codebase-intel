@@ -152,64 +152,6 @@ def _require_key(env_var: str) -> str:
     return key
 
 
-def _call_anthropic(prompt: str, model: str) -> str:
-    import anthropic
-    client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY"))
-    try:
-        # Current Claude models think adaptively and count thinking against
-        # max_tokens, so leave headroom (billing is for tokens actually used).
-        # Low effort: grounded lookup over supplied excerpts needs little
-        # deliberation, and it's the main cost lever. No `temperature` — it's
-        # rejected by current models.
-        message = client.messages.create(
-            model=model,
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            output_config={"effort": "low"},
-            messages=[{"role": "user", "content": prompt}],
-        )
-    except anthropic.APIConnectionError as e:
-        raise LLMCallError("Could not reach the Anthropic API.") from e
-    except anthropic.APIStatusError as e:
-        raise LLMCallError(f"Anthropic API error: HTTP {e.status_code}: {e.message}") from e
-    if message.stop_reason == "refusal":
-        raise LLMCallError("The model declined to answer this question.")
-    text = "".join(block.text for block in message.content if block.type == "text")
-    if not text:
-        raise LLMCallError(f"Anthropic returned no text (stop_reason={message.stop_reason}).")
-    return text
-
-
-def _call_gemini(prompt: str, model: str) -> str:
-    import httpx
-    gemini_key = _require_key("GEMINI_API_KEY")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    body = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        # Gemini 2.5-family thinking tokens count against maxOutputTokens;
-        # the old limit of 1000 could be spent before any answer text.
-        "generationConfig": {"maxOutputTokens": 8192, "temperature": 0},
-    }
-    try:
-        # Key goes in a header, not the query string, so it can't leak into
-        # proxy/access logs or exception messages that include the URL.
-        resp = httpx.post(url, json=body, headers={"x-goog-api-key": gemini_key}, timeout=120)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        raise LLMCallError(f"Gemini API error: HTTP {e.response.status_code}") from e
-    except httpx.HTTPError as e:
-        raise LLMCallError(f"Gemini request failed: {type(e).__name__}") from e
-    try:
-        data = resp.json()
-        text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
-    except (ValueError, KeyError, IndexError) as e:
-        raise LLMCallError("Gemini returned no answer (the response may have been blocked).") from e
-    if not text:
-        raise LLMCallError("Gemini returned an empty answer.")
-    return text
-
-
 def _ollama_host() -> str:
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
@@ -218,55 +160,17 @@ def _ollama_timeout() -> float:
     return float(os.environ.get("OLLAMA_TIMEOUT", "600"))
 
 
-def _call_ollama(prompt: str, model: str) -> str:
-    """Local model via Ollama's /api/chat. Free; needs `ollama serve` + `ollama pull`."""
-    import httpx
-    host = _ollama_host()
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False,
-        # Ollama's default context window is small enough that a full prompt
-        # would be silently truncated from the front, dropping the excerpts.
-        "options": {"temperature": 0, "num_ctx": 8192},
-    }
-    try:
-        resp = httpx.post(f"{host}/api/chat", json=body, timeout=_ollama_timeout())
-    except httpx.ConnectError as e:
-        raise LLMConfigError(
-            f"Can't reach Ollama at {host}. Start it with `ollama serve`, "
-            f"then `ollama pull {model}` (or set OLLAMA_HOST)."
-        ) from e
-    except httpx.TimeoutException as e:
-        # Seen with a 13 GB model on a 16 GB machine: it doesn't fit in GPU
-        # memory, spills onto the CPU, and a ~3K-token prompt takes 10+ minutes.
-        raise LLMCallError(
-            f"Ollama model '{model}' didn't answer within {_ollama_timeout():.0f}s. It may be too "
-            f"large for this machine (check `ollama ps` for CPU offload); try a smaller model "
-            f"such as qwen2.5-coder:7b, or raise OLLAMA_TIMEOUT."
-        ) from e
-    except httpx.HTTPError as e:
-        raise LLMCallError(f"Ollama request failed: {type(e).__name__}") from e
-    if resp.status_code == 404:
-        raise LLMConfigError(f"Ollama model '{model}' isn't available. Run `ollama pull {model}`.")
-    if resp.status_code != 200:
-        raise LLMCallError(f"Ollama error: HTTP {resp.status_code}: {resp.text[:200]}")
-    try:
-        text = resp.json()["message"]["content"]
-    except (ValueError, KeyError) as e:
-        raise LLMCallError("Ollama returned an unexpected response.") from e
-    if not text.strip():
-        raise LLMCallError("Ollama returned an empty answer.")
-    return text
-
+# One streaming implementation per backend; call_llm joins the stream.
 
 def _stream_anthropic(prompt: str, model: str) -> Iterator[str]:
     import anthropic
     client = anthropic.Anthropic(api_key=_require_key("ANTHROPIC_API_KEY"))
     try:
+        # Current Claude models think adaptively and count thinking against
+        # max_tokens, so leave headroom (billing is for tokens actually used).
+        # Low effort: grounded lookup over supplied excerpts needs little
+        # deliberation, and it's the main cost lever. No `temperature`: it's
+        # rejected by current models.
         with client.messages.stream(
             model=model,
             max_tokens=16000,
@@ -291,9 +195,13 @@ def _stream_gemini(prompt: str, model: str) -> Iterator[str]:
     body = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        # Gemini 2.5-family thinking tokens count against maxOutputTokens;
+        # the old limit of 1000 could be spent before any answer text.
         "generationConfig": {"maxOutputTokens": 8192, "temperature": 0},
     }
     try:
+        # Key goes in a header, not the query string, so it can't leak into
+        # proxy/access logs or exception messages that include the URL.
         with httpx.stream("POST", url, json=body, headers={"x-goog-api-key": gemini_key}, timeout=120) as resp:
             if resp.status_code != 200:
                 raise LLMCallError(f"Gemini API error: HTTP {resp.status_code}")
@@ -312,6 +220,7 @@ def _stream_gemini(prompt: str, model: str) -> Iterator[str]:
 
 
 def _stream_ollama(prompt: str, model: str) -> Iterator[str]:
+    """Local model via Ollama's /api/chat. Free; needs `ollama serve` + `ollama pull`."""
     import httpx
     host = _ollama_host()
     body = {
@@ -321,6 +230,8 @@ def _stream_ollama(prompt: str, model: str) -> Iterator[str]:
             {"role": "user", "content": prompt},
         ],
         "stream": True,
+        # Ollama's default context window is small enough that a full prompt
+        # would be silently truncated from the front, dropping the excerpts.
         "options": {"temperature": 0, "num_ctx": 8192},
     }
     try:
@@ -344,6 +255,8 @@ def _stream_ollama(prompt: str, model: str) -> Iterator[str]:
             f"then `ollama pull {model}` (or set OLLAMA_HOST)."
         ) from e
     except httpx.TimeoutException as e:
+        # Seen with a 13 GB model on a 16 GB machine: it doesn't fit in GPU
+        # memory, spills onto the CPU, and a ~3K-token prompt takes 10+ minutes.
         raise LLMCallError(
             f"Ollama model '{model}' stalled for {_ollama_timeout():.0f}s; it may be too large "
             f"for this machine (see `ollama ps`), or raise OLLAMA_TIMEOUT."
@@ -352,17 +265,20 @@ def _stream_ollama(prompt: str, model: str) -> Iterator[str]:
         raise LLMCallError(f"Ollama request failed: {type(e).__name__}") from e
 
 
-_BACKENDS = {"anthropic": _call_anthropic, "gemini": _call_gemini, "ollama": _call_ollama}
-_STREAMING_BACKENDS = {"anthropic": _stream_anthropic, "gemini": _stream_gemini, "ollama": _stream_ollama}
+_BACKENDS = {"anthropic": _stream_anthropic, "gemini": _stream_gemini, "ollama": _stream_ollama}
 _KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 
 def call_llm(prompt: str, backend: str, model: str) -> str:
-    return _BACKENDS[backend](prompt, model)
+    """The whole answer at once: the backend's stream, joined."""
+    text = "".join(stream_llm(prompt, backend, model))
+    if not text.strip():
+        raise LLMCallError(f"The {backend} model returned an empty answer (it may have been blocked).")
+    return text
 
 
 def stream_llm(prompt: str, backend: str, model: str) -> Iterator[str]:
-    return _STREAMING_BACKENDS[backend](prompt, model)
+    return _BACKENDS[backend](prompt, model)
 
 
 def check_llm_config() -> tuple[str, str]:

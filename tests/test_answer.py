@@ -28,24 +28,15 @@ def test_missing_key_raises_config_error(monkeypatch):
         generate_answer("q?", [_chunk("def f(): pass\n")], "r")
 
 
-def test_gemini_key_sent_as_header_not_in_url(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "secret-key")
-    fake = MagicMock()
-    fake.json.return_value = {"candidates": [{"content": {"parts": [{"text": "ok [1]"}]}}]}
-    with patch("httpx.post", return_value=fake) as post:
-        assert answer._call_gemini("prompt", "gemini-flash-latest") == "ok [1]"
-    url = post.call_args.args[0]
-    assert "secret-key" not in url
-    assert post.call_args.kwargs["headers"]["x-goog-api-key"] == "secret-key"
-
-
 def test_gemini_blocked_response_raises_call_error(monkeypatch):
+    import contextlib
+    import json
     monkeypatch.setenv("GEMINI_API_KEY", "k")
-    fake = MagicMock()
-    fake.json.return_value = {"candidates": [{"finishReason": "SAFETY"}]}
-    with patch("httpx.post", return_value=fake):
-        with pytest.raises(LLMCallError):
-            answer._call_gemini("prompt", "gemini-flash-latest")
+    resp = MagicMock(status_code=200)
+    resp.iter_lines.return_value = iter(["data: " + json.dumps({"candidates": [{"finishReason": "SAFETY"}]})])
+    with patch("httpx.stream", contextlib.contextmanager(lambda *a, **k: (yield resp))):
+        with pytest.raises(LLMCallError, match="blocked"):
+            answer.call_llm("prompt", "gemini", "gemini-flash-latest")
 
 
 def test_ask_without_key_returns_503(tmp_path, monkeypatch):
@@ -169,59 +160,43 @@ def test_unknown_backend_is_a_config_error(monkeypatch):
         generate_answer("q", [_chunk("x = 1\n")], "r")
 
 
-def test_anthropic_request_uses_low_effort_and_no_temperature(monkeypatch):
-    """Current Claude models reject `temperature`, and adaptive thinking counts
-    against max_tokens — so no sampling params and real output headroom."""
-    import anthropic
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-    message = MagicMock(stop_reason="end_turn", content=[MagicMock(type="text", text="ok [1]")])
-    with patch.object(anthropic.resources.messages.Messages, "create", return_value=message) as create:
-        assert answer._call_anthropic("prompt", "claude-sonnet-5") == "ok [1]"
-    kwargs = create.call_args.kwargs
-    assert "temperature" not in kwargs
-    assert kwargs["output_config"] == {"effort": "low"}
-    assert kwargs["max_tokens"] >= 8000
-    assert kwargs["model"] == "claude-sonnet-5"
-
-
-def test_anthropic_refusal_is_reported(monkeypatch):
-    import anthropic
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-    message = MagicMock(stop_reason="refusal", content=[])
-    with patch.object(anthropic.resources.messages.Messages, "create", return_value=message):
-        with pytest.raises(LLMCallError, match="declined"):
-            answer._call_anthropic("prompt", "claude-sonnet-5")
-
-
-def test_ollama_success_and_request_shape(monkeypatch):
+def test_ollama_request_shape(monkeypatch):
+    import json
     monkeypatch.setenv("OLLAMA_HOST", "http://ollama.local:1234/")
-    fake = MagicMock(status_code=200)
-    fake.json.return_value = {"message": {"content": "local answer [1]"}}
-    with patch("httpx.post", return_value=fake) as post:
-        assert answer._call_ollama("prompt", "qwen2.5-coder:7b") == "local answer [1]"
-    assert post.call_args.args[0] == "http://ollama.local:1234/api/chat"
-    body = post.call_args.kwargs["json"]
-    assert body["model"] == "qwen2.5-coder:7b" and body["stream"] is False
+    fake = _fake_stream_response([json.dumps({"message": {"content": "local answer [1]"}, "done": True})])
+    with patch("httpx.stream", fake):
+        assert answer.call_llm("prompt", "ollama", "qwen2.5-coder:7b") == "local answer [1]"
+    assert fake.args[:2] == ("POST", "http://ollama.local:1234/api/chat")
+    body = fake.kwargs["json"]
+    assert body["model"] == "qwen2.5-coder:7b"
     assert body["options"]["num_ctx"] >= 8192  # default context would truncate the excerpts
 
 
 def test_ollama_not_running_or_model_missing_are_config_errors():
     import httpx
-    with patch("httpx.post", side_effect=httpx.ConnectError("refused")):
+
+    def refused(*a, **k):
+        raise httpx.ConnectError("refused")
+    with patch("httpx.stream", refused):
         with pytest.raises(LLMConfigError, match="ollama serve"):
-            answer._call_ollama("prompt", "m")
-    with patch("httpx.post", return_value=MagicMock(status_code=404, text="model not found")):
+            answer.call_llm("prompt", "ollama", "m")
+    with patch("httpx.stream", _fake_stream_response([], status=404)):
         with pytest.raises(LLMConfigError, match="ollama pull m"):
-            answer._call_ollama("prompt", "m")
+            answer.call_llm("prompt", "ollama", "m")
 
 
 def test_ollama_timeout_explains_what_to_do(monkeypatch):
     import httpx
     monkeypatch.setenv("OLLAMA_TIMEOUT", "5")
-    with patch("httpx.post", side_effect=httpx.ReadTimeout("slow")) as post:
+    seen = {}
+
+    def slow(*a, **k):
+        seen.update(k)
+        raise httpx.ReadTimeout("slow")
+    with patch("httpx.stream", slow):
         with pytest.raises(LLMCallError, match="too large for this machine"):
-            answer._call_ollama("prompt", "big-model")
-    assert post.call_args.kwargs["timeout"] == 5.0
+            answer.call_llm("prompt", "ollama", "big-model")
+    assert seen["timeout"] == 5.0
 
 
 # ── Streaming ─────────────────────────────────────────────────────────────────
@@ -313,8 +288,12 @@ def test_anthropic_stream_yields_text_and_checks_refusal(monkeypatch):
 
     with patch.object(anthropic.resources.messages.Messages, "stream", fake_stream("end_turn")):
         assert "".join(answer._stream_anthropic("p", "claude-sonnet-5")) == "Answer"
+    # Current Claude models reject `temperature`, and adaptive thinking counts
+    # against max_tokens, so no sampling params and real output headroom.
     assert "temperature" not in fake_stream.kwargs
     assert fake_stream.kwargs["output_config"] == {"effort": "low"}
+    assert fake_stream.kwargs["max_tokens"] >= 8000
+    assert fake_stream.kwargs["model"] == "claude-sonnet-5"
     with patch.object(anthropic.resources.messages.Messages, "stream", fake_stream("refusal")):
         with pytest.raises(LLMCallError, match="declined"):
             list(answer._stream_anthropic("p", "claude-sonnet-5"))
