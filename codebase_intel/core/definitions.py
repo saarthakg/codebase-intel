@@ -7,17 +7,21 @@ from codebase_intel.storage.metadata_store import MetadataStore
 
 DEFINITION_KINDS = ("class", "function", "method", "interface", "type", "enum")
 
-_TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
+_TEST_DIRS = {"tests", "__tests__", "spec", "specs"}
 
 
 def is_test_path(file_path: str) -> bool:
+    """A test file: under tests/ (or __tests__/, spec/), or named like a test.
+    A singular test/ directory isn't enough on its own: `django/test/client.py`
+    is library code that happens to live in a package called test."""
     path = PurePosixPath(file_path)
     name = path.name
     return (
         any(part in _TEST_DIRS for part in path.parts[:-1])
         or name.startswith("test_")
-        or name == "conftest.py"
+        or name in ("conftest.py", "tests.py")
         or name.endswith(("_test.py", ".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.tsx", ".spec.js"))
+        or (path.parts[0] == "test" and len(path.parts) > 1)  # a top-level test/ dir (JS convention)
     )
 
 
