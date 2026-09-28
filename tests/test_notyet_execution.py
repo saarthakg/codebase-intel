@@ -207,3 +207,32 @@ def test_many_unverified_failures_are_one_item(repo):
     result = check(repo)
     assert [f.rule for f in result.findings] == ["tests-failing-unverified"]
     assert result.findings[0].title.startswith("10 selected tests fail")
+
+
+def test_tests_outside_testpaths_are_not_selected(repo):
+    _write(repo, "examples/demo/tests/conftest.py", "import not_installed_anywhere\n")
+    _write(repo, "examples/demo/tests/test_demo.py", "from pkg.calc import add\n\n\ndef test_demo():\n    assert add(1, 1) == 2\n")
+    _write(repo, "pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "examples")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert "examples" not in " ".join(result.checks) and not result.not_checked
+    assert {f.rule for f in result.findings} == {"test-regression"}
+
+
+def test_breaking_a_conftest_blocks(repo):
+    _write(repo, "tests/conftest.py", "import pkg.calc\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "conftest")
+    _write(repo, "tests/conftest.py", "import pkg.calc\nimport pkg.renamed_away\n")
+    assert [f.rule for f in check(repo).findings] == ["test-run-broken"]
+
+
+def test_a_crash_that_already_happened_at_session_start_is_not_blocked(repo):
+    _write(repo, "tests/conftest.py", "import pkg.missing\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "already broken")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert result.findings == [] and any("didn't run at session start either" in n for n in result.not_checked)

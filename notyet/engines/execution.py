@@ -14,9 +14,11 @@ test proves that checkout imports its own code rather than the working tree
 failure can't be called a regression, and it's reported as fix-or-justify.
 """
 import ast
+import configparser
 import os
 import tempfile
 import time
+import tomllib
 from pathlib import PurePosixPath
 
 from codebase_intel.core.graph import find_python_source_roots
@@ -38,10 +40,43 @@ def in_test_dir(path: str) -> bool:
     return any(p in ("tests", "test", "testing") for p in PurePosixPath(path).parts[:-1])
 
 
+def pytest_testpaths(root: str) -> list[str]:
+    """`testpaths` from the repo's pytest configuration, in pytest's order of precedence."""
+    for name in ("pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg"):
+        path = os.path.join(root, name)
+        if not os.path.exists(path):
+            continue
+        if name == "pyproject.toml":
+            try:
+                with open(path, "rb") as f:
+                    data = tomllib.load(f)
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            tool = data.get("tool", {}).get("pytest", {})
+            opts = tool.get("ini_options", tool) if tool else None
+            if opts is None:
+                continue
+            paths = opts.get("testpaths", [])
+            return [paths] if isinstance(paths, str) else [str(p) for p in paths]
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            parser.read(path)
+        except configparser.Error:
+            continue
+        section = "tool:pytest" if name == "setup.cfg" else "pytest"
+        if parser.has_section(section):
+            return parser.get(section, "testpaths", fallback="").split()
+    return []
+
+
 def select_tests(ctx: Context, graph: pyimports.ImportGraph) -> tuple[list[tuple[str, int, str]], list[str]]:
     """[(test file, priority, why)] and notes about the selection."""
     notes = []
     current_tests = {p for p in graph.blobs if is_test_module(p)}
+    testpaths = pytest_testpaths(ctx.root)
+    if testpaths:   # the repo's own pytest setup only runs these; neither do we
+        current_tests = {p for p in current_tests
+                         if any(p == t or p.startswith(t.rstrip("/") + "/") for t in testpaths)}
     picked: dict[str, tuple[int, str]] = {}
 
     def pick(path: str, priority: int, why: str) -> None:
@@ -139,6 +174,7 @@ def run(ctx: Context) -> EngineResult:
     # ── run the selection on the current tree ────────────────────────────────
     current = testrun.Run()
     skipped_files: list[str] = []
+    crashed: list[tuple[list[str], str]] = []
     for batch in _batches(tests):
         remaining = cfg.budget_seconds - (time.monotonic() - started)
         if remaining <= 1:
@@ -146,11 +182,15 @@ def run(ctx: Context) -> EngineResult:
             continue
         run_ = testrun.run_pytest(command, ctx.root, batch, timeout=remaining)
         if run_.crashed:
-            result.not_checked.append(f"tests: {run_.crashed}")
-            return result
+            crashed.append((batch, run_.crashed))
+            continue
         if run_.timed_out:
             skipped_files += [f for f in batch if not any(n.startswith(f + "::") for n in run_.results)]
         current.results.update(run_.results)
+    for batch, why in crashed:
+        _report_crash(ctx, command, batch, why, result)
+    if crashed and not current.results:
+        return result
     ran_files = sorted({n.split("::")[0] for n in current.results})
     if skipped_files:
         result.not_checked.append(f"tests: the {cfg.budget_seconds}s budget ran out before {len(skipped_files)} "
@@ -278,6 +318,26 @@ def run(ctx: Context) -> EngineResult:
     if baseline_ok and need_baseline:
         result.checks.append("failures and changed tests compared with an isolated checkout of the session-start tree")
     return result
+
+
+def _report_crash(ctx: Context, command: str, batch: list[str], why: str, result: EngineResult) -> None:
+    """pytest couldn't run these files now. If they collected at session start,
+    this session broke them (a conftest, an import at module level)."""
+    with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
+        tmp = os.path.realpath(tmp)
+        snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
+        present = [p for p in batch if os.path.exists(os.path.join(tmp, p))]
+        env = {"PYTHONPATH": os.pathsep.join(str(r) for r in find_python_source_roots(tmp))}
+        before = testrun.collect(command, tmp, present, env=env, timeout=60) if present else None
+    if before:
+        result.findings.append(Finding(
+            rule="test-run-broken", severity="block", location=batch[0],
+            title=f"pytest can't run {len(batch)} test file(s) that it could run at session start",
+            evidence=[why[:300]], key="|".join(sorted(batch)),
+            action="Fix the import or configuration error so these tests run again."))
+    else:
+        result.not_checked.append(f"tests: couldn't run {len(batch)} test file(s), and they didn't run at "
+                                  f"session start either: {why[:300]}")
 
 
 def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: list[str]):
