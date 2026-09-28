@@ -49,8 +49,23 @@ def _nodeid(case: ET.Element) -> str:
     module = path[:-3].replace("/", ".") if path.endswith(".py") else path
     if not classname and name == module:
         return path       # the file itself failed to import or collect
+    if classname and path.endswith(".py") and not classname.startswith(module + "."):
+        path = _path_from_classname(path, classname) or path
+        module = path[:-3].replace("/", ".")
     inner = classname[len(module) + 1:] if classname.startswith(module + ".") else ""
     return "::".join([path, *(inner.split(".") if inner else []), name])
+
+
+def _path_from_classname(path: str, classname: str) -> Optional[str]:
+    """The test file's path when junit's `file` is stale. pytest takes `file` from the code object,
+    and a __pycache__ that moved with the repo (or a renamed directory) still passes Python's
+    freshness check, so it can name the old location ("../../old/tests/test_x.py"). The classname
+    comes from the node id and is current: keep the longest tail of the path it starts with."""
+    parts, cparts = path[:-3].split("/"), classname.split(".")
+    for k in range(min(len(parts), len(cparts)), 0, -1):
+        if parts[-k:] == cparts[:k]:
+            return "/".join(cparts[:k]) + ".py"
+    return None
 
 
 def parse_junit(path: str) -> dict[str, TestResult]:

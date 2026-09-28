@@ -107,8 +107,35 @@ def test_budget_is_respected_and_reported(repo):
     assert result.gaps == ["tests NOT run: the 3s budget ran out before any of the 1 selected test file(s) finished"]
 
 
+def test_a_moved_repo_is_reported_at_its_new_path(tmp_path):
+    """A __pycache__ that moved with the repo still looks fresh to Python, and its code carries the
+    old path; notyet's runs must not report tests there."""
+    import shutil
+    import subprocess
+
+    from notyet import testrun
+    old, new = tmp_path / "old", tmp_path / "moved" / "new"
+    _write(old, "tests/test_x.py", "def test_x():\n    assert 1\n")
+    subprocess.run([sys.executable, "-m", "pytest", "-q", "tests"], cwd=old, check=True, capture_output=True)
+    assert list((old / "tests/__pycache__").glob("*pytest*.pyc"))       # pytest's rewritten bytecode
+    shutil.copytree(old, new)                                            # keeps mtimes, as a move does
+    run = testrun.run_pytest(PYTEST, str(new), ["tests/test_x.py"], timeout=60)
+    assert set(run.results) == {"tests/test_x.py::test_x"}
+
+
+def test_stale_junit_paths_are_rebuilt_from_the_classname():
+    import xml.etree.ElementTree as ET
+
+    from notyet import testrun
+    case = ET.fromstring('<testcase classname="tests.test_x.TestC" name="test_y[p]" file="../../old/tests/test_x.py"/>')
+    assert testrun._nodeid(case) == "tests/test_x.py::TestC::test_y[p]"
+    ok = ET.fromstring('<testcase classname="tests.test_x.TestC" name="test_y" file="tests/test_x.py"/>')
+    assert testrun._nodeid(ok) == "tests/test_x.py::TestC::test_y"
+
+
 def test_a_timed_out_run_keeps_the_files_that_finished(tmp_path):
     import time
+
     from notyet import testrun
     _write(tmp_path, "test_a.py", "def test_a():\n    pass\n")
     _write(tmp_path, "test_b.py", "import time\n\n\ndef test_b1():\n    pass\n\n\ndef test_b2():\n    time.sleep(60)\n")
