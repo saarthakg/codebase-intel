@@ -225,3 +225,39 @@ def test_fully_exercised_change_has_no_coverage_findings(repo):
     _write(repo, "pkg/calc.py", "def add(a, b):\n    total = a + b\n    return total\n\n\ndef sub(a, b):\n    return a - b\n")
     result = check(repo)
     assert result.findings == [] and any(c.startswith("coverage: recorded") for c in result.checks)
+
+
+BROKEN_ADD = "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n"
+
+
+def test_deselecting_a_failing_test_in_conftest_blocks(repo):
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "tests/conftest.py", "def pytest_collection_modifyitems(config, items):\n"
+                                      "    items[:] = [i for i in items if i.name != 'test_add']\n")
+    found = [(f.rule, f.severity, f.location) for f in check(repo).findings if f.rule == "test-removed"]
+    assert found == [("test-removed", "block", "tests/test_calc.py::test_add")]
+
+
+def test_deselecting_through_pytest_config_blocks(repo):
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "pytest.ini", "[pytest]\naddopts = --deselect tests/test_calc.py::test_add "
+                               "--deselect tests/test_shapes.py::test_perimeter\n")
+    found = sorted(f.location for f in check(repo).findings if f.rule == "test-removed")
+    assert found == ["tests/test_calc.py::test_add", "tests/test_shapes.py::test_perimeter"]
+
+
+def test_an_autouse_skip_in_conftest_blocks(repo):
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "tests/conftest.py", "import pytest\n\n\n@pytest.fixture(autouse=True)\ndef _quiet(request):\n"
+                                      "    if 'add' in request.node.name or 'perimeter' in request.node.name:\n"
+                                      "        pytest.skip('temporarily')\n")
+    found = sorted((f.rule, f.location) for f in check(repo).findings if f.severity == "block")
+    assert found == [("test-disabled", "tests/test_calc.py::test_add"),
+                     ("test-disabled", "tests/test_shapes.py::test_perimeter")]
+
+
+def test_harmless_config_change_is_quiet(repo):
+    _write(repo, "pytest.ini", "[pytest]\nmarkers =\n    slow: slow tests\n")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return b + a\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert result.findings == [] and any("test collection compared" in c for c in result.checks)

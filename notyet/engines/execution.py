@@ -28,6 +28,8 @@ from notyet.findings import Context, EngineResult, Finding
 DOC_SUFFIXES = (".md", ".rst", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
 BATCH_FILES = 12
 MAX_UNVERIFIED_ITEMS = 5
+MAX_INFRA_ITEMS = 10
+INFRA_FILES = {"conftest.py", "pytest.ini", ".pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini"}
 CANARY = "test_notyet_baseline_canary.py"
 
 
@@ -327,6 +329,11 @@ def run(ctx: Context) -> EngineResult:
                 action="Restore it, or if removing it is right, hand it to the user: "
                        "`ack <id> --needs-human \"why\"`."))
 
+    # ── test infrastructure changed: did any test stop being collected or start skipping? ─
+    infra = sorted(d.path for d in ctx.deltas if PurePosixPath(d.path).name in INFRA_FILES)
+    if infra:
+        _infra_check(ctx, command, current, infra, result)
+
     passed = sum(1 for r in current.results.values() if r.outcome == "passed")
     bad = sum(1 for r in current.results.values() if r.bad)
     skipped = sum(1 for r in current.results.values() if r.outcome == "skipped")
@@ -346,6 +353,45 @@ def _coverage_findings(ctx: Context, changed_src: list[str], hits: dict[str, set
     added = snapshot.added_lines(ctx.root, ctx.baseline_tree, ctx.current_tree, deltas)
     sources = {p: snapshot.show(ctx.root, ctx.current_tree, p) or "" for p in changed_src}
     return coverage.findings(sources, added, hits)
+
+
+def _infra_check(ctx: Context, command: str, current: testrun.Run, infra: list[str], result: EngineResult) -> None:
+    """A conftest hook, an addopts `--deselect`/`-k`, or an autouse skip can
+    switch tests off without touching a test file. Compare the whole suite's
+    collection with session start, and re-run newly skipped tests there."""
+    now = testrun.collect(command, ctx.root, [], timeout=90)
+    with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
+        tmp = os.path.realpath(tmp)
+        snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
+        env = {"PYTHONPATH": os.pathsep.join(str(r) for r in find_python_source_roots(tmp))}
+        before = testrun.collect(command, tmp, [], env=env, timeout=90)
+        skipped_now = [n for n, r in current.results.items() if r.outcome == "skipped"][:100]
+        ran_before = (testrun.run_pytest(command, tmp, [n for n in skipped_now if before and n in before], env=env,
+                                         timeout=max(30, ctx.config.budget_seconds))
+                      if skipped_now and before else testrun.Run())
+    if now is None or before is None:
+        result.not_checked.append(f"test collection with {', '.join(infra)} changed: couldn't collect the suite "
+                                  f"{'now' if now is None else 'at session start'}")
+        return
+    gone_files = {d.path for d in ctx.deltas if d.status == "D"} | {d.old_path for d in ctx.deltas if d.old_path}
+    gone = sorted(n for n in before - now if n.split("::")[0] not in gone_files)   # deleted files: reported already
+    reported = {f.location for f in result.findings}
+    for nid in [n for n in gone if n not in reported][:MAX_INFRA_ITEMS]:
+        result.findings.append(Finding(
+            rule="test-removed", severity="block", location=nid,
+            title=f"{nid} was collected at session start and isn't now ({', '.join(infra)} changed)",
+            action="Undo whatever stops it being collected, or hand it to the user: "
+                   "`ack <id> --needs-human \"why\"`."))
+    for nid, r in ran_before.results.items():
+        if r.outcome == "passed" and nid not in reported:
+            result.findings.append(Finding(
+                rule="test-disabled", severity="block", location=nid,
+                title=f"{nid} passed at session start and is skipped now ({', '.join(infra)} changed)",
+                evidence=[(current.results[nid].message.splitlines() or [""])[0][:160]] if nid in current.results else [],
+                action="Remove whatever skips it and fix the code, or hand it to the user: "
+                       "`ack <id> --needs-human \"why\"`."))
+    result.checks.append(f"test collection compared with session start because {', '.join(infra)} changed "
+                         f"({len(before)} then, {len(now)} now)")
 
 
 def _report_crash(ctx: Context, command: str, batch: list[str], why: str, result: EngineResult) -> None:
