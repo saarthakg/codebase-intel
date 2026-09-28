@@ -65,7 +65,7 @@ def cmd_install(args) -> int:
         print(diff)
         return _confirm("Apply this change to Claude Code's settings?", args.yes)
 
-    path, changed = claude.install(root, args.scope, stop_timeout=cfg.budget_seconds * 3 + 60, confirm=confirm)
+    path, changed = claude.install(root, args.scope, stop_timeout=cfg.hook_timeout, confirm=confirm)
     print(f"Installed notyet's hooks in {path}." if changed else f"No change made to {path}.")
     if changed:
         print(f"Mode: {cfg.mode}. The gate takes effect in Claude Code sessions started from now on.")

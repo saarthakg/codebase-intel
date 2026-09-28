@@ -50,6 +50,15 @@ class Config:
     def enforce(self) -> bool:
         return self.mode == "enforce"
 
+    @property
+    def check_seconds(self) -> int:
+        """Upper bound for one whole check: tests, session-start comparison, the other engines."""
+        return self.budget_seconds * 4 + self.static_budget_seconds + 60
+
+    @property
+    def hook_timeout(self) -> int:
+        return self.check_seconds + 120
+
 
 def parse(text: Optional[str], source: str) -> Config:
     cfg = Config(source=source if text is not None else "defaults")

@@ -54,6 +54,10 @@ def outstanding(findings: list[Finding], acks: dict[str, dict]) -> list[Finding]
 def run_engines(ctx: Context, engines: Optional[list[Engine]] = None) -> EngineResult:
     result = EngineResult()
     for engine in (engines if engines is not None else default_engines()):
+        if ctx.time_left() < 5:
+            name = getattr(engine, "__module__", "engine").rsplit(".", 1)[-1]
+            result.not_checked.append(f"{name}: skipped; the check used its {ctx.config.check_seconds}s limit")
+            continue
         try:
             result.extend(engine(ctx))
         except Exception as e:  # an engine failure is reported, never fatal
@@ -70,6 +74,7 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
         return Decision(verdict="no-change")
     cfg = config_mod.load(root, session.baseline_tree)
     ctx = Context(root=root, session=session, config=cfg, baseline_tree=session.baseline_tree,
+                  deadline=time.monotonic() + cfg.check_seconds,
                   current_tree=current, deltas=snapshot.diff_trees(root, session.baseline_tree, current))
 
     previous = session.runs[-1] if session.runs else None

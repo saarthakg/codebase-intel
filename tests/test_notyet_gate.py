@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from notyet import gate, snapshot, store
+from notyet import config, gate, snapshot, store
 from notyet.findings import EngineResult, Finding
 from notyet.hooks import claude
 
@@ -270,3 +270,14 @@ def test_ack_command_in_the_agent_message_survives_paths_with_spaces(monkeypatch
     cmd = re.search(r"`([^`]*ack <id> --needs-human[^`]*)`", text).group(1)
     assert shlex.split(cmd)[:4] == ["/Users/x/My Project/.venv/bin/python", "-m", "notyet", "ack"]
     assert text.count("tests/t.py::test_a") == 1          # the location isn't repeated after the title
+
+
+def test_engines_past_the_check_deadline_are_reported_not_run(repo):
+    import time as _time
+
+    from notyet.findings import Context
+    ran = []
+    ctx = Context(root=str(repo), session=None, config=config.Config(), baseline_tree="", current_tree="", deltas=[],
+                  deadline=_time.monotonic() - 1)
+    result = gate.run_engines(ctx, [lambda c: ran.append(1)])
+    assert ran == [] and "skipped; the check used its" in result.not_checked[0]

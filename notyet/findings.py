@@ -1,6 +1,8 @@
 """Findings, and the context engines work from."""
 import hashlib
+import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 from notyet.config import Config
 from notyet.snapshot import FileDelta
@@ -36,6 +38,10 @@ class Context:
     baseline_tree: str
     current_tree: str
     deltas: list[FileDelta]
+    deadline: Optional[float] = None      # time.monotonic() by which the whole check must end
+
+    def time_left(self) -> float:
+        return float("inf") if self.deadline is None else self.deadline - time.monotonic()
 
 
 @dataclass
