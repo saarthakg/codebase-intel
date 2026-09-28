@@ -20,6 +20,7 @@ with skipped permissions.
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -40,9 +41,14 @@ TEST_DEPS = {"click": ["pytest"], "attrs": ["pytest>9", "hypothesis", "pympler",
              "flask": ["pytest", "asgiref"], "httpx": ["-r", "requirements.txt"], "rich": ["pytest", "attrs"]}
 
 
+# The harness itself runs with PYTHONPATH pointing at this repo; nothing it
+# starts (the agent, notyet's hooks, test runs) may inherit that.
+CLEAN_ENV = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "VIRTUAL_ENV", "PYTHONHOME")}
+
+
 def sh(cmd: list[str], cwd=None, timeout=None, check=True) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=check,
-                          stdin=subprocess.DEVNULL)
+                          stdin=subprocess.DEVNULL, env=CLEAN_ENV)
 
 
 def git(cwd, *args, check=True) -> str:
@@ -123,7 +129,11 @@ def answer_key(source: Path, sha: str, work: Path) -> tuple[list[str], list[str]
     git(work, "checkout", "-q", "--", ".")
     git(work, "clean", "-qfd", "-e", ".venv")
     f2p = sorted(n for n, o in at_c.items() if o == "passed" and at_parent.get(n) != "passed")
-    return tests, f2p
+    # a file that couldn't even be collected at the parent (it imports a name C adds): its tests
+    # also require the agent to pick the same API name, so an "unresolved" there is weaker evidence
+    uncollectable = {n for n in at_parent if "::" not in n}
+    api_dependent = sorted(n for n in f2p if n.split("::")[0] in uncollectable or n not in at_parent)
+    return tests, f2p, api_dependent
 
 
 def install_notyet(work: Path, mode: str) -> None:
@@ -155,15 +165,28 @@ def run_agent(work: Path, task: str, repo: str) -> dict:
     return out
 
 
-def grade(source: Path, sha: str, work: Path, tests: list[str], f2p: list[str]) -> dict:
+def full_suite(work: Path) -> dict[str, str]:
+    return pytest_ids(work / ".venv/bin/python", work, [], timeout=1200)
+
+
+def grade(source: Path, sha: str, work: Path, tests: list[str], f2p: list[str], before: dict[str, str]) -> dict:
     diff = git(work, "diff") + "\n".join(f"?? {p}" for p in git(work, "ls-files", "--others", "--exclude-standard").split())
+    # regressions, independently of notyet: the parent's tests (except files this task's commit changes,
+    # whose expectations may legitimately move) on the agent's code, against the parent's full-suite run
+    agent_tests = {p for p in git(work, "diff", "--name-only").split() if is_test_module(p)} - set(tests)
+    for p in agent_tests:
+        git(work, "checkout", "-q", "--", p)
+    after = full_suite(work)
+    broken = sorted(n for n, o in before.items() if o == "passed" and after.get(n) in ("failed", "error")
+                    and n.split("::")[0] not in tests)
     for p in tests:
         (work / p).parent.mkdir(parents=True, exist_ok=True)
         (work / p).write_text(git(source, "show", f"{sha}:{p}"))
     results = pytest_ids(work / ".venv/bin/python", work, f2p) if f2p else {}
     passed = sorted(n for n in f2p if results.get(n) == "passed")
     return {"f2p": len(f2p), "f2p_passed": len(passed), "resolved": bool(f2p) and len(passed) == len(f2p),
-            "failed": sorted(set(f2p) - set(passed))[:10], "agent_diff": diff[:20000]}
+            "failed": sorted(set(f2p) - set(passed))[:10], "regressions": broken[:20],
+            "agent_test_files_reverted_for_regression_check": sorted(agent_tests), "agent_diff": diff[:20000]}
 
 
 def notyet_view(work: Path, session_id: str | None) -> dict:
@@ -172,9 +195,11 @@ def notyet_view(work: Path, session_id: str | None) -> dict:
     if session is None:
         return {"runs": []}
     return {"session_id": session.session_id, "acks": session.acks,
-            "runs": [{"verdict": r.verdict, "findings": [{k: f[k] for k in ("rule", "severity", "title")}
-                                                         for f in r.result.get("findings", [])],
-                      "not_checked": r.result.get("not_checked", [])} for r in session.runs]}
+            "runs": [{"verdict": r.verdict,
+                      "findings": [{k: f.get(k) for k in ("rule", "severity", "title", "location")}
+                                   for f in r.result.get("findings", [])],
+                      "checks": r.result.get("checks", []), "not_checked": r.result.get("not_checked", [])}
+                     for r in session.runs]}
 
 
 def main() -> int:
@@ -186,7 +211,10 @@ def main() -> int:
     ap.add_argument("--mode", default="report", choices=["report", "enforce"])
     ap.add_argument("--workroot", default=None)
     ap.add_argument("--dry-run", action="store_true", help="prepare and grade the answer key; don't run the agent")
+    ap.add_argument("--no-agent", action="store_true", help="skip the agent (grades the untouched parent: a harness check)")
     args = ap.parse_args()
+    repo_root = Path(__file__).resolve().parent.parent
+    sh(["uv", "tool", "install", "-q", "--reinstall", str(repo_root)])   # the hooks run this copy: make it current
     source = Path(args.source).resolve()
     root = Path(args.workroot or source.parent / "tasks").resolve()
     root.mkdir(exist_ok=True)
@@ -198,8 +226,10 @@ def main() -> int:
         row = {"repo": source.name, "sha": sha[:10], "mode": args.mode, "subject": git(source, "log", "-1", "--format=%s", sha).strip()}
         print(f"== {source.name} {sha[:10]} {row['subject'][:70]}", file=sys.stderr, flush=True)
         work, _ = make_workdir(source, sha, root)
-        tests, f2p = answer_key(source, sha, work)
-        row["answer_key"] = {"test_files": tests, "f2p": f2p}
+        tests, f2p, api_dependent = answer_key(source, sha, work)
+        row["answer_key"] = {"test_files": tests, "f2p": f2p, "api_dependent": api_dependent}
+        before = full_suite(work)          # parent code, parent tests: the regression baseline
+        row["baseline_suite"] = {"passed": sum(1 for o in before.values() if o == "passed"), "total": len(before)}
         if not f2p:
             row["skipped"] = "no fail-to-pass tests"
             print("   skipped: no fail-to-pass tests", file=sys.stderr, flush=True)
@@ -213,15 +243,16 @@ def main() -> int:
             out_path.write_text(json.dumps(report, indent=1))
             continue
         install_notyet(work, args.mode)
-        agent = run_agent(work, row["task"], source.name)
+        agent = {} if args.no_agent else run_agent(work, row["task"], source.name)
         row["agent"] = {k: agent.get(k) for k in ("result", "num_turns", "duration_ms", "is_error", "subtype",
                                                     "session_id", "total_cost_usd", "timed_out", "wall_seconds",
-                                                    "stderr", "raw")}
+                                                    "stderr", "raw", "usage", "modelUsage")}
         row["notyet"] = notyet_view(work, agent.get("session_id"))
-        row["grade"] = grade(source, sha, work, tests, f2p)
+        row["grade"] = grade(source, sha, work, tests, f2p, before)
         last = row["notyet"]["runs"][-1]["verdict"] if row["notyet"]["runs"] else "no check"
         print(f"   agent: {agent.get('num_turns')} turns, {agent.get('wall_seconds')}s; notyet: {last}; "
-              f"answer key: {row['grade']['f2p_passed']}/{row['grade']['f2p']}", file=sys.stderr, flush=True)
+              f"answer key: {row['grade']['f2p_passed']}/{row['grade']['f2p']}; "
+              f"regressions: {len(row['grade']['regressions'])}", file=sys.stderr, flush=True)
         report.append(row)
         out_path.write_text(json.dumps(report, indent=1))
     return 0
