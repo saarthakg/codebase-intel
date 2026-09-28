@@ -66,7 +66,8 @@ def replay(root: Path, sha: str, budget: int) -> dict:
     config.unlink()
     subject = git(root, "log", "-1", "--format=%s", sha).strip()
     return {"sha": sha[:10], "subject": subject[:100], "seconds": round(seconds, 1), "verdict": decision.verdict,
-            "findings": [{"rule": f.rule, "severity": f.severity, "title": f.title[:200]} for f in decision.findings]}
+            "findings": [{"rule": f.rule, "severity": f.severity, "title": f.title[:200]} for f in decision.findings],
+            "checks": session.runs[-1].result.get("checks", []) if session.runs else []}
 
 
 def main() -> int:

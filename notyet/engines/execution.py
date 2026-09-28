@@ -12,6 +12,9 @@ block), then run on an isolated checkout of the session-start tree. A canary
 test proves that checkout imports its own code rather than the working tree
 (editable installs can silently redirect imports); without that proof a
 failure can't be called a regression, and it's reported as fix-or-justify.
+
+The session's new and edited tests are also run against the session-start
+code, to see whether any of them tests the change (engines/vacuous.py).
 """
 import ast
 import configparser
@@ -347,6 +350,11 @@ def run(ctx: Context) -> EngineResult:
                 action="Restore it, or if removing it is right, hand it to the user: "
                        "`ack <id> --needs-human \"why\"`."))
 
+    # ── do the session's new tests fail on the session-start code? ───────────
+    if changed_tests and not skipped_files and ctx.time_left() > 10:
+        from notyet.engines import vacuous
+        vacuous.check(ctx, command, current.results, result)
+
     # ── test infrastructure changed: did any test stop being collected or start skipping? ─
     infra = sorted(d.path for d in ctx.deltas if PurePosixPath(d.path).name in INFRA_FILES)
     if infra:
@@ -504,6 +512,7 @@ class _BaselineCache:
         self.errors: dict[str, bool] = data.get("errors", {})
         self.results: dict[str, list[str]] = data.get("results", {})
         self.canaries: list[str] = data.get("canaries", [])
+        self.vacuous: dict[str, dict[str, list[str]]] = data.get("vacuous", {})   # see engines/vacuous.py
 
     def canary_ok(self, dirs: list[str]) -> bool:
         return all(d in self.canaries for d in dirs)
@@ -513,7 +522,8 @@ class _BaselineCache:
 
     def save(self) -> None:
         self.path.write_text(json.dumps({"collected": self.collected, "errors": self.errors,
-                                         "results": self.results, "canaries": self.canaries}))
+                                         "results": self.results, "canaries": self.canaries,
+                                         "vacuous": self.vacuous}))
         old = sorted(self.path.parent.glob("baseline-*.json"), key=lambda p: p.stat().st_mtime)
         for p in old[:-self.KEEP]:
             p.unlink(missing_ok=True)
