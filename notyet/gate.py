@@ -16,7 +16,7 @@ from typing import Callable, Optional
 from notyet import config as config_mod
 from notyet import receipt as receipt_mod
 from notyet import snapshot, store
-from notyet.findings import Context, EngineResult, Finding
+from notyet.findings import Context, EngineResult, Finding, find_ack
 
 MAX_BLOCKS = 6
 SEVERITY_ORDER = {"block": 0, "resolve": 1, "note": 2}
@@ -43,7 +43,7 @@ def outstanding(findings: list[Finding], acks: dict[str, dict]) -> list[Finding]
     """Findings that still stand: blocks not marked needs-human, resolves not acknowledged."""
     out = []
     for f in findings:
-        ack = acks.get(f.id)
+        ack = find_ack(f, acks)
         if f.severity == "block" and not (ack and ack.get("category") == "needs-human"):
             out.append(f)
         elif f.severity == "resolve" and not ack:
@@ -96,7 +96,7 @@ def check(root: str, session: store.Session, engines: Optional[list[Engine]] = N
 
     if not standing and not result.checks:
         verdict = "not-checked"
-    elif not standing and any(session.acks.get(f.id, {}).get("category") == "needs-human" for f in result.findings):
+    elif not standing and any((find_ack(f, session.acks) or {}).get("category") == "needs-human" for f in result.findings):
         verdict = "needs-review"      # the agent may stop, but this is not a pass
     elif not standing:
         verdict = "passed"

@@ -10,7 +10,7 @@ import sys
 import time
 
 from notyet import store
-from notyet.findings import Context, EngineResult, Finding
+from notyet.findings import Context, EngineResult, Finding, find_ack, uncovered
 
 MAX_AGENT_FINDINGS = 8
 MAX_AGENT_CHARS = 3500
@@ -56,13 +56,13 @@ def render(session: store.Session, ctx: Context, result: EngineResult,
         f"compared with: {_baseline_label(session)}",
         "",
     ]
-    needs_human = [f for f in result.findings if session.acks.get(f.id, {}).get("category") == "needs-human"]
+    needs_human = [f for f in result.findings if (find_ack(f, session.acks) or {}).get("category") == "needs-human"]
     if verdict == "unresolved" or needs_human:
         lines += ["## Needs your attention", ""]
         if verdict == "unresolved":
             lines += [f"- **unresolved** `{f.id}` {f.title}" + _where(f)
                       for f in standing]
-        lines += [f"- **needs human** `{f.id}` {f.title}: {session.acks[f.id].get('reason', '')}"
+        lines += [f"- **needs human** `{f.id}` {f.title}: {(find_ack(f, session.acks) or {}).get('reason', '')}"
                   for f in needs_human]
         lines.append("")
 
@@ -139,9 +139,13 @@ def agent_message(standing: list[Finding], last_chance: bool, advice: list[str] 
 
 
 def _ack_state(session: store.Session, f: Finding) -> str:
-    ack = session.acks.get(f.id)
+    ack = find_ack(f, session.acks)
     if not ack:
         return "resolved"
+    if f.id not in session.acks:
+        changed = uncovered(f, ack)
+        since = f", {changed} line(s) new or changed since" if changed else ""
+        return f"acknowledged earlier{since} ({ack.get('category', 'acknowledged')}): {ack.get('reason', '')}"
     return f"{ack.get('category', 'acknowledged')}: {ack.get('reason', '')}"
 
 

@@ -23,6 +23,10 @@ class Finding:
     evidence: list[str] = field(default_factory=list)   # short lines: test output, commit ids
     action: str = ""           # what to do about it
     key: str = ""              # what makes it the same finding across runs (defaults to location)
+    # the items a finding is about, when it groups several (untested-change: one digest per changed
+    # line). An acknowledgment of such a finding carries over to later findings of the same group
+    # while the items it didn't cover stay few (see find_ack), even though the id changes.
+    covers: list[str] = field(default_factory=list)
 
     @property
     def id(self) -> str:
@@ -56,3 +60,31 @@ class EngineResult:
         self.checks += other.checks
         self.not_checked += other.not_checked
         self.advice += other.advice
+
+
+def group(f: Finding) -> str:
+    """What a finding's acknowledgment can carry over to: same rule, same place."""
+    return f"{f.rule}|{(f.key or f.location).split('|')[0]}"
+
+
+def find_ack(f: Finding, acks: dict[str, dict]) -> Optional[dict]:
+    """The acknowledgment that applies to `f`: one for its id, or, for a finding that groups items,
+    one for the same group that covered all but a few of its items now: at most CARRY_MIN, or a
+    tenth of what was acknowledged. Items are counted against that acknowledgment, not the last
+    check, so untested code that keeps growing turn by turn is raised again."""
+    ack = acks.get(f.id)
+    if ack is not None or not f.covers:
+        return ack
+    for a in acks.values():
+        covered = a.get("covers", [])
+        if a.get("group") == group(f) and uncovered(f, a) <= max(CARRY_MIN, len(covered) // 10):
+            return a
+    return None
+
+
+def uncovered(f: Finding, ack: dict) -> int:
+    """How many of `f`'s items the acknowledgment didn't cover."""
+    return len(set(f.covers) - set(ack.get("covers", [])))
+
+
+CARRY_MIN = 2

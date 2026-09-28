@@ -16,7 +16,7 @@ from pathlib import Path
 
 from notyet import config as config_mod
 from notyet import gate, snapshot, store
-from notyet.findings import Finding
+from notyet.findings import Finding, find_ack, group
 
 
 def _root(path: str = ".") -> str:
@@ -110,7 +110,7 @@ def cmd_export(args) -> int:
         for n, run in enumerate(session.runs, 1):
             for d in run.result.get("findings", []):
                 f = Finding(**d)
-                ack = session.acks.get(f.id, {})
+                ack = find_ack(f, session.acks) or {}
                 writer.writerow({
                     "repo": Path(root).name, "session": session.session_id, "check": n,
                     "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(run.at)), "verdict": run.verdict,
@@ -178,6 +178,8 @@ def cmd_ack(args) -> int:
     category = "needs-human" if args.needs_human else args.category
     for i in ids:
         session.acks[i] = {"category": category, "reason": reason, "at": time.time(), "title": findings[i].title}
+        if findings[i].covers:
+            session.acks[i].update(group=group(findings[i]), covers=findings[i].covers)
     store.save_session(root, session)
     print(f"Recorded: {', '.join(ids)} ({category}). {'They' if len(ids) > 1 else 'It'} will appear on the receipt.")
     return 0

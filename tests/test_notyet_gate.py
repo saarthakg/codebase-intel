@@ -177,6 +177,42 @@ def test_acknowledging(repo, monkeypatch, capsys):
     assert receipt.count("**needs human**") == 2          # the batch ack re-filed the advisory item too
 
 
+def _untested_findings(repo):
+    """The real untested-change findings for app.py, as if none of its lines ran."""
+    from notyet import coverage
+    text = (repo / "app.py").read_text()
+    return coverage.findings({"app.py": text}, {"app.py": set(range(1, text.count("\n") + 2))}, {})
+
+
+def test_an_untested_change_ack_survives_small_edits_but_not_growth(repo, monkeypatch):
+    from notyet import cli
+    _enforce(repo)
+    monkeypatch.setattr(gate, "default_engines", lambda: [fake_engine(lambda: _untested_findings(repo))])
+    hook(repo, "session-start", source="startup")
+    body = [f"    x{i} = {i}" for i in range(12)]
+    _write(repo, "app.py", "def f():\n" + "\n".join(body) + "\n    return x0\n")
+    assert hook(repo, "stop")["decision"] == "block"
+    (first,) = _untested_findings(repo)
+    assert cli.main(["ack", first.id, "exercised", "by", "the", "end-to-end", "eval", "runs", "--path", str(repo)]) == 0
+
+    body[3] = "    x3: int = 3"                       # edit an acknowledged line: a new id, carried over
+    _write(repo, "app.py", "def f():\n" + "\n".join(body) + "\n    return x0\n")
+    out = hook(repo, "stop")
+    assert "decision" not in out
+    receipt = (store.receipts_dir(str(repo)) / "latest.md").read_text()
+    assert "acknowledged earlier, 1 line(s) new or changed since" in receipt
+
+    body += ["    y1 = 1", "    y2 = 2"]            # 3 lines the ack never saw: more than it tolerates
+    _write(repo, "app.py", "def f():\n" + "\n".join(body) + "\n    return x0\n")
+    assert hook(repo, "stop")["decision"] == "block"
+
+
+def test_repeated_untested_lines_are_separate_items():
+    from notyet import coverage
+    (f,) = coverage.findings({"a.py": "x = 1\nx = 1\n"}, {"a.py": {1, 2}}, {})
+    assert len(f.covers) == len(set(f.covers)) == 2
+
+
 def test_config_edits_during_a_session_do_not_take_effect(repo, monkeypatch):
     _enforce(repo)
     finding = Finding(rule="test-regression", severity="block", title="test_f fails now", location="t::test_f")

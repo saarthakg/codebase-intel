@@ -40,6 +40,11 @@ pre-existing edits and already-failing tests are never blamed on the agent.
 - **block:** only fixing the problem, or handing it to you with a reason, clears it.
 - **fix or justify:** the agent may acknowledge the item with a reason, and you see the reason
   on the receipt.
+  - An acknowledged untested-lines finding stays acknowledged through small edits to those lines:
+    up to 2 new or changed lines, or a tenth of what was acknowledged, counted against the original
+    acknowledgment.
+  - The receipt says how many lines changed since. More untested code than that raises the finding
+    again.
 - Anything notyet couldn't check is listed as not checked, never reported as passed.
 
 It stays out of the way:
