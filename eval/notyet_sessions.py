@@ -497,7 +497,7 @@ def load_tasks(args) -> list[dict]:
     if args.tasks:
         tasks = json.loads(Path(args.tasks).read_text())
         only = {t for t in args.only.split(",") if t}
-        tasks = [t for t in tasks if (t["id"] in only) if only else not t.get("dropped")]
+        tasks = [t for t in tasks if (t["id"] in only if only else not t.get("dropped"))]
         for t in tasks:
             t["source"] = str(Path(args.bench).expanduser() / t["repo"])
     else:
