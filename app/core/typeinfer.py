@@ -97,18 +97,6 @@ class TypeIndex:
             queue.extend(self.bases(n))
         return order
 
-    def subclasses(self, name: str) -> set[str]:
-        out, changed = set(), True
-        while changed:
-            changed = False
-            for cname in self.classes:
-                if cname not in out and cname != name and (
-                    name in self.bases(cname) or out & set(self.bases(cname))
-                ):
-                    out.add(cname)
-                    changed = True
-        return out
-
     def defines(self, cls_name: str, method: str) -> bool:
         return any(method in c.methods for c in self.classes.get(cls_name, []))
 

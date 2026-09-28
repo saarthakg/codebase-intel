@@ -483,29 +483,9 @@ class MetadataStore:
             (repo_id, source, target, edge_type),
         )
 
-    def upsert_edge(
-        self, repo_id: str, source: str, target: str, edge_type: str
-    ) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO edges (repo_id, source_file, target_file, edge_type)
-               VALUES (?, ?, ?, ?)""",
-            (repo_id, source, target, edge_type),
-        )
+    def upsert_edge(self, repo_id: str, source: str, target: str, edge_type: str) -> None:
+        self.add_edge(repo_id, source, target, edge_type)
         self._conn.commit()
-
-    def get_edges_from(self, repo_id: str, file_path: str) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE repo_id = ? AND source_file = ?",
-            (repo_id, file_path),
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    def get_edges_to(self, repo_id: str, file_path: str) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE repo_id = ? AND target_file = ?",
-            (repo_id, file_path),
-        ).fetchall()
-        return [dict(r) for r in rows]
 
     def count_chunks(self, repo_id: str) -> int:
         row = self._conn.execute(
@@ -516,12 +496,6 @@ class MetadataStore:
     def count_symbols(self, repo_id: str) -> int:
         row = self._conn.execute(
             "SELECT COUNT(*) FROM symbols WHERE repo_id = ?", (repo_id,)
-        ).fetchone()
-        return row[0]
-
-    def count_edges(self, repo_id: str) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) FROM edges WHERE repo_id = ?", (repo_id,)
         ).fetchone()
         return row[0]
 

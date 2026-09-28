@@ -61,12 +61,6 @@ class DependencyGraph:
             key=lambda x: x["depth"],
         )
 
-    def files_referencing_symbol(
-        self, symbol: str, metadata_store: "MetadataStore", repo_id: str
-    ) -> list[str]:
-        """Return file paths that use this symbol (identifier usages, not definitions)."""
-        return sorted({r["file_path"] for r in metadata_store.find_references(repo_id, symbol)})
-
     def save(self, path: str) -> None:
         """Write the graph as JSON: {"nodes": [...], "edges": [[source, target], ...]}.
 

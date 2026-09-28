@@ -77,11 +77,7 @@ def test_find_symbol_missing(tmp_path):
 def test_upsert_edge(tmp_path):
     store = MetadataStore(str(tmp_path / "test.db"))
     store.upsert_edge("repo1", "a.py", "b.py", "import")
-    edges = store.get_edges_from("repo1", "a.py")
-    assert len(edges) == 1
-    assert edges[0]["target_file"] == "b.py"
-    edges_to = store.get_edges_to("repo1", "b.py")
-    assert edges_to[0]["source_file"] == "a.py"
+    assert store.all_edges("repo1") == [("a.py", "b.py")]
     store.close()
 
 
