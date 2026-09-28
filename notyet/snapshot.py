@@ -125,9 +125,10 @@ def show(root: str, tree: str, path: str) -> Optional[str]:
     return None if "\0" in text else text
 
 
-def materialize(root: str, tree: str, dest: str) -> None:
-    """Write the files of `tree` into `dest` (read-only for the repo)."""
-    proc = subprocess.Popen(["git", "-C", root, "archive", "--format=tar", tree],
+def materialize(root: str, tree: str, dest: str, paths: list[str] | None = None) -> None:
+    """Write the files of `tree` (or just `paths` in it) into `dest`, byte for
+    byte (read-only for the repo)."""
+    proc = subprocess.Popen(["git", "-C", root, "archive", "--format=tar", tree, *(["--", *paths] if paths else [])],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
         tar.extractall(dest, filter="data")

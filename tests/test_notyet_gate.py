@@ -189,7 +189,7 @@ def test_config_edits_during_a_session_do_not_take_effect(repo, monkeypatch):
     assert ".notyet.toml changed during this session" in receipt
 
 
-def test_background_work_defers_the_check(repo, monkeypatch):
+def test_background_work_defers_the_check(repo, monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(gate, "default_engines", lambda: [lambda ctx: calls.append(1) or EngineResult()])
     hook(repo, "session-start", source="startup")
@@ -197,9 +197,15 @@ def test_background_work_defers_the_check(repo, monkeypatch):
     assert hook(repo, "stop", background_tasks=[{"id": "t1", "type": "shell", "status": "running"}]) is None
     assert calls == []
     session = store.latest_session(str(repo))
+    assert session is not None
     assert session.runs == [] and [st["busy"] for st in session.stops] == [True]   # skipped, but on record
     hook(repo, "stop", background_tasks=[{"id": "t1", "type": "shell", "status": "completed"}])
-    assert calls == [1] and [st["busy"] for st in store.latest_session(str(repo)).stops] == [True, False]
+    session = store.latest_session(str(repo))
+    assert session is not None
+    assert calls == [1] and [st["busy"] for st in session.stops] == [True, False]
+    from notyet import cli
+    cli.main(["status", "--path", str(repo)])
+    assert "Stop hook fired 2 time(s); 1 skipped because background tasks were running" in capsys.readouterr().out
 
 
 def test_stop_without_a_recorded_start_measures_from_head(repo, monkeypatch):

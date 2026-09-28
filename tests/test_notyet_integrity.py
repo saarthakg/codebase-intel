@@ -81,3 +81,53 @@ def test_a_requested_behavior_change_blocks_until_handed_to_the_user(repo):
     fid = first.findings[0].id
     session.acks[fid] = {"reason": "user asked for sub to be reversed", "category": "needs-human"}
     assert gate.check(root, session).verdict == "needs-review"      # may stop; not a pass
+
+
+def _commit(repo, rel, text):
+    from tests.conftest import _git
+    _write(repo, rel, text)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", f"set up {rel}")
+
+
+PARAM_TEST = ("import pytest\nfrom pkg.calc import add\n\n\n"
+              "@pytest.mark.parametrize('a,b,out', [(1, 2, {})])\ndef test_add(a, b, out):\n    assert add(a, b) == out\n")
+
+
+def test_changing_a_parametrize_expectation_to_match_a_bug_blocks(repo):
+    _commit(repo, "tests/test_calc.py", PARAM_TEST.format(3))
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "tests/test_calc.py", PARAM_TEST.format(4))        # the body is untouched
+    assert rules(check(repo)) == [("test-changed-to-pass", "block", "tests/test_calc.py::test_add")]
+
+
+CONST_TEST = "from pkg.calc import add\n\nEXPECTED = {}\n\n\ndef test_add():\n    assert add(1, 2) == EXPECTED\n"
+
+
+def test_changing_a_module_level_expectation_to_match_a_bug_blocks(repo):
+    _commit(repo, "tests/test_calc.py", CONST_TEST.format(3))
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "tests/test_calc.py", CONST_TEST.format(4))
+    assert rules(check(repo)) == [("test-changed-to-pass", "block", "tests/test_calc.py::test_add")]
+
+
+def test_a_test_file_that_cannot_import_does_not_hide_a_changed_expectation(repo):
+    """The session renames shapes.perimeter (and its test's import); the old
+    test_shapes.py can't import the new code, and pytest then drops every
+    other targeted result unless run file by file."""
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    _write(repo, "pkg/shapes.py", "from pkg.calc import add\n\n\ndef outline(w, h):\n    return 2 * (w + h)\n")
+    _write(repo, "tests/test_shapes.py", "from pkg.shapes import outline\n\n\ndef test_perimeter():\n"
+                                         "    assert outline(2, 3) == 10\n")
+    _write(repo, "tests/test_calc.py", (repo / "tests/test_calc.py").read_text().replace("== 3", "== 4"))
+    found = rules(check(repo))
+    assert ("test-changed-to-pass", "block", "tests/test_calc.py::test_add") in found
+    assert ("test-changed-to-pass", "block", "tests/test_shapes.py::test_perimeter") in found   # renamed API
+
+
+def test_changed_functions_reads_decorators_and_module_values():
+    before = "X = 1\n\n\ndef helper():\n    return 1\n\n\ndef test_a():\n    assert X\n\n\ndef test_b():\n    assert helper()\n\n\ndef test_c():\n    pass\n"
+    after = before.replace("X = 1", "X = 2") + "\n\ndef test_d():\n    pass\n"
+    assert integrity.changed_functions(before, after) == {"test_a": "edited", "test_d": "new"}
+    after = before.replace("return 1", "return 2")
+    assert integrity.changed_functions(before, after) == {"test_b": "edited"}

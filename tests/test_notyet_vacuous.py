@@ -106,8 +106,10 @@ def test_a_refactor_with_characterization_tests_is_acknowledged_not_blocked(repo
     _write(repo, "tests/test_calc.py", (repo / "tests/test_calc.py").read_text()
            + "\n\ndef test_add_negative():\n    assert add(-1, -2) == -3\n")
     root = str(repo)
-    session = store.Session(session_id="r", started=0, baseline_tree=snapshot.head_tree(root),
-                            baseline_head=snapshot.head_tree(root), baseline_source="session-start")
+    head = snapshot.head_tree(root)
+    assert head is not None
+    session = store.Session(session_id="r", started=0, baseline_tree=head, baseline_head=head,
+                            baseline_source="session-start")
     first = gate.check(root, session)
     assert first.verdict == "blocked" and [f.rule for f in first.findings] == ["test-vacuous"]
     session.acks[first.findings[0].id] = {"category": "acknowledge", "reason": "refactor; behavior unchanged"}
@@ -157,3 +159,36 @@ def test_one_new_test_file_failing_to_import_does_not_hide_the_others(repo):
     _write(repo, "tests/test_calc.py", CALC_TESTS + "\n\ndef test_sub():\n    assert sub(3, 1) == 2\n")
     result = check(repo)
     assert any("2 of 2 fail there" in c for c in result.checks), result.checks
+
+
+def test_a_changed_module_level_expectation_counts_as_an_edited_test(repo):
+    """click b5464b7: the fix changes a dict constant the test compares against."""
+    test = "from pkg.calc import sub\n\nEXPECTED = {}\n\n\ndef test_sub():\n    assert sub(3, 1) == EXPECTED\n"
+    _write(repo, "pkg/calc.py", BUGGY_SUB)
+    _write(repo, "tests/test_calc.py", test.format(-2))
+    _git(repo, "commit", "-qam", "the test pins the bug")
+    _write(repo, "pkg/calc.py", FIXED_SUB)
+    _write(repo, "tests/test_calc.py", test.format(2))
+    result = check(repo)
+    assert vacuous(result) == [] and any("1 of 1 fail there" in c for c in result.checks)
+
+
+def test_tests_skipped_at_session_start_are_not_called_vacuous(repo):
+    _write(repo, "pkg/calc.py", FIXED_SUB + "\n\nVERSION = 2\n")
+    _write(repo, "tests/test_calc.py", (repo / "tests/test_calc.py").read_text() +
+           "\n\nimport pytest\nimport pkg.calc\n\n\ndef test_v2():\n"
+           "    if not hasattr(pkg.calc, 'VERSION'):\n        pytest.skip('old')\n    assert add(1, 1) == 2\n")
+    result = check(repo)
+    assert vacuous(result) == []
+    assert any("none of 1 could be compared" in n for n in result.not_checked)
+
+
+def test_binary_test_data_is_copied_exactly(repo):
+    """The data makes the new test pass on both sides; if it weren't copied,
+    the test would error at session start and wrongly count as testing the change."""
+    with_buggy_sub(repo)
+    _write(repo, "pkg/calc.py", FIXED_SUB)
+    (repo / "tests/data.bin").write_bytes(b"\x02\x00\x02")
+    _write(repo, "tests/test_calc.py", CALC_TESTS + "\n\nimport pathlib\n\n\ndef test_sub():\n"
+           "    a, _, b = pathlib.Path(__file__).with_name('data.bin').read_bytes()\n    assert sub(a, b) == 0\n")
+    assert [f.location for f in vacuous(check(repo))] == ["tests/test_calc.py::test_sub"]

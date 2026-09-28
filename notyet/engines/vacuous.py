@@ -1,7 +1,8 @@
 """Vacuous new tests: does any test the session wrote actually test the change?
 
-Each new or edited test function that passes now is run against the
-session-start code: an isolated checkout of the session-start tree with the
+Each new or edited test function (see integrity.changed_functions: a new
+`parametrize` case or a changed module-level value it uses counts) that
+passes now is run against the session-start code: an isolated checkout of the session-start tree with the
 session's test-side files (test modules, conftest.py, anything under a test
 directory) copied in. A test that fails there tells the old code from the new
 one. A test that passes there too doesn't exercise the change.
@@ -17,7 +18,6 @@ So the rule is per session, not per test:
   - only tests changed: nothing to compare, not reported.
 The same import canary as the other session-start runs guards the checkout.
 """
-import ast
 import hashlib
 import os
 import tempfile
@@ -30,7 +30,7 @@ from notyet.engines.execution import (
     in_test_dir,
     is_test_module,
 )
-from notyet.engines.integrity import _functions
+from notyet.engines.integrity import changed_functions
 from notyet.findings import Context, EngineResult, Finding
 from notyet.pyresolve import find_python_source_roots
 
@@ -48,48 +48,24 @@ def written_tests(ctx: Context) -> list[str]:
     for d in ctx.deltas:
         if d.status == "D" or not is_test_module(d.path):
             continue
-        before = _functions(snapshot.show(ctx.root, ctx.baseline_tree, d.old_path or d.path) or "") \
-            if d.status != "A" else {}
-        after = _functions(snapshot.show(ctx.root, ctx.current_tree, d.path) or "")
-        for name, func in after.items():
-            if name not in before or _signature(before[name]) != _signature(func):
-                out.append(f"{d.path}::{name}")
+        before = (snapshot.show(ctx.root, ctx.baseline_tree, d.old_path or d.path) or "") if d.status != "A" else ""
+        after = snapshot.show(ctx.root, ctx.current_tree, d.path) or ""
+        out += [f"{d.path}::{name}" for name in changed_functions(before, after)]
     return sorted(out)
-
-
-def _signature(func) -> tuple[str, str]:
-    """Body and decorators: a new `parametrize` case is a new test too."""
-    return func.body, "\n".join(ast.unparse(d) for d in getattr(func.node, "decorator_list", []))
-
-
-def _outcome(nodeid: str, results: dict[str, testrun.TestResult]) -> str:
-    """passed | failed | skipped | missing, across a test's parameter sets. A
-    file that fails to import counts as a failure of every test in it."""
-    file = nodeid.split("::")[0]
-    if file in results and results[file].bad:
-        return "failed"
-    mine = [r for n, r in results.items() if n == nodeid or n.startswith(nodeid + "[")]
-    if not mine:
-        return "missing"
-    if any(r.bad for r in mine):
-        return "failed"
-    if all(r.outcome == "passed" for r in mine):
-        return "passed"
-    return "skipped"
 
 
 def check(ctx: Context, command: str, current: dict[str, testrun.TestResult], result: EngineResult) -> None:
     source_changed = any(d.path.endswith(".py") and not is_test_side(d.path) for d in ctx.deltas)
     if not source_changed:
         return
-    passing_now = [n for n in written_tests(ctx) if _outcome(n, current) == "passed"][:MAX_TESTS]
+    passing_now = [n for n in written_tests(ctx) if testrun.outcome_of(n, current) == "passed"][:MAX_TESTS]
     if not passing_now:
         return
     before, why = _run_at_session_start(ctx, command, passing_now)
     if why:
         result.not_checked.append(f"new tests against the session-start code: {why}")
         return
-    outcomes = {n: _outcome(n, before) for n in passing_now}
+    outcomes = {n: testrun.outcome_of(n, before) for n in passing_now}
     tells = sorted(n for n, o in outcomes.items() if o == "failed")
     same = sorted(n for n, o in outcomes.items() if o == "passed")
     unknown = len(outcomes) - len(tells) - len(same)
@@ -127,13 +103,8 @@ def _run_at_session_start(ctx: Context, command: str, node_ids: list[str]) -> tu
     with tempfile.TemporaryDirectory(prefix="notyet-vacuous-") as tmp:
         tmp = os.path.realpath(tmp)
         snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
-        for path in overlay:
-            content = snapshot.show(ctx.root, ctx.current_tree, path)
-            if content is None:
-                continue
-            os.makedirs(os.path.dirname(os.path.join(tmp, path)) or tmp, exist_ok=True)
-            with open(os.path.join(tmp, path), "w") as f:
-                f.write(content)
+        if overlay:
+            snapshot.materialize(ctx.root, ctx.current_tree, tmp, paths=overlay)
         env = {"PYTHONPATH": os.pathsep.join(str(r) for r in find_python_source_roots(tmp))}
         # a copied-in conftest.py could change how imports resolve: prove it again
         if any(PurePosixPath(p).name == "conftest.py" for p in overlay) or not cache.canary_ok(dirs):
@@ -143,12 +114,7 @@ def _run_at_session_start(ctx: Context, command: str, node_ids: list[str]) -> tu
             if not any(PurePosixPath(p).name == "conftest.py" for p in overlay):
                 cache.canary_passed(dirs)
         timeout = max(30.0, min(ctx.config.budget_seconds, ctx.time_left() - 5))
-        run = testrun.run_pytest(command, tmp, node_ids, env=env, timeout=timeout)
-        collection_error = any("::" not in n.strip(":") and r.bad for n, r in run.results.items())
-        if collection_error and any(_outcome(n, run.results) == "missing" for n in node_ids):
-            # pytest gives up on every node id when one file fails to import (a
-            # new test importing a name the session added); by file, it doesn't
-            run = testrun.run_pytest(command, tmp, files, env=env, timeout=timeout)
+        run = testrun.run_tests(command, tmp, node_ids, env=env, timeout=timeout)
     if run.crashed:
         return {}, f"the test command failed on the session-start tree ({run.crashed})"
     if run.timed_out:

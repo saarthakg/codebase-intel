@@ -113,6 +113,42 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
         return run
 
 
+def run_tests(command: str, cwd: str, node_ids: list[str], timeout: float, env: dict | None = None) -> Run:
+    """`run_pytest` on node ids. When one targeted file can't be imported,
+    pytest drops the results of every other targeted file too; then the files
+    are run whole, where it carries on past the error."""
+    run = run_pytest(command, cwd, node_ids, timeout=timeout, env=env)
+    collection_error = any("::" not in n.strip(":") and r.bad for n, r in run.results.items())
+    if collection_error and any(outcome_of(n, run.results) == "missing" for n in node_ids):
+        files = list(dict.fromkeys(n.split("::")[0] for n in node_ids))
+        run = run_pytest(command, cwd, files, timeout=timeout, env=env)
+    return run
+
+
+def outcome_of(nodeid: str, results: dict[str, TestResult]) -> str:
+    """passed | failed | skipped | missing for a test function, across its
+    parameter sets. A file that fails to import fails every test in it."""
+    file = nodeid.split("::")[0]
+    if file in results and results[file].bad:
+        return "failed"
+    mine = [r for n, r in results.items() if n == nodeid or n.startswith(nodeid + "[")]
+    if not mine:
+        return "missing"
+    if any(r.bad for r in mine):
+        return "failed"
+    if all(r.outcome == "passed" for r in mine):
+        return "passed"
+    return "skipped"
+
+
+def failure_of(nodeid: str, results: dict[str, TestResult]) -> str:
+    """The message of the first failure behind outcome_of(...) == "failed"."""
+    file = nodeid.split("::")[0]
+    if file in results and results[file].bad:
+        return results[file].message
+    return next((r.message for n, r in results.items() if (n == nodeid or n.startswith(nodeid + "[")) and r.bad), "")
+
+
 class Collected(set):
     """Collected node ids, plus the files that failed to import or collect."""
     def __init__(self, ids=(), errors=()):

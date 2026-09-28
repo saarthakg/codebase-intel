@@ -1,6 +1,9 @@
 """Test integrity: did the session weaken the tests instead of fixing the code?
 
-For every test function that existed at session start and was edited:
+A test function counts as edited when its body or decorators changed (a
+`parametrize` expectation is part of the test), or a module-level value or
+helper it uses changed. For every test function that existed at session
+start and was edited:
   - a skip or xfail added (decorator, `pytest.skip()` in the body, a module
     `pytestmark`): the test no longer checks anything. Block.
   - the session-start version of the test, run against the new code, fails:
@@ -47,8 +50,10 @@ def run(ctx: Context) -> EngineResult:
     to_rerun: dict[str, list[str]] = {}          # current path → edited test functions
     old_paths: dict[str, str] = {}
     for old_path, path in edited_files:
-        before = _functions(snapshot.show(ctx.root, ctx.baseline_tree, old_path) or "")
-        after = _functions(snapshot.show(ctx.root, ctx.current_tree, path) or "")
+        before_source = snapshot.show(ctx.root, ctx.baseline_tree, old_path) or ""
+        after_source = snapshot.show(ctx.root, ctx.current_tree, path) or ""
+        before, after = _functions(before_source), _functions(after_source)
+        edited = changed_functions(before_source, after_source)
         for name in sorted(before.keys() & after.keys()):
             b, a = before[name], after[name]
             nid = f"{path}::{name}"
@@ -67,7 +72,7 @@ def run(ctx: Context) -> EngineResult:
                     title=f"{nid} checks less than it did: {b.assertions} assertion(s) at session start, "
                           f"{a.assertions} now",
                     action="Restore the assertions, or acknowledge why they no longer apply."))
-            if a.body != b.body:
+            if edited.get(name) == "edited":
                 to_rerun.setdefault(path, []).append(name)
                 old_paths[path] = old_path
 
@@ -91,11 +96,12 @@ def _run_old_versions(ctx: Context, to_rerun: dict[str, list[str]], old_paths: d
             with open(os.path.join(tmp, path), "w") as f:
                 f.write(snapshot.show(ctx.root, ctx.baseline_tree, old_paths[path]) or "")
         env = {"PYTHONPATH": os.pathsep.join(str(r) for r in find_python_source_roots(tmp))}
-        old_on_new = testrun.run_pytest(command, tmp, node_ids, env=env, timeout=max(30, cfg.budget_seconds))
+        old_on_new = testrun.run_tests(command, tmp, node_ids, env=env, timeout=max(30, cfg.budget_seconds))
     if old_on_new.crashed:
         result.not_checked.append(f"session-start versions of edited tests: {old_on_new.crashed}")
         return
-    failing = [r for r in old_on_new.results.values() if r.bad]
+    failing = [testrun.TestResult(n, "failed", testrun.failure_of(n, old_on_new.results)) for n in node_ids
+               if testrun.outcome_of(n, old_on_new.results) == "failed"]
     result.checks.append(f"ran the session-start version of {len(node_ids)} edited test(s) against the new code "
                          f"({len(failing)} failed)")
     if not failing:
@@ -133,13 +139,59 @@ def _passed_at_session_start(ctx: Context, command: str, node_ids: list[str]) ->
         ok, why = _canary(ctx, tmp, files, env)
         if not ok:
             return set(), why
-        run = testrun.run_pytest(command, tmp, node_ids, env=env, timeout=max(30, ctx.config.budget_seconds))
+        run = testrun.run_tests(command, tmp, node_ids, env=env, timeout=max(30, ctx.config.budget_seconds))
     if run.crashed:
         return set(), f"the test command failed on the session-start tree ({run.crashed})"
-    return {n for n, r in run.results.items() if r.outcome == "passed"}, ""
+    return {n for n in node_ids if testrun.outcome_of(n, run.results) == "passed"}, ""
 
 
 # ── reading test functions ─────────────────────────────────────────────────────
+
+def changed_functions(before_source: str, after_source: str) -> dict[str, str]:
+    """{test name: "new" | "edited"} between two versions of a test module."""
+    before, after = _functions(before_source), _functions(after_source)
+    changed_names = _changed_module_names(before_source, after_source)
+    out = {}
+    for name, func in after.items():
+        old = before.get(name)
+        if old is None:
+            out[name] = "new"
+        elif _signature(old) != _signature(func) or changed_names & _names_used(func.node):
+            out[name] = "edited"
+    return out
+
+
+def _signature(func: TestFunc) -> tuple[str, str]:
+    return func.body, "\n".join(ast.unparse(d) for d in getattr(func.node, "decorator_list", []))
+
+
+def _names_used(node: ast.AST) -> set[str]:
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+
+
+def _changed_module_names(before_source: str, after_source: str) -> set[str]:
+    """Module-level values and helpers (not tests, not imports) whose
+    definition changed, appeared or disappeared."""
+    def definitions(source: str) -> dict[str, str]:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return {}
+        defs: dict[str, str] = {}
+        for node in tree.body:
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for t in targets:
+                    for n in ast.walk(t):
+                        if isinstance(n, ast.Name):
+                            defs[n.id] = ast.unparse(node)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) \
+                    and not node.name.startswith(("test", "Test")):
+                defs[node.name] = ast.unparse(node)
+        return defs
+    before, after = definitions(before_source), definitions(after_source)
+    return {n for n in before.keys() | after.keys() if before.get(n) != after.get(n)}
+
 
 def _functions(source: str) -> dict[str, TestFunc]:
     try:
