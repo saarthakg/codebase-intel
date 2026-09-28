@@ -45,6 +45,7 @@ class Session:
     consecutive_blocks: int = 0
     acks: dict[str, dict] = field(default_factory=dict)   # finding id → {category, reason, at}
     turns: list[dict] = field(default_factory=list)      # {"at", "tree"}: the working tree at each prompt
+    stops: list[dict] = field(default_factory=list)      # {"at", "busy"}: each Stop, including skipped ones
 
     @property
     def last_checked_tree(self) -> Optional[str]:

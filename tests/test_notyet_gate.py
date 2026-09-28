@@ -196,6 +196,10 @@ def test_background_work_defers_the_check(repo, monkeypatch):
     _write(repo, "app.py", "def f():\n    return 3\n")
     assert hook(repo, "stop", background_tasks=[{"id": "t1", "type": "shell", "status": "running"}]) is None
     assert calls == []
+    session = store.latest_session(str(repo))
+    assert session.runs == [] and [st["busy"] for st in session.stops] == [True]   # skipped, but on record
+    hook(repo, "stop", background_tasks=[{"id": "t1", "type": "shell", "status": "completed"}])
+    assert calls == [1] and [st["busy"] for st in store.latest_session(str(repo)).stops] == [True, False]
 
 
 def test_stop_without_a_recorded_start_measures_from_head(repo, monkeypatch):

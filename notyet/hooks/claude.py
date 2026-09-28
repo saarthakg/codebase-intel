@@ -70,7 +70,12 @@ def _dispatch(root: str, event: str, payload: dict) -> Optional[dict]:
             head = snapshot.head_tree(root)
             session.baseline_tree = head or snapshot.EMPTY_TREE
             store.save_session(root, session)
-        busy = any(t.get("status") in (None, "running", "pending") for t in payload.get("background_tasks") or [])
+        tasks = payload.get("background_tasks") or []
+        busy = any(t.get("status") in (None, "running", "pending") for t in tasks)
+        # a skipped check leaves no gate run, so record every Stop to tell "skipped" from "never fired"
+        session.stops = (session.stops + [{"at": time.time(), "busy": busy,
+                                           "tasks": [t.get("status") for t in tasks][:10]}])[-50:]
+        store.save_session(root, session)
         decision = gate.check(root, session, background_busy=busy)
         if decision.verdict == "blocked":
             return {"decision": "block", "reason": decision.block_reason}

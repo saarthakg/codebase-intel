@@ -87,6 +87,9 @@ def cmd_status(args) -> int:
         print(f"Last check: {last.verdict} · {len(last.finding_ids)} open finding(s) · receipt: {last.receipt}")
     else:
         print("No checks run yet.")
+    if session.stops:
+        skipped = sum(1 for st in session.stops if st.get("busy"))
+        print(f"Stop hook fired {len(session.stops)} time(s); {skipped} skipped because background tasks were running")
     return 0
 
 
