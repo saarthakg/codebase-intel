@@ -44,6 +44,7 @@ class Session:
     runs: list[GateRun] = field(default_factory=list)
     consecutive_blocks: int = 0
     acks: dict[str, dict] = field(default_factory=dict)   # finding id → {category, reason, at}
+    turns: list[dict] = field(default_factory=list)      # {"at", "tree"}: the working tree at each prompt
 
     @property
     def last_checked_tree(self) -> Optional[str]:

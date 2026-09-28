@@ -16,6 +16,7 @@ import difflib
 import json
 import shlex
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -57,7 +58,9 @@ def _dispatch(root: str, event: str, payload: dict) -> Optional[dict]:
         prompt = (payload.get("prompt") or "").strip()
         if prompt:
             session.prompts.append(prompt[:2000])
-            store.save_session(root, session)
+        # what earlier turns (and the user between turns) left: undone work is measured against it
+        session.turns.append({"at": time.time(), "tree": snapshot.snapshot(root)})
+        store.save_session(root, session)
         return None
 
     if event == "stop":
