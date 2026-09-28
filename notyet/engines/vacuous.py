@@ -17,6 +17,7 @@ So the rule is per session, not per test:
   - only tests changed: nothing to compare, not reported.
 The same import canary as the other session-start runs guards the checkout.
 """
+import ast
 import hashlib
 import os
 import tempfile
@@ -51,9 +52,14 @@ def written_tests(ctx: Context) -> list[str]:
             if d.status != "A" else {}
         after = _functions(snapshot.show(ctx.root, ctx.current_tree, d.path) or "")
         for name, func in after.items():
-            if name not in before or before[name].body != func.body:
+            if name not in before or _signature(before[name]) != _signature(func):
                 out.append(f"{d.path}::{name}")
     return sorted(out)
+
+
+def _signature(func) -> tuple[str, str]:
+    """Body and decorators: a new `parametrize` case is a new test too."""
+    return func.body, "\n".join(ast.unparse(d) for d in getattr(func.node, "decorator_list", []))
 
 
 def _outcome(nodeid: str, results: dict[str, testrun.TestResult]) -> str:
@@ -138,6 +144,11 @@ def _run_at_session_start(ctx: Context, command: str, node_ids: list[str]) -> tu
                 cache.canary_passed(dirs)
         timeout = max(30.0, min(ctx.config.budget_seconds, ctx.time_left() - 5))
         run = testrun.run_pytest(command, tmp, node_ids, env=env, timeout=timeout)
+        collection_error = any("::" not in n.strip(":") and r.bad for n, r in run.results.items())
+        if collection_error and any(_outcome(n, run.results) == "missing" for n in node_ids):
+            # pytest gives up on every node id when one file fails to import (a
+            # new test importing a name the session added); by file, it doesn't
+            run = testrun.run_pytest(command, tmp, files, env=env, timeout=timeout)
     if run.crashed:
         return {}, f"the test command failed on the session-start tree ({run.crashed})"
     if run.timed_out:

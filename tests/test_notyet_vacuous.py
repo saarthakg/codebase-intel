@@ -136,3 +136,24 @@ def test_an_untrusted_session_start_checkout_is_not_checked(repo, monkeypatch):
     result = check(repo)
     assert vacuous(result) == []
     assert any("new tests against the session-start code: canary failed" in n for n in result.not_checked)
+
+
+def test_a_new_parametrize_case_counts_as_a_new_test(repo):
+    with_buggy_sub(repo)
+    base = "import pytest\n\n" + CALC_TESTS + "\n\n@pytest.mark.parametrize('a,b,out', [{}])\n" \
+                                                "def test_sub(a, b, out):\n    assert sub(a, b) == out\n"
+    _write(repo, "tests/test_calc.py", base.format("(2, 2, 0)"))
+    _git(repo, "commit", "-qam", "a test that can't see the bug")
+    _write(repo, "pkg/calc.py", FIXED_SUB)
+    _write(repo, "tests/test_calc.py", base.format("(2, 2, 0), (3, 1, 2)"))
+    result = check(repo)
+    assert vacuous(result) == [] and any("1 of 1 fail there" in c for c in result.checks)
+
+
+def test_one_new_test_file_failing_to_import_does_not_hide_the_others(repo):
+    with_buggy_sub(repo)
+    _write(repo, "pkg/calc.py", FIXED_SUB + "\n\ndef mul(a, b):\n    return a * b\n")
+    _write(repo, "tests/test_mul.py", "from pkg.calc import mul\n\n\ndef test_mul():\n    assert mul(2, 3) == 6\n")
+    _write(repo, "tests/test_calc.py", CALC_TESTS + "\n\ndef test_sub():\n    assert sub(3, 1) == 2\n")
+    result = check(repo)
+    assert any("2 of 2 fail there" in c for c in result.checks), result.checks
