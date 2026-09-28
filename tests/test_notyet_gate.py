@@ -164,13 +164,17 @@ def test_acknowledging(repo, monkeypatch, capsys):
     assert cli.main(["ack", advisory.id, "the", "old", "assertion", "tested", "removed", "behavior", *path]) == 0
     assert cli.main(["ack", blocker.id, "intended", "change", "of", "return", "value", *path]) == 1   # block: fix or needs-human
     assert cli.main(["ack", blocker.id, "too", "short", *path]) == 1
-    assert cli.main(["ack", blocker.id, "--needs-human", "return", "value", "change", "needs", "a", "product", "call", *path]) == 0
+    assert cli.main(["ack", f"{blocker.id},nope", "--needs-human", "return", "value", "change", "needs", "a", "product", "call",
+                     *path]) == 1                                                     # unknown id: nothing recorded
+    assert cli.main(["ack", f"{blocker.id},{advisory.id}", "--needs-human", "return", "value", "change", "needs", "a",
+                     "product", "call", *path]) == 0
 
     out = hook(repo, "stop", stop_hook_active=True)          # same tree: re-decided from saved findings + acks
-    assert "decision" not in out and out["systemMessage"].startswith("notyet: PASSED")
+    assert "decision" not in out and out["systemMessage"].startswith("notyet: NEEDS YOUR REVIEW")
+    assert "PASSED" not in out["systemMessage"]
     receipt = (store.receipts_dir(str(repo)) / "latest.md").read_text()
     assert "**needs human**" in receipt and "product call" in receipt
-    assert "the old assertion tested removed behavior" in receipt
+    assert receipt.count("**needs human**") == 2          # the batch ack re-filed the advisory item too
 
 
 def test_config_edits_during_a_session_do_not_take_effect(repo, monkeypatch):

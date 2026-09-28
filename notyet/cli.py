@@ -5,7 +5,7 @@
   notyet status               the current session and its last check
   notyet receipt              print the latest receipt
   notyet check [--base REF]   run the gate now, outside a hook
-  notyet ack ID "reason"      acknowledge a finding (what agents run when blocked)
+  notyet ack ID[,ID] "reason" acknowledge findings (what agents run when blocked)
   notyet hook claude EVENT    hook entry point (used by the installed hooks)
 """
 import argparse
@@ -125,21 +125,26 @@ def cmd_ack(args) -> int:
         print("No gate run to acknowledge findings from.", file=sys.stderr)
         return 1
     findings = {f.id: f for f in (Finding(**d) for d in session.runs[-1].result.get("findings", []))}
-    finding = findings.get(args.id)
-    if finding is None:
-        print(f"No finding {args.id} in the latest check. Open findings: {', '.join(findings) or 'none'}.", file=sys.stderr)
+    ids = [i for i in args.id.split(",") if i]
+    missing = [i for i in ids if i not in findings]
+    if missing:
+        print(f"No finding {', '.join(missing)} in the latest check. Open findings: {', '.join(findings) or 'none'}.",
+              file=sys.stderr)
         return 1
     reason = " ".join(args.reason).strip()
     if len(reason) < 15:
         print("Give a specific reason (at least a sentence); it's shown to the user on the receipt.", file=sys.stderr)
         return 1
-    if finding.severity == "block" and not args.needs_human:
-        print(f"{args.id} is a [block] finding: fix it, or hand it to the user with --needs-human.", file=sys.stderr)
+    blocking = [i for i in ids if findings[i].severity == "block"]
+    if blocking and not args.needs_human:
+        print(f"{', '.join(blocking)}: [block] finding(s): fix them, or hand them to the user with --needs-human.",
+              file=sys.stderr)
         return 1
     category = "needs-human" if args.needs_human else args.category
-    session.acks[finding.id] = {"category": category, "reason": reason, "at": time.time(), "title": finding.title}
+    for i in ids:
+        session.acks[i] = {"category": category, "reason": reason, "at": time.time(), "title": findings[i].title}
     store.save_session(root, session)
-    print(f"Recorded: {finding.id} ({category}). It will appear on the receipt.")
+    print(f"Recorded: {', '.join(ids)} ({category}). {'They' if len(ids) > 1 else 'It'} will appear on the receipt.")
     return 0
 
 
@@ -183,7 +188,7 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("ack", help="Acknowledge a finding with a reason")
-    p.add_argument("id")
+    p.add_argument("id", help="finding id, or several separated by commas")
     p.add_argument("reason", nargs="+")
     p.add_argument("--needs-human", action="store_true", help="Hand it to the user (required for [block] findings)")
     p.add_argument("--category", default="intended",

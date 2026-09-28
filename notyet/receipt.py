@@ -16,6 +16,7 @@ MAX_AGENT_CHARS = 3500
 
 VERDICT_TEXT = {
     "passed": "PASSED",
+    "needs-review": "NEEDS YOUR REVIEW",
     "blocked": "NOT DONE YET",
     "unresolved": "UNRESOLVED",
     "reported": "REPORTED (report mode: not enforced)",
@@ -95,6 +96,9 @@ def summary(verdict: str, standing: list[Finding], result: EngineResult, path: s
     head = f"notyet: {VERDICT_TEXT.get(verdict, verdict)}"
     if verdict == "passed":
         detail = "; ".join(result.checks[:2])
+    elif verdict == "needs-review":
+        handed = [f for f in result.findings if f.severity == "block"]
+        detail = f"the agent handed you {len(handed)} item(s): " + "; ".join(f.title for f in handed[:2])
     elif verdict in ("blocked", "reported", "unresolved"):
         detail = f"{len(standing)} open finding(s): " + "; ".join(f.title for f in standing[:2])
     else:
@@ -116,7 +120,8 @@ def agent_message(standing: list[Finding], last_chance: bool, advice: list[str] 
         "",
         "Fix these, then finish. If an item is intended and you're sure, acknowledge it with a specific "
         f"reason, which the user will see: `{cmd} ack <id> \"<reason>\"`. Items marked [block] can only be "
-        f"fixed or handed to the user: `{cmd} ack <id> --needs-human \"<reason>\"`.",
+        f"fixed or handed to the user: `{cmd} ack <id> --needs-human \"<reason>\"`. Several ids sharing one "
+        f"reason can go in one call, comma-separated.",
     ]
     if advice:
         lines += ["", "Also worth a look (from history; not required):"] + [f"- {a}" for a in advice[:3]]
