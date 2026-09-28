@@ -280,3 +280,15 @@ def test_a_collection_error_that_existed_at_session_start_is_a_note(repo):
     assert [(f.rule, f.severity) for f in result.findings if f.location == "tests/test_calc.py"] == \
         [("test-failing-before", "note")]
     assert not any(f.severity == "block" for f in result.findings)
+
+
+def test_session_start_results_are_reused_by_later_checks(repo, monkeypatch):
+    _write(repo, "pkg/calc.py", BROKEN_ADD)
+    first = check(repo)
+    calls = []
+    real = snapshot.materialize
+    monkeypatch.setattr(snapshot, "materialize", lambda *a: calls.append(a) or real(*a))
+    _write(repo, "pkg/calc.py", BROKEN_ADD + "\n# still broken\n")
+    second = check(repo)
+    assert rules(second) == rules(first) and {r for r, _, _ in rules(second)} == {"test-regression"}
+    assert calls == []          # no new checkout of the session-start tree

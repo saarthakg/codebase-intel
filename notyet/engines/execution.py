@@ -15,6 +15,8 @@ failure can't be called a regression, and it's reported as fix-or-justify.
 """
 import ast
 import configparser
+import hashlib
+import json
 import os
 import tempfile
 import time
@@ -22,7 +24,7 @@ import tomllib
 from pathlib import PurePosixPath
 
 from notyet.pyresolve import find_python_source_roots
-from notyet import coverage, pyimports, snapshot, testrun
+from notyet import coverage, pyimports, snapshot, store, testrun
 from notyet.findings import Context, EngineResult, Finding
 
 DOC_SUFFIXES = (".md", ".rst", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
@@ -432,39 +434,89 @@ def _report_crash(ctx: Context, command: str, batch: list[str], why: str, result
 
 def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: list[str]):
     """Collect the relevant test files on the session-start tree, then re-run
-    there the failing tests that existed then."""
+    there the failing tests that existed then. The session-start tree never
+    changes within a session, so everything learned about it is cached (per
+    tree and test command) and later checks only run what's new."""
     cfg = ctx.config
-    results: dict[str, testrun.TestResult] = {}
     command = testrun.anchored(cfg.test_command, ctx.root)
-    collected: dict[str, set[str]] = {}
-    errors: set[str] = set()
-    with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
-        # Resolve symlinks (macOS temp dirs live behind /var -> /private/var):
-        # source roots come back resolved, and every path check compares with them.
-        tmp = os.path.realpath(tmp)
-        snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
-        roots = find_python_source_roots(tmp)
-        env = {"PYTHONPATH": os.pathsep.join(str(r) for r in roots)}
-        files = sorted({f.nodeid.split("::")[0] for f in failing} | set(changed_tests))  # file-level ids are files
-        present = [p for p in files if os.path.exists(os.path.join(tmp, p))]
-        if not present:
-            return True, "", results, collected, errors       # nothing existed then: everything is new
-        ok, why = _canary(ctx, tmp, present, env)
-        if not ok:
-            return False, why, results, collected, errors
-        got = testrun.collect(command, tmp, present, env=env, timeout=60)
-        if got is None:
-            return False, "couldn't collect the relevant test files at session start", results, collected, errors
-        errors = got.errors
-        for p in present:
-            collected[p] = {n for n in got if n.startswith(p + "::")}
-        existed = [f.nodeid for f in failing if f.nodeid in got]
-        if existed:
-            run = testrun.run_pytest(command, tmp, existed, env=env, timeout=max(30, cfg.budget_seconds))
-            if run.crashed:
-                return False, f"the test command failed on the session-start tree ({run.crashed})", results, collected, errors
-            results = run.results
+    cache = _BaselineCache(ctx.root, ctx.baseline_tree, command)
+    in_baseline = set(snapshot.git(ctx.root, "ls-tree", "-r", "--name-only", ctx.baseline_tree).splitlines())
+    files = sorted({f.nodeid.split("::")[0] for f in failing} | set(changed_tests))  # file-level ids are files
+    present = [p for p in files if p in in_baseline]
+    if not present:
+        return True, "", {}, {}, set()                  # nothing existed then: everything is new
+    dirs = sorted({os.path.dirname(p) for p in present})
+    need_collect = [p for p in present if p not in cache.collected]
+    wanted = [f.nodeid for f in failing]
+
+    def ids_known() -> list[str]:
+        return [n for n in wanted if any(n in cache.collected.get(p, ()) for p in present)
+                and n not in cache.results]
+
+    if need_collect or ids_known():
+        with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
+            # Resolve symlinks (macOS temp dirs live behind /var -> /private/var):
+            # source roots come back resolved, and every path check compares with them.
+            tmp = os.path.realpath(tmp)
+            snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
+            env = {"PYTHONPATH": os.pathsep.join(str(r) for r in find_python_source_roots(tmp))}
+            if not cache.canary_ok(dirs):
+                ok, why = _canary(ctx, tmp, present, env)
+                if not ok:
+                    return False, why, {}, {}, set()
+                cache.canary_passed(dirs)
+            if need_collect:
+                got = testrun.collect(command, tmp, need_collect, env=env, timeout=60)
+                if got is None:
+                    return False, "couldn't collect the relevant test files at session start", {}, {}, set()
+                for p in need_collect:
+                    cache.collected[p] = sorted(n for n in got if n.startswith(p + "::"))
+                    if p in got.errors:
+                        cache.errors[p] = True
+            to_run = ids_known()
+            if to_run:
+                run = testrun.run_pytest(command, tmp, to_run, env=env, timeout=max(30, cfg.budget_seconds))
+                if run.crashed:
+                    return False, f"the test command failed on the session-start tree ({run.crashed})", {}, {}, set()
+                for n in to_run:
+                    r = run.results.get(n)
+                    cache.results[n] = [r.outcome, r.message] if r else ["missing", ""]
+        cache.save()
+    collected = {p: set(cache.collected.get(p, ())) for p in present}
+    errors = {p for p in present if cache.errors.get(p)}
+    results = {n: testrun.TestResult(n, *cache.results[n]) for n in wanted
+               if n in cache.results and cache.results[n][0] != "missing"}
     return True, "", results, collected, errors
+
+
+class _BaselineCache:
+    KEEP = 8
+
+    def __init__(self, root: str, tree: str, command: str):
+        key = hashlib.sha1(f"{tree}|{command}".encode()).hexdigest()[:16]
+        self.path = store.state_dir(root) / "cache" / f"baseline-{key}.json"
+        self.path.parent.mkdir(exist_ok=True)
+        try:
+            data = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            data = {}
+        self.collected: dict[str, list[str]] = data.get("collected", {})
+        self.errors: dict[str, bool] = data.get("errors", {})
+        self.results: dict[str, list[str]] = data.get("results", {})
+        self.canaries: list[str] = data.get("canaries", [])
+
+    def canary_ok(self, dirs: list[str]) -> bool:
+        return all(d in self.canaries for d in dirs)
+
+    def canary_passed(self, dirs: list[str]) -> None:
+        self.canaries = sorted(set(self.canaries) | set(dirs))
+
+    def save(self) -> None:
+        self.path.write_text(json.dumps({"collected": self.collected, "errors": self.errors,
+                                         "results": self.results, "canaries": self.canaries}))
+        old = sorted(self.path.parent.glob("baseline-*.json"), key=lambda p: p.stat().st_mtime)
+        for p in old[:-self.KEEP]:
+            p.unlink(missing_ok=True)
 
 
 def _canary(ctx: Context, tmp: str, test_files: list[str], env) -> tuple[bool, str]:
