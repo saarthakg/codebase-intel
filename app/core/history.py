@@ -36,6 +36,7 @@ def read_history(
     max_commits: Optional[int] = None,
     until: Optional[str] = None,
     since: Optional[str] = None,
+    first_parent: bool = False,
 ) -> list[Commit]:
     """Commits newest-first, with every path translated to its current name.
 
@@ -47,10 +48,15 @@ def read_history(
     `until`/`since` (YYYY-MM-DD, inclusive) filter *after* walking from HEAD:
     passing them to git would hide renames made outside the window, leaving
     old paths untranslated.
+
+    `first_parent`: follow only the main line, with each merge reported as its
+    whole diff against the main line: one entry per merged PR, the change a
+    reviewer saw, instead of each commit made on the branch.
     """
     # --relative: paths relative to repo_path (and only files under it), so
     # ingesting a subdirectory of a larger git repo lines up with its index.
-    cmd = ["git", "-C", str(repo_path), "log", "-M", "--name-status", "--no-merges", "--relative",
+    history = ["--first-parent", "--diff-merges=first-parent"] if first_parent else ["--no-merges"]
+    cmd = ["git", "-C", str(repo_path), "log", "-M", "--name-status", *history, "--relative",
            "--format=@@%H %ad", "--date=short"]
     if max_commits and not (until or since):
         cmd.append(f"--max-count={max_commits}")
@@ -116,17 +122,21 @@ class CoChange:
         """`keep`: only count files in this set (e.g. files that still exist)."""
         stats = cls()
         for commit in commits:
-            files = [f for f in commit.files if keep is None or f in keep]
-            if not files or len(commit.files) > max_files:
-                continue
-            stats.commits_used += 1
-            for f in files:
-                stats.file_commits[f] += 1
-            for a in files:
-                for b in files:
-                    if a != b:
-                        stats.pairs[a][b] += 1
+            stats.add(commit, keep, max_files)
         return stats
+
+    def add(self, commit: Commit, keep: Optional[set[str]] = None, max_files: int = MAX_FILES_PER_COMMIT) -> None:
+        """Count one more commit."""
+        files = [f for f in commit.files if keep is None or f in keep]
+        if not files or len(commit.files) > max_files:
+            return
+        self.commits_used += 1
+        for f in files:
+            self.file_commits[f] += 1
+        for a in files:
+            for b in files:
+                if a != b:
+                    self.pairs[a][b] += 1
 
     def related(self, file: str, min_support: int = MIN_SUPPORT, limit: int = 50) -> list[tuple[str, float, int]]:
         """Files that co-changed with `file`: (other, confidence, support) best-first.
