@@ -1,0 +1,852 @@
+{
+ "flask": {
+  "commits": 9,
+  "verdicts": {
+   "blocked": 2,
+   "not-checked": 7
+  },
+  "commits_with_rule": {
+   "test-removed/block": 1,
+   "tests-failing-unverified/resolve": 2,
+   "untested-change/resolve": 1
+  },
+  "findings_by_rule": {
+   "test-removed/block": 2,
+   "tests-failing-unverified/resolve": 2,
+   "untested-change/resolve": 1
+  },
+  "rows": [
+   {
+    "sha": "06ea505ce2",
+    "subject": "separate copy per call",
+    "seconds": 6.5,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "3 changed line(s) in src/flask/ctx.py never ran in the selected tests (193, 195, 203)"
+     },
+     {
+      "rule": "tests-failing-unverified",
+      "severity": "resolve",
+      "title": "434 selected tests fail, and they couldn't be compared with session start"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_reqctx.py::TestGreenletContextCopying::test_greenlet_context_copying was collected at session start and isn't now (pyproject.toml changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_reqctx.py::TestGreenletContextCopying::test_greenlet_context_copying_api was collected at session start and isn't now (pyproject.toml changed)"
+     }
+    ]
+   },
+   {
+    "sha": "438edcdf01",
+    "subject": "Allow self as an argument to url_for",
+    "seconds": 5.2,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "tests-failing-unverified",
+      "severity": "resolve",
+      "title": "425 selected tests fail, and they couldn't be compared with session start"
+     }
+    ]
+   },
+   {
+    "sha": "22987b6817",
+    "subject": "include samesite and secure when removing session cookie (#3726)",
+    "seconds": 2.1,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "7a444c5dab",
+    "subject": "update tests for new werkzeug client (#3827)",
+    "seconds": 2.0,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "373f0dd82e",
+    "subject": "update requirements (#3823)",
+    "seconds": 1.7,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "8efea0ccbb",
+    "subject": "Break reference cycle created by default in Flask instances.",
+    "seconds": 1.9,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "e08bcf9f97",
+    "subject": "Fix #2935: Copy current session object in copy_current_request_context (#2936)",
+    "seconds": 2.1,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "2433522d29",
+    "subject": "Add Support for FLASK_ENV (#2570)",
+    "seconds": 2.2,
+    "verdict": "not-checked",
+    "findings": []
+   },
+   {
+    "sha": "59f7966e31",
+    "subject": "support passing environ to test client (#2412)",
+    "seconds": 1.8,
+    "verdict": "not-checked",
+    "findings": []
+   }
+  ]
+ },
+ "click": {
+  "commits": 15,
+  "verdicts": {
+   "blocked": 9,
+   "passed": 6
+  },
+  "commits_with_rule": {
+   "suppression-added/resolve": 1,
+   "test-changed-to-pass/block": 4,
+   "test-failing/resolve": 1,
+   "test-failing-before/note": 13,
+   "test-not-collected/resolve": 1,
+   "test-removed/block": 1,
+   "untested-change/resolve": 6
+  },
+  "findings_by_rule": {
+   "suppression-added/resolve": 1,
+   "test-changed-to-pass/block": 8,
+   "test-failing/resolve": 1,
+   "test-failing-before/note": 13,
+   "test-not-collected/resolve": 3,
+   "test-removed/block": 1,
+   "untested-change/resolve": 7
+  },
+  "rows": [
+   {
+    "sha": "c3535905c7",
+    "subject": "Fix broken fish completion and multiline help string",
+    "seconds": 5.3,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_shell_completion.py::test_fish_multiline_help_complete existed at session start and is gone now"
+     }
+    ]
+   },
+   {
+    "sha": "fc6c7c47ed",
+    "subject": "`FuncParamType` should use `ValueError` message in `self.fail()` (#3211)",
+    "seconds": 4.4,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "2 changed line(s) in src/click/types.py never ran in the selected tests (204-205)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "831c8f0948",
+    "subject": "Add NoSuchCommand exception with suggestions for misspelled commands (#3228)",
+    "seconds": 5.4,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_options.py::test_unknown_options[--foo] as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_options.py::test_unknown_options[-f] as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "19fd4d6e18",
+    "subject": "Fix: Ensure fish completion handles multiline help strings correctly (#3126)",
+    "seconds": 4.3,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "2468b70997",
+    "subject": "Fix readline backspace/line-wrapping on linux (#2969)",
+    "seconds": 5.0,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "2 changed line(s) in src/click/termui.py never ran in the selected tests (72, 75)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_utils.py::test_echo_writing_to_standard_error as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_utils.py::test_prompts_abort as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "701b313160",
+    "subject": "Fix completions for quoted/escaped parameters in Fish (#3013)",
+    "seconds": 3.2,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "a1235aacb1",
+    "subject": "Fix Zsh completions with colons (#2846)",
+    "seconds": 3.0,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "f14b75063f",
+    "subject": "update dev dependencies",
+    "seconds": 3.0,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "1 changed line(s) in src/click/_winconsole.py never ran in the selected tests (112)"
+     },
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "2 changed line(s) in src/click/core.py never ran in the selected tests (1620, 1669)"
+     },
+     {
+      "rule": "test-failing",
+      "severity": "resolve",
+      "title": "tests/test_basic.py fails (couldn't confirm whether it passed at session start)"
+     },
+     {
+      "rule": "suppression-added",
+      "severity": "resolve",
+      "title": "added `# type: ignore` at src/click/_winconsole.py:112"
+     }
+    ]
+   },
+   {
+    "sha": "4ece17a107",
+    "subject": "Expand `Choice` token normalization + make generic (#2796)",
+    "seconds": 3.5,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     },
+     {
+      "rule": "test-not-collected",
+      "severity": "resolve",
+      "title": "tests/test_basic.py::test_choice_argument_custom_type was added but pytest doesn't collect it, so it never runs"
+     },
+     {
+      "rule": "test-not-collected",
+      "severity": "resolve",
+      "title": "tests/test_basic.py::test_choice_argument_enum was added but pytest doesn't collect it, so it never runs"
+     },
+     {
+      "rule": "test-not-collected",
+      "severity": "resolve",
+      "title": "tests/test_basic.py::test_choice_argument_none was added but pytest doesn't collect it, so it never runs"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_formatting.py::test_formatting_custom_type_metavar as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_types.py::test_choice_get_invalid_choice_message as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "b5464b7e06",
+    "subject": "Only try to set flag_value if is_flag is true (#2829)",
+    "seconds": 2.5,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "88328fc874",
+    "subject": "Add CliRunner default `catch_exceptions` parameter (#2818)",
+    "seconds": 1.1,
+    "verdict": "passed",
+    "findings": []
+   },
+   {
+    "sha": "5961d31fb5",
+    "subject": "Introduce Parameter.deprecated + Command.deprecated message customization (#2271)",
+    "seconds": 3.4,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "6 changed line(s) in src/click/core.py never ran in the selected tests (1065-1068, 1070-1071)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_commands.py::test_deprecated_in_help_messages[CLI HELP] as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_commands.py::test_deprecated_in_help_messages[None] as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "3b06e0b75a",
+    "subject": "Improve echo_via_pager behaviour in face of errors (#2775)",
+    "seconds": 2.9,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "3 changed line(s) in src/click/_termui_impl.py never ran in the selected tests (446, 460-461)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "0d69b6ce8b",
+    "subject": "Adds support for editing multiple files (#2068)",
+    "seconds": 2.7,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   },
+   {
+    "sha": "0ef55fda47",
+    "subject": "Close contexts created during shell completion #2644. (#2800)",
+    "seconds": 2.6,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "1 changed line(s) in src/click/shell_completion.py never ran in the selected tests (572)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_basic.py can't be collected, but it couldn't at session start either"
+     }
+    ]
+   }
+  ]
+ },
+ "attrs": {
+  "commits": 15,
+  "verdicts": {
+   "blocked": 11,
+   "passed": 4
+  },
+  "commits_with_rule": {
+   "assertions-removed/resolve": 1,
+   "suppression-added/resolve": 3,
+   "test-changed-to-pass/block": 3,
+   "test-failing-before/note": 14,
+   "test-removed/block": 3,
+   "untested-change/resolve": 5
+  },
+  "findings_by_rule": {
+   "assertions-removed/resolve": 1,
+   "suppression-added/resolve": 3,
+   "test-changed-to-pass/block": 16,
+   "test-failing-before/note": 14,
+   "test-removed/block": 17,
+   "untested-change/resolve": 5
+  },
+  "rows": [
+   {
+    "sha": "f53fc5440d",
+    "subject": "Stop evolve dunders from being modified (#1606)",
+    "seconds": 8.0,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "3 changed line(s) in src/attr/_make.py never ran in the selected tests (1112-1113, 1115)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "9b98a730bf",
+    "subject": "Drop Python 3.9 (#1603)",
+    "seconds": 14.6,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_make.py::TestAutoDetect::test_match_args_pre_310 existed at session start and is gone now"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddHash::test_hash_works[C0] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddHash::test_hash_works[C1] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddHash::test_hash_works[C2] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddHash::test_hash_works[C3] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddHash::test_hash_works[C4] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddRepr::test_repr_works[C0] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestAddRepr::test_repr_works[C1] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestEqOrder::test_equal[C0] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestEqOrder::test_equal[C1] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_dunders.py::TestEqOrder::test_ge[C0] was collected at session start and isn't now (pyproject.toml, tests/conftest.py, tox.ini changed)"
+     }
+    ]
+   },
+   {
+    "sha": "116681b67e",
+    "subject": "update",
+    "seconds": 8.7,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "suppression-added",
+      "severity": "resolve",
+      "title": "added `# noqa` at src/attr/_compat.py:35"
+     }
+    ]
+   },
+   {
+    "sha": "5aa76a4450",
+    "subject": "Add `ne` validator (#1571)",
+    "seconds": 4.5,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_validators.py::TestLtLeGeGt::test_check_invalid existed at session start and is gone now"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_validators.py::TestLtLeGeGt::test_check_valid existed at session start and is gone now"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_validators.py::TestLtLeGeGt::test_in_all existed at session start and is gone now"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_validators.py::TestLtLeGeGt::test_repr existed at session start and is gone now"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_validators.py::TestLtLeGeGt::test_retrieve_bound existed at session start and is gone now"
+     }
+    ]
+   },
+   {
+    "sha": "4b5b295bb8",
+    "subject": "Make on_setattr hooks accept generators (#1592)",
+    "seconds": 8.1,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "6 changed line(s) in typing-examples/baseline.py never ran in the selected tests (10, 133-136, 152)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "97f8d17565",
+    "subject": "Fix ClassVar forward reference detection (#1593)",
+    "seconds": 8.2,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "suppression-added",
+      "severity": "resolve",
+      "title": "added `# noqa` at tests/test_annotations.py:448"
+     }
+    ]
+   },
+   {
+    "sha": "6851ab593c",
+    "subject": "Defer imports on the cold import path (#1600)",
+    "seconds": 7.8,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "1 changed line(s) in src/attr/_compat.py never ran in the selected tests (23)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "0f758fe54a",
+    "subject": "Expose converter as a decorator (#1541)",
+    "seconds": 8.4,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "48b8611c27",
+    "subject": "Add instance support to attrs.fields() (#1529)",
+    "seconds": 14.1,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "assertions-removed",
+      "severity": "resolve",
+      "title": "tests/test_make.py::TestFields::test_instance checks less than it did: 2 assertion(s) at session start, 1 now"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestFields::test_instance as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "a572c3a4c5",
+    "subject": "Allow field(on_setattr=NO_OP) on frozen classes",
+    "seconds": 8.2,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "af9c510912",
+    "subject": "Fix validators.disabled() to save/restore state on nesting (#1513)",
+    "seconds": 8.4,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "ce89f5d11f",
+    "subject": "Fix message passing in frozen errors",
+    "seconds": 8.6,
+    "verdict": "passed",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "862696afb5",
+    "subject": "Resolve field aliases before calling field_transformer (#1509)",
+    "seconds": 10.7,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_functional.py::TestFunctional::test_fields[C2] as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_functional.py::TestFunctional::test_fields[C2Slots] as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_functional.py::TestFunctional::test_programmatic as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_hooks.py::TestTransformHook::test_hook_conflicting_defaults_after_reorder as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_conflicting_defaults as it was at session start fails on the new code; the test was edited instead"
+     }
+    ]
+   },
+   {
+    "sha": "c44b8b0052",
+    "subject": "update dev (#1507)",
+    "seconds": 9.6,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "1 changed line(s) in src/attr/_make.py never ran in the selected tests (1099)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     }
+    ]
+   },
+   {
+    "sha": "112dd1d498",
+    "subject": "Expose effective class construction properties (#1454)",
+    "seconds": 11.4,
+    "verdict": "blocked",
+    "findings": [
+     {
+      "rule": "untested-change",
+      "severity": "resolve",
+      "title": "10 changed line(s) in typing-examples/baseline_examples.py never ran in the selected tests (195-197, 200-203, 206-208)"
+     },
+     {
+      "rule": "test-failing-before",
+      "severity": "note",
+      "title": "tests/test_forward_references.py::test_forward_class_reference fails, but it already failed at session start"
+     },
+     {
+      "rule": "test-removed",
+      "severity": "block",
+      "title": "tests/test_slots.py::test_slots_cached_property_works_on_frozen_isntances existed at session start and is gone now"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestClassBuilder::test_handles_missing_meta_on_class as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestClassBuilder::test_repr as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestClassBuilder::test_returns_self as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_conflicting_defaults as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_empty as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_kw_only as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_no_modifications as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_normal as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_these as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "test-changed-to-pass",
+      "severity": "block",
+      "title": "tests/test_make.py::TestTransformAttrs::test_transforms_to_attribute as it was at session start fails on the new code; the test was edited instead"
+     },
+     {
+      "rule": "suppression-added",
+      "severity": "resolve",
+      "title": "added `# noqa` at src/attr/_make.py:2900"
+     }
+    ]
+   }
+  ]
+ }
+}

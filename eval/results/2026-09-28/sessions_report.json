@@ -1,0 +1,388 @@
+[
+ {
+  "repo": "click",
+  "sha": "fc6c7c47ed",
+  "mode": "report",
+  "subject": "`FuncParamType` should use `ValueError` message in `self.fail()` (#3211)",
+  "answer_key": {
+   "test_files": [
+    "tests/test_types.py"
+   ],
+   "f2p": [
+    "tests/test_types.py::test_func_param_type_uses_value_error_message[bad value: nope-bad value: nope]"
+   ],
+   "api_dependent": []
+  },
+  "baseline_suite": {
+   "passed": 1403,
+   "total": 1429
+  },
+  "task": "`FuncParamType` should use `ValueError` message in `self.fail()`\n\nFixes #3105\r\n\r\nWhen FuncParamType.convert() caught a ValueError, it discarded the exception message and only passed the input value to self.fail(). This meant users lost context about why the conversion failed.\r\n\r\nThis fix captures and uses the ValueError message, providing better error feedback to users. Falls back to the input value only if the message is empty (backward compatibility).\r\n\r\nIncludes regression test ensuring the message is surfaced in the BadParameter exception.",
+  "agent": {
+   "result": "I've made the change, and all tests pass except for one problem that was already in the repo, explained below.\n\n**The fix** (`src/click/types.py`, `FuncParamType.convert`): when the function raises a `ValueError`, the error shown to the user now uses that exception's message. If the message is empty (for example, a bare `raise ValueError()`), it falls back to the input value as before.\n\n**Tests** (`tests/test_types.py`), two new ones:\n- `test_func_param_type_uses_value_error_message` checks that the message ends up in the `BadParameter` error.\n- `test_func_param_type_empty_value_error_message` checks that an empty message still falls back to the input value.\n\nI also added an entry to the 8.4.0 section of `CHANGES.rst` referencing `:issue:`3105``.\n\n**Test results:** plain `.venv/bin/python -m pytest` stops before running anything, with an error in `tests/test_basic.py`, a file I didn't touch. `test_boolean_conversion` passes an `itertools.chain` to `parametrize`. The installed pytest now warns about that (`PytestRemovedIn10Warning`), and the repo's config turns every warning into an error. With just that one warning downgraded (`-W \"default::pytest.PytestRemovedIn10Warning\"`), the suite gives 1493 passed, 24 skipped, 1 xfailed, and both new tests pass. The lasting fix is to wrap that `chain(...)` in `list(...)`. I left it alone because it's outside this change, but I can make it if you want.",
+   "num_turns": 11,
+   "duration_ms": 35354,
+   "is_error": false,
+   "subtype": "success",
+   "session_id": "19f2c64b-579d-43c7-a2ce-cc951c9d4b01",
+   "total_cost_usd": 0.2195556,
+   "timed_out": null,
+   "wall_seconds": 37,
+   "stderr": "",
+   "raw": null,
+   "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 16188,
+    "cache_read_input_tokens": 182838,
+    "output_tokens": 2671,
+    "output_tokens_details": {
+     "thinking_tokens": 245
+    },
+    "server_tool_use": {
+     "web_search_requests": 0,
+     "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 16188,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+     {
+      "input_tokens": 2,
+      "output_tokens": 539,
+      "cache_read_input_tokens": 27521,
+      "cache_creation_input_tokens": 463,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 463
+      },
+      "type": "message"
+     }
+    ],
+    "speed": "standard"
+   },
+   "modelUsage": {
+    "claude-opus-5-5[1m]": {
+     "inputTokens": 16,
+     "outputTokens": 2671,
+     "cacheReadInputTokens": 182838,
+     "cacheCreationInputTokens": 16188,
+     "webSearchRequests": 0,
+     "costUSD": 0.2195556,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 245,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   }
+  },
+  "notyet": {
+   "session_id": "19f2c64b-579d-43c7-a2ce-cc951c9d4b01",
+   "acks": {},
+   "runs": [
+    {
+     "verdict": "reported",
+     "findings": [
+      {
+       "rule": "untested-change",
+       "severity": "resolve",
+       "title": "2 changed line(s) in src/click/types.py never ran in the selected tests (204-205)",
+       "location": "src/click/types.py:204"
+      },
+      {
+       "rule": "test-failing-before",
+       "severity": "note",
+       "title": "tests/test_basic.py can't be collected, but it couldn't at session start either",
+       "location": "tests/test_basic.py"
+      }
+     ],
+     "checks": [
+      "tests: ran 1430 test(s) in 20 file(s) (1404 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps), imports a changed module (3 steps), imports a changed module (4 steps)",
+      "failures and changed tests compared with an isolated checkout of the session-start tree",
+      "coverage: recorded which changed lines in 1 file(s) ran"
+     ],
+     "not_checked": []
+    }
+   ]
+  },
+  "grade": {
+   "f2p": 1,
+   "f2p_passed": 1,
+   "resolved": true,
+   "failed": [],
+   "regressions": [],
+   "agent_test_files_reverted_for_regression_check": [],
+   "agent_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 76f2b00..a5a8bf5 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -51,6 +51,9 @@ Unreleased\n     commands. :issue:`3107` :pr:`3228`\n -   Add ``click.get_pager_file`` for file-like access to an output\n     pager. :pr:`1572`\n+-   :class:`FuncParamType` uses the :exc:`ValueError` message raised by the\n+    function in the error it reports, falling back to the input value if the\n+    message is empty. :issue:`3105`\n \n Version 8.3.3\n -------------\ndiff --git a/src/click/types.py b/src/click/types.py\nindex 699bb31..7de326c 100644\n--- a/src/click/types.py\n+++ b/src/click/types.py\n@@ -195,13 +195,16 @@ class FuncParamType(ParamType[ParamTypeValue]):\n     ) -> ParamTypeValue:\n         try:\n             return self.func(value)\n-        except ValueError:\n-            try:\n-                value = str(value)\n-            except UnicodeError:\n-                value = value.decode(\"utf-8\", \"replace\")\n+        except ValueError as e:\n+            message = str(e)\n+\n+            if not message:\n+                try:\n+                    message = str(value)\n+                except UnicodeError:\n+                    message = value.decode(\"utf-8\", \"replace\")\n \n-            self.fail(value, param, ctx)\n+            self.fail(message, param, ctx)\n \n \n class UnprocessedParamType(ParamType[t.Any]):\ndiff --git a/tests/test_types.py b/tests/test_types.py\nindex e633be4..3181316 100644\n--- a/tests/test_types.py\n+++ b/tests/test_types.py\n@@ -255,3 +255,21 @@ def test_choice_get_invalid_choice_message():\n     choice = click.Choice([\"a\", \"b\", \"c\"])\n     message = choice.get_invalid_choice_message(\"d\", ctx=None)\n     assert message == \"'d' is not one of 'a', 'b', 'c'.\"\n+\n+\n+def test_func_param_type_uses_value_error_message():\n+    def parse(value):\n+        raise ValueError(f\"{value!r} is not a valid thing\")\n+\n+    with pytest.raises(click.BadParameter, match=\"'abc' is not a valid thing\"):\n+        click.types.FuncParamType(parse).convert(\"abc\", None, None)\n+\n+\n+def test_func_param_type_empty_value_error_message():\n+    def parse(value):\n+        raise ValueError()\n+\n+    with pytest.raises(click.BadParameter) as exc_info:\n+        click.types.FuncParamType(parse).convert(\"abc\", None, None)\n+\n+    assert exc_info.value.message == \"abc\"\n"
+  }
+ },
+ {
+  "repo": "click",
+  "sha": "2468b70997",
+  "mode": "report",
+  "subject": "Fix readline backspace/line-wrapping on linux (#2969)",
+  "answer_key": {
+   "test_files": [
+    "tests/test_utils.py"
+   ],
+   "f2p": [
+    "tests/test_utils.py::test_echo_writing_to_standard_error",
+    "tests/test_utils.py::test_full_prompt_passed_to_readline[confirm]",
+    "tests/test_utils.py::test_full_prompt_passed_to_readline[prompt-custom-suffix]",
+    "tests/test_utils.py::test_full_prompt_passed_to_readline[prompt-hidden]",
+    "tests/test_utils.py::test_full_prompt_passed_to_readline[prompt]",
+    "tests/test_utils.py::test_prompts_abort"
+   ],
+   "api_dependent": []
+  },
+  "baseline_suite": {
+   "passed": 1395,
+   "total": 1421
+  },
+  "task": "Fix readline backspace/line-wrapping on linux\n\ntermui contains a workaround for windows where it prints a readline prompt itself. On linux, this confuses `readline` so things like backspace/ctrl-backspace and line wrapping don't work correctly.\r\n\r\nOn platforms other than windows, just let readline handle the prompt.\r\n\r\n\r\nfixes #2968\r\n\r\nNote: while I used claude code to offload some manual work creating this PR, I've steered and reviewed all the changes and take personal responsibility for the contents.",
+  "agent": {
+   "result": "I've made the fix: on Linux and macOS, `click.prompt` and `click.confirm` now hand the whole prompt to readline, so backspace, ctrl-backspace and line wrapping should work. That's based on the unit tests; I didn't try it in a real terminal.\n\n**Test results:** the exact command you gave, `.venv/bin/python -m pytest`, doesn't get past collecting tests. `tests/test_basic.py` passes a non-list value to `parametrize`, and this pytest version turns that into an error. I didn't touch that file, so it's an existing problem. I tried to confirm on a clean checkout, but that command wasn't approved, so I haven't checked it directly. With that warning ignored (`-W \"ignore::pytest.PytestRemovedIn10Warning\"`), 1492 tests pass, 24 are skipped and 1 fails as expected.\n\n**The change** (`src/click/termui.py`): both functions now share a small helper, `_prompt_with`. On Windows it keeps the old workaround: click prints most of the prompt itself and passes only the last character to the input function. Elsewhere, it passes the full prompt. Two things go beyond the issue as written:\n- **`err=True` still uses the old path on every platform.** Python's `input()` always writes its prompt to stdout, so switching would move these prompts off stderr. The downside is that readline still has the backspace bug for `err=True` prompts on Linux.\n- **Colour codes are removed from the prompt when colour is off** (for example when output is piped). `echo` used to do this. Without it, styled prompts would print raw escape codes.\n\n**Tests** (`tests/test_utils.py`):\n- A new parametrized test checks what the input function receives for `prompt` and `confirm`: Windows vs. not, and `err` on vs. off.\n- A new test checks that colour codes are stripped when colour is off.\n- I updated `test_prompts_abort`. Its fake password function now prints the prompt the way `getpass` does, and the expected output now includes the trailing space (`\"Password: \\n\"`), since the whole prompt is printed now.\n\nI also added an entry to `CHANGES.rst` under 8.4.0.\n\nSeparately, the Canva, Gmail and Google Drive connectors need to be authorised in your claude.ai connector settings before they can be used. This task didn't need them.",
+   "num_turns": 26,
+   "duration_ms": 101955,
+   "is_error": false,
+   "subtype": "success",
+   "session_id": "59d62bf2-c3e1-4927-b98f-d5dd89e9a0c5",
+   "total_cost_usd": 0.5189342,
+   "timed_out": null,
+   "wall_seconds": 103,
+   "stderr": "",
+   "raw": null,
+   "usage": {
+    "input_tokens": 36,
+    "cache_creation_input_tokens": 27699,
+    "cache_read_input_tokens": 565291,
+    "output_tokens": 9207,
+    "output_tokens_details": {
+     "thinking_tokens": 1852
+    },
+    "server_tool_use": {
+     "web_search_requests": 0,
+     "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 27699,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+     {
+      "input_tokens": 2,
+      "output_tokens": 839,
+      "cache_read_input_tokens": 39194,
+      "cache_creation_input_tokens": 301,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 301
+      },
+      "type": "message"
+     }
+    ],
+    "speed": "standard"
+   },
+   "modelUsage": {
+    "claude-opus-5-5[1m]": {
+     "inputTokens": 36,
+     "outputTokens": 9207,
+     "cacheReadInputTokens": 565291,
+     "cacheCreationInputTokens": 27699,
+     "webSearchRequests": 0,
+     "costUSD": 0.5189342,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 1852,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   }
+  },
+  "notyet": {
+   "session_id": "59d62bf2-c3e1-4927-b98f-d5dd89e9a0c5",
+   "acks": {},
+   "runs": [
+    {
+     "verdict": "reported",
+     "findings": [
+      {
+       "rule": "test-changed-to-pass",
+       "severity": "block",
+       "title": "tests/test_utils.py::test_prompts_abort as it was at session start fails on the new code; the test was edited instead",
+       "location": "tests/test_utils.py::test_prompts_abort"
+      },
+      {
+       "rule": "test-failing-before",
+       "severity": "note",
+       "title": "tests/test_basic.py can't be collected, but it couldn't at session start either",
+       "location": "tests/test_basic.py"
+      }
+     ],
+     "checks": [
+      "tests: ran 1429 test(s) in 20 file(s) (1403 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module (2 steps), imports a changed module (3 steps), named after a changed module",
+      "failures and changed tests compared with an isolated checkout of the session-start tree",
+      "coverage: recorded which changed lines in 1 file(s) ran",
+      "ran the session-start version of 1 edited test(s) against the new code (1 failed)"
+     ],
+     "not_checked": []
+    }
+   ]
+  },
+  "grade": {
+   "f2p": 6,
+   "f2p_passed": 5,
+   "resolved": false,
+   "failed": [
+    "tests/test_utils.py::test_echo_writing_to_standard_error"
+   ],
+   "regressions": [],
+   "agent_test_files_reverted_for_regression_check": [],
+   "agent_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 7731424..ce42f1a 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -38,6 +38,9 @@ Unreleased\n     non-shadowed help option names, so ``Try '... -h'`` no longer points to a\n     subcommand option that shadows ``-h``. All surviving names are shown\n     (``-h/--help``). :issue:`2790` :pr:`3208`\n+-   On platforms other than Windows, :func:`prompt` and :func:`confirm` pass\n+    the full prompt to ``readline``, fixing backspace and line wrapping.\n+    :issue:`2968`\n \n Version 8.3.3\n -------------\ndiff --git a/src/click/termui.py b/src/click/termui.py\nindex 6801e30..af39f4f 100644\n--- a/src/click/termui.py\n+++ b/src/click/termui.py\n@@ -9,8 +9,10 @@ import typing as t\n from contextlib import AbstractContextManager\n from gettext import gettext as _\n \n+from . import utils\n from ._compat import isatty\n from ._compat import strip_ansi\n+from ._compat import WIN\n from .exceptions import Abort\n from .exceptions import UsageError\n from .globals import resolve_color_default\n@@ -57,6 +59,25 @@ def hidden_prompt_func(prompt: str) -> str:\n     return getpass.getpass(prompt)\n \n \n+def _prompt_with(f: t.Callable[[str], str], text: str, err: bool) -> str:\n+    \"\"\"Show ``text`` as a prompt and read a line of input using ``f``.\"\"\"\n+    if WIN or err:\n+        # Write the prompt separately so that we get nice coloring\n+        # through colorama on Windows, and so that the prompt goes to\n+        # stderr if requested.\n+        echo(text[:-1], nl=False, err=err)\n+        # Echo the last character to stdout to work around an issue where\n+        # readline causes backspace to clear the whole line.\n+        return f(text[-1:])\n+\n+    # Let readline handle the full prompt, otherwise it doesn't know where\n+    # the input starts and backspace and line wrapping don't work correctly.\n+    if utils.should_strip_ansi(sys.stdout, resolve_color_default()):\n+        text = strip_ansi(text)\n+\n+    return f(text)\n+\n+\n def _build_prompt(\n     text: str,\n     suffix: str,\n@@ -147,12 +168,7 @@ def prompt(\n     def prompt_func(text: str) -> str:\n         f = hidden_prompt_func if hide_input else visible_prompt_func\n         try:\n-            # Write the prompt separately so that we get nice\n-            # coloring through colorama on Windows\n-            echo(text[:-1], nl=False, err=err)\n-            # Echo the last character to stdout to work around an issue where\n-            # readline causes backspace to clear the whole line.\n-            return f(text[-1:])\n+            return _prompt_with(f, text, err)\n         except (KeyboardInterrupt, EOFError):\n             # getpass doesn't print a newline if the user aborts input with ^C.\n             # Allegedly this behavior is inherited from getpass(3).\n@@ -243,12 +259,7 @@ def confirm(\n \n     while True:\n         try:\n-            # Write the prompt separately so that we get nice\n-            # coloring through colorama on Windows\n-            echo(prompt[:-1], nl=False, err=err)\n-            # Echo the last character to stdout to work around an issue where\n-            # readline causes backspace to clear the whole line.\n-            value = visible_prompt_func(prompt[-1:]).lower().strip()\n+            value = _prompt_with(visible_prompt_func, prompt, err).lower().strip()\n         except (KeyboardInterrupt, EOFError):\n             raise Abort() from None\n         if value in (\"y\", \"yes\"):\ndiff --git a/tests/test_utils.py b/tests/test_utils.py\nindex f5da596..aae1f32 100644\n--- a/tests/test_utils.py\n+++ b/tests/test_utils.py\n@@ -212,9 +212,68 @@ def test_confirm_repeat(runner):\n     assert result.output == \"A [y/n]: \\nError: invalid input\\nA [y/n]: y\\n\"\n \n \n+@pytest.mark.parametrize(\"win\", [True, False])\n+@pytest.mark.parametrize(\"err\", [True, False])\n+@pytest.mark.parametrize(\n+    (\"func\", \"expect_value\"),\n+    [\n+        (lambda: click.prompt(\"Name\"), \"value\"),\n+        (lambda: click.confirm(\"Go\"), False),\n+    ],\n+)\n+def test_prompt_passed_to_input_func(\n+    monkeypatch, capsys, win, err, func, expect_value\n+):\n+    \"\"\"On non-Windows platforms, the whole prompt is passed to the input\n+    function so readline can handle backspace and line wrapping. On Windows,\n+    or when writing to stderr, the prompt is echoed separately.\n+    \"\"\"\n+    received = []\n+\n+    def f(prompt):\n+        received.append(prompt)\n+        return \"value\" if expect_value == \"value\" else \"n\"\n+\n+    monkeypatch.setattr(\"click.termui.WIN\", win)\n+    monkeypatch.setattr(\"click.termui.visible_prompt_func\", f)\n+\n+    if err:\n+        func = {\n+            \"value\": lambda: click.prompt(\"Name\", err=True),\n+            False: lambda: click.confirm(\"Go\", err=True),\n+        }[expect_value]\n+\n+    assert func() == expect_value\n+    out, errout = capsys.readouterr()\n+    full = \"Name: \" if expect_value == \"value\" else \"Go [y/N]: \"\n+\n+    if win or err:\n+        assert received == [full[-1:]]\n+        assert (errout if err else out) == full[:-1]\n+    else:\n+        assert received == [full]\n+        assert out == errout == \"\"\n+\n+\n+def test_prompt_strips_ansi_for_input_func(monkeypatch):\n+    received = []\n+\n+    def f(prompt):\n+        received.append(prompt)\n+        return \"value\"\n+\n+    monkeypatch.setattr(\"click.termui.WIN\", False)\n+    monkeypatch.setattr(\"click.termui.visible_prompt_func\", f)\n+    monkeypatch.setattr(\"click.utils.should_strip_ansi\", lambda *a, **k: True)\n+    click.prompt(click.style(\"Name\", fg=\"red\"))\n+    assert received == [\"Name: \"]\n+\n+\n @pytest.mark.skipif(WIN, reason=\"Different behavior on windows.\")\n def test_prompts_abort(monkeypatch, capsys):\n-    def f(_):\n+    def f(prompt):\n+        # getpass writes the prompt before reading input.\n+        sys.stdout.write(prompt)\n         raise KeyboardInterrupt()\n \n     monkeypatch.setattr(\"click.termui.hidden_prompt_func\", f)\n@@ -225,7 +284,7 @@ def test_prompts_abort(monkeypatch, capsys):\n         click.echo(\"interrupted\")\n \n     out, err = capsys.readouterr()\n-    assert out == \"Password:\\ninterrupted\\n\"\n+    assert out == \"Password: \\ninterrupted\\n\"\n \n \n def test_prompts_eof(runner):\n"
+  }
+ },
+ {
+  "repo": "click",
+  "sha": "831c8f0948",
+  "mode": "report",
+  "subject": "Add NoSuchCommand exception with suggestions for misspelled commands (#3228)",
+  "answer_key": {
+   "test_files": [
+    "tests/test_commands.py",
+    "tests/test_options.py"
+   ],
+   "f2p": [
+    "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+    "tests/test_commands.py::test_suggest_possible_commands[pause-Did you mean 'push'?]",
+    "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+    "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]",
+    "tests/test_options.py::test_suggest_possible_options[--cat-Did you mean '--count'?]",
+    "tests/test_options.py::test_unknown_options[--foo]",
+    "tests/test_options.py::test_unknown_options[-f]"
+   ],
+   "api_dependent": []
+  },
+  "baseline_suite": {
+   "passed": 1400,
+   "total": 1426
+  },
+  "task": "Add `NoSuchCommand` exception with suggestions for misspelled commands\n\nThis PR adds suggestions to the `\"No such command\"` error message for misspelled commands, similar to how it's done for `NoSuchOption`.\r\n\r\nAs part of this update, a new exception was added - `NoSuchCommand`, along with slight formatting changes in `NoSuchOption`, to improve readability and ensure consistency with other errors.\r\n\r\nRejected idea: Adding a shared base exception or mixin for `NoSuchOption` and `NoSuchCommand`.\r\n\r\nFixes #3107.\r\n\r\n### Additional behavior changes\r\n\r\n- The option possibilities are now calculated within the `NoSuchOption` exception.\r\n- The normalized command name is now used in the `NoSuchCommand` error message.\r\n\r\n### Example based on the issue\r\n```\r\nimport click\r\n\r\n\r\n@click.group()\r\ndef cli():\r\n    pass\r\n\r\n\r\n@cli.command()\r\n@click.option(\"--name\", default=\"World\")\r\ndef greet(name: str) -> None:\r\n    click.echo(f\"Hello, {name}\")\r\n\r\n\r\nif __name__ == \"__main__\":\r\n    cli()\r\n```\r\n\r\n**Before the change:**\r\n```\r\n$ ./main.py greet --nme David\r\nUsage: main.py greet [OPTIONS]\r\nTry 'main.py greet --help' for help.\r\n\r\nError: No such option: --nme Did you mean --name?\r\n```\r\n```\r\n$ ./main.py gret --name David\r\nUsage: main.py [OPTIONS] COMMAND [ARGS]...\r\nTry 'main.py --help' for help.\r\n\r\nError: No such command 'gret'.\r\n```\r\n\r\n**After the change:**\r\n```\r\n$ ./main.py greet --nme David\r\nUsage: main.py greet [OPTIONS]\r\nTry 'main.py greet --help' for help.\r\n\r\nError: No such option '--nme'. Did you mean '--name'?\r\n```\r\n```\r\n$ ./main.py gret --name David\r\nUsage: main.py [OPTIONS] COMMAND [ARGS]...\r\nTry 'main.py --help' for help.\r\n\r\nError: No such command 'gret'. Did you mean 'greet'?\r\n```",
+  "agent": {
+   "result": "I've added `NoSuchCommand` and updated `NoSuchOption` to match the new format. Everything passes except `tests/test_basic.py`, which errors during collection both before and after my change. Running with that file excluded: 1405 passed, 24 skipped, 1 xfailed. I tried to run the `main.py` example from the issue directly, but the shell commands needed approval that wasn't given; the new tests check the same messages.\n\n**What changed**\n- **`NoSuchCommand`** (`src/click/exceptions.py`): a new subclass of `UsageError`, exported as `click.NoSuchCommand`. `Group.resolve_command` in `src/click/core.py` now raises it instead of calling `ctx.fail`, passing in all the group's command names. The message uses the normalized command name, e.g. `No such command 'gret'. Did you mean 'greet'?`. With several close matches it shows `(Possible commands: 'move', 'movie')`. Code that catches `UsageError` still catches it.\n- **`NoSuchOption`**:\n  - It now works out the close matches itself from the `possibilities` it's given, so the parser just passes in every long option name.\n  - Names are quoted: `No such option '--nme'. Did you mean '--name'?`.\n  - Following the rejected idea, there's no shared base class or mixin; the suggestion code appears in both exceptions.\n- `difflib` is imported inside the two constructors rather than at the top of the file. A top-level import failed `test_imports.py::test_light_imports`, which limits what modules click loads on import.\n- I added `NoSuchCommand` to the API docs and wrote two entries in `CHANGES.rst`.\n\n**Tests**\n- I updated the `NoSuchOption` tests in `tests/test_options.py` for the new wording.\n- I added tests in `tests/test_commands.py` for one suggestion, several suggestions, no suggestion, the exception's attributes, and the normalized name.\n\n**Behaviour changes to be aware of**\n- Anyone who passed an already-filtered `possibilities` list to `NoSuchOption` gets a second round of matching now. That's harmless, since close matches of close matches still match.\n- Command suggestions come from `list_commands`, so a hidden command can be suggested. Hidden options can already be suggested today, so this is consistent.\n\n**The `test_basic.py` error:** `test_boolean_conversion` passes an `itertools.chain` to `parametrize`, which the installed pytest version now rejects. This needs its own small fix, which I didn't make.",
+   "num_turns": 36,
+   "duration_ms": 112907,
+   "is_error": false,
+   "subtype": "success",
+   "session_id": "91146e00-1ca0-4793-b4a5-9582a3b95d3f",
+   "total_cost_usd": 0.6411855999999999,
+   "timed_out": null,
+   "wall_seconds": 114,
+   "stderr": "",
+   "raw": null,
+   "usage": {
+    "input_tokens": 38,
+    "cache_creation_input_tokens": 34504,
+    "cache_read_input_tokens": 680908,
+    "output_tokens": 11441,
+    "output_tokens_details": {
+     "thinking_tokens": 1284
+    },
+    "server_tool_use": {
+     "web_search_requests": 0,
+     "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 34504,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+     {
+      "input_tokens": 2,
+      "output_tokens": 860,
+      "cache_read_input_tokens": 45974,
+      "cache_creation_input_tokens": 326,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 326
+      },
+      "type": "message"
+     }
+    ],
+    "speed": "standard"
+   },
+   "modelUsage": {
+    "claude-opus-5-5[1m]": {
+     "inputTokens": 38,
+     "outputTokens": 11441,
+     "cacheReadInputTokens": 680908,
+     "cacheCreationInputTokens": 34504,
+     "webSearchRequests": 0,
+     "costUSD": 0.6411855999999999,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 1284,
+     "canonicalModel": "claude-opus-5-5",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   }
+  },
+  "notyet": {
+   "session_id": "91146e00-1ca0-4793-b4a5-9582a3b95d3f",
+   "acks": {},
+   "runs": [
+    {
+     "verdict": "reported",
+     "findings": [
+      {
+       "rule": "test-changed-to-pass",
+       "severity": "block",
+       "title": "tests/test_options.py::test_unknown_options[--foo] as it was at session start fails on the new code; the test was edited instead",
+       "location": "tests/test_options.py::test_unknown_options[--foo]"
+      },
+      {
+       "rule": "test-changed-to-pass",
+       "severity": "block",
+       "title": "tests/test_options.py::test_unknown_options[-f] as it was at session start fails on the new code; the test was edited instead",
+       "location": "tests/test_options.py::test_unknown_options[-f]"
+      },
+      {
+       "rule": "test-failing-before",
+       "severity": "note",
+       "title": "tests/test_basic.py can't be collected, but it couldn't at session start either",
+       "location": "tests/test_basic.py"
+      }
+     ],
+     "checks": [
+      "tests: ran 1430 test(s) in 20 file(s) (1404 passed, 1 failed, 25 skipped) in 4s; selected because: changed test, imports a changed module, imports a changed module (2 steps)",
+      "failures and changed tests compared with an isolated checkout of the session-start tree",
+      "coverage: recorded which changed lines in 4 file(s) ran",
+      "ran the session-start version of 1 edited test(s) against the new code (2 failed)"
+     ],
+     "not_checked": []
+    }
+   ]
+  },
+  "grade": {
+   "f2p": 7,
+   "f2p_passed": 4,
+   "resolved": false,
+   "failed": [
+    "tests/test_commands.py::test_suggest_possible_commands[decline-(Did you mean one of: 'declare', 'refine'?)]",
+    "tests/test_options.py::test_suggest_possible_options[--bounds-(Did you mean one of: '--bound', '--count'?)]",
+    "tests/test_options.py::test_suggest_possible_options[--bount-(Did you mean one of: '--bound', '--count'?)]"
+   ],
+   "regressions": [],
+   "agent_test_files_reverted_for_regression_check": [],
+   "agent_diff": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 2df2d76..99c1235 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -5,6 +5,13 @@ Version 8.4.0\n \n Unreleased\n \n+-   Add :exc:`NoSuchCommand`, raised when a group can't find a subcommand.\n+    The error message suggests close matches for misspelled commands,\n+    similar to :exc:`NoSuchOption`. The normalized command name is shown\n+    in the message. :issue:`3107`\n+-   :exc:`NoSuchOption` calculates close matches itself from the given\n+    ``possibilities``, and quotes names in its message, for example\n+    ``No such option '--nme'. Did you mean '--name'?``. :issue:`3107`\n -   :class:`ParamType` typing improvements. :pr:`3371`\n \n     -   :class:`ParamType` is now a generic abstract base class,\ndiff --git a/docs/api.md b/docs/api.md\nindex ea46bc9..dcceae3 100644\n--- a/docs/api.md\n+++ b/docs/api.md\n@@ -287,6 +287,10 @@ classes and functions.\n .. autoexception:: NoSuchOption\n ```\n \n+```{eval-rst}\n+.. autoexception:: NoSuchCommand\n+```\n+\n ```{eval-rst}\n .. autoexception:: BadOptionUsage\n ```\ndiff --git a/src/click/__init__.py b/src/click/__init__.py\nindex 5da5a39..64be7e0 100644\n--- a/src/click/__init__.py\n+++ b/src/click/__init__.py\n@@ -33,6 +33,7 @@ from .exceptions import BadParameter as BadParameter\n from .exceptions import ClickException as ClickException\n from .exceptions import FileError as FileError\n from .exceptions import MissingParameter as MissingParameter\n+from .exceptions import NoSuchCommand as NoSuchCommand\n from .exceptions import NoSuchOption as NoSuchOption\n from .exceptions import UsageError as UsageError\n from .formatting import HelpFormatter as HelpFormatter\ndiff --git a/src/click/core.py b/src/click/core.py\nindex 583b745..5f74baa 100644\n--- a/src/click/core.py\n+++ b/src/click/core.py\n@@ -29,6 +29,7 @@ from .exceptions import ClickException\n from .exceptions import Exit\n from .exceptions import MissingParameter\n from .exceptions import NoArgsIsHelpError\n+from .exceptions import NoSuchCommand\n from .exceptions import UsageError\n from .formatting import HelpFormatter\n from .formatting import join_options\n@@ -1937,7 +1938,6 @@ class Group(Command):\n         self, ctx: Context, args: list[str]\n     ) -> tuple[str | None, Command | None, list[str]]:\n         cmd_name = make_str(args[0])\n-        original_cmd_name = cmd_name\n \n         # Get the command\n         cmd = self.get_command(ctx, cmd_name)\n@@ -1957,7 +1957,9 @@ class Group(Command):\n         if cmd is None and not ctx.resilient_parsing:\n             if _split_opt(cmd_name)[0]:\n                 self.parse_args(ctx, args)\n-            ctx.fail(_(\"No such command {name!r}.\").format(name=original_cmd_name))\n+            raise NoSuchCommand(\n+                cmd_name, possibilities=self.list_commands(ctx), ctx=ctx\n+            )\n         return cmd_name if cmd else None, cmd, args[1:]\n \n     def shell_complete(self, ctx: Context, incomplete: str) -> list[CompletionItem]:\ndiff --git a/src/click/exceptions.py b/src/click/exceptions.py\nindex 71bb263..38edcb0 100644\n--- a/src/click/exceptions.py\n+++ b/src/click/exceptions.py\n@@ -213,6 +213,17 @@ class NoSuchOption(UsageError):\n     \"\"\"Raised if click attempted to handle an option that does not\n     exist.\n \n+    :param option_name: the name of the option that was not found.\n+    :param message: a custom message to show instead of the default.\n+    :param possibilities: the names of all known options. Close matches\n+        to ``option_name`` are suggested in the error message.\n+    :param ctx: optionally the context that caused this error.\n+\n+    .. versionchanged:: 8.4\n+        ``possibilities`` is the full list of known options, close\n+        matches are calculated by the exception. Names in the message\n+        are quoted.\n+\n     .. versionadded:: 4.0\n     \"\"\"\n \n@@ -223,18 +234,22 @@ class NoSuchOption(UsageError):\n         possibilities: cabc.Sequence[str] | None = None,\n         ctx: Context | None = None,\n     ) -> None:\n+        from difflib import get_close_matches\n+\n         if message is None:\n-            message = _(\"No such option: {name}\").format(name=option_name)\n+            message = _(\"No such option {name!r}.\").format(name=option_name)\n \n         super().__init__(message, ctx)\n         self.option_name = option_name\n-        self.possibilities = possibilities\n+        self.possibilities: list[str] = (\n+            get_close_matches(option_name, possibilities) if possibilities else []\n+        )\n \n     def format_message(self) -> str:\n         if not self.possibilities:\n             return self.message\n \n-        possibility_str = \", \".join(sorted(self.possibilities))\n+        possibility_str = \", \".join(repr(p) for p in sorted(self.possibilities))\n         suggest = ngettext(\n             \"Did you mean {possibility}?\",\n             \"(Possible options: {possibilities})\",\n@@ -243,6 +258,50 @@ class NoSuchOption(UsageError):\n         return f\"{self.message} {suggest}\"\n \n \n+class NoSuchCommand(UsageError):\n+    \"\"\"Raised if a group was asked to invoke a subcommand that does not\n+    exist.\n+\n+    :param command_name: the name of the command that was not found.\n+    :param message: a custom message to show instead of the default.\n+    :param possibilities: the names of all known commands. Close matches\n+        to ``command_name`` are suggested in the error message.\n+    :param ctx: optionally the context that caused this error.\n+\n+    .. versionadded:: 8.4\n+    \"\"\"\n+\n+    def __init__(\n+        self,\n+        command_name: str,\n+        message: str | None = None,\n+        possibilities: cabc.Sequence[str] | None = None,\n+        ctx: Context | None = None,\n+    ) -> None:\n+        from difflib import get_close_matches\n+\n+        if message is None:\n+            message = _(\"No such command {name!r}.\").format(name=command_name)\n+\n+        super().__init__(message, ctx)\n+        self.command_name = command_name\n+        self.possibilities: list[str] = (\n+            get_close_matches(command_name, possibilities) if possibilities else []\n+        )\n+\n+    def format_message(self) -> str:\n+        if not self.possibilities:\n+            return self.message\n+\n+        possibility_str = \", \".join(repr(p) for p in sorted(self.possibilities))\n+        suggest = ngettext(\n+            \"Did you mean {possibility}?\",\n+            \"(Possible commands: {possibilities})\",\n+            len(self.possibilities),\n+        ).format(possibility=possibility_str, possibilities=possibility_str)\n+        return f\"{self.message} {suggest}\"\n+\n+\n class BadOptionUsage(UsageError):\n     \"\"\"Raised if an option is generally supplied but the use of the option\n     was incorrect.  This is for instance raised if the number of arguments\ndiff --git a/src/click/parser.py b/src/click/parser.py\nindex dc3026a..75df0de 100644\n--- a/src/click/parser.py\n+++ b/src/click/parser.py\n@@ -360,10 +360,7 @@ class _OptionParser:\n         self, opt: str, explicit_value: str | None, state: _ParsingState\n     ) -> None:\n         if opt not in self._long_opt:\n-            from difflib import get_close_matches\n-\n-            possibilities = get_close_matches(opt, self._long_opt)\n-            raise NoSuchOption(opt, possibilities=possibilities, ctx=self.ctx)\n+            raise NoSuchOption(opt, possibilities=list(self._long_opt), ctx=self.ctx)\n \n         option = self._long_opt[opt]\n         if option.takes_value:\ndiff --git a/tests/test_commands.py b/tests/test_commands.py\nindex f26529a..078d7aa 100644\n--- a/tests/test_commands.py\n+++ b/tests/test_commands.py\n@@ -141,6 +141,44 @@ def test_group_with_args(runner, args, exit_code, expect):\n     assert expect in result.output\n \n \n+@pytest.mark.parametrize(\n+    (\"value\", \"expect\"),\n+    [\n+        (\"gret\", \"No such command 'gret'. Did you mean 'greet'?\"),\n+        (\"mov\", \"(Possible commands: 'move', 'movie')\"),\n+        (\"xyz\", \"No such command 'xyz'.\\n\"),\n+    ],\n+)\n+def test_suggest_possible_commands(runner, value, expect):\n+    cli = click.Group(\n+        commands=[click.Command(\"greet\"), click.Command(\"move\"), click.Command(\"movie\")]\n+    )\n+    result = runner.invoke(cli, [value])\n+    assert result.exit_code == 2\n+    assert isinstance(result.exception, SystemExit)\n+    assert expect in result.output\n+\n+\n+def test_no_such_command_exception(runner):\n+    cli = click.Group(commands=[click.Command(\"greet\")])\n+\n+    with pytest.raises(click.NoSuchCommand) as exc_info:\n+        cli.main([\"gret\"], standalone_mode=False)\n+\n+    assert exc_info.value.command_name == \"gret\"\n+    assert exc_info.value.possibilities == [\"greet\"]\n+    assert exc_info.value.ctx is not None\n+\n+\n+def test_no_such_command_normalized_name(runner):\n+    cli = click.Group(\n+        commands=[click.Command(\"greet\")],\n+        context_settings={\"token_normalize_func\": str.lower},\n+    )\n+    result = runner.invoke(cli, [\"GRET\"])\n+    assert \"No such command 'gret'. Did you mean 'greet'?\" in result.output\n+\n+\n def test_custom_parser(runner):\n     import optparse\n \ndiff --git a/tests/test_options.py b/tests/test_options.py\nindex 1d90d29..25cf6a8 100644\n--- a/tests/test_options.py\n+++ b/tests/test_options.py\n@@ -141,15 +141,15 @@ def test_unknown_options(runner, unknown_flag):\n \n     result = runner.invoke(cli, [unknown_flag])\n     assert result.exception\n-    assert f\"No such option: {unknown_flag}\" in result.output\n+    assert f\"No such option '{unknown_flag}'.\" in result.output\n \n \n @pytest.mark.parametrize(\n     (\"value\", \"expect\"),\n     [\n-        (\"--cat\", \"Did you mean --count?\"),\n-        (\"--bounds\", \"(Possible options: --bound, --count)\"),\n-        (\"--bount\", \"(Possible options: --bound, --count)\"),\n+        (\"--cat\", \"No such option '--cat'. Did you mean '--count'?\"),\n+        (\"--bounds\", \"(Possible options: '--bound', '--count')\"),\n+        (\"--bount\", \"(Possible options: '--bound', '--count')\"),\n     ],\n )\n def test_suggest_possible_options(runner, value, expect):\n"
+  }
+ }
+]
