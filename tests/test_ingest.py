@@ -211,3 +211,23 @@ def test_scan_of_git_subdirectory_lists_only_that_subtree(tmp_path):
     _git_init(repo)
     scan = scan_repo(str(repo / "svc_a"))
     assert _rel(scan, repo / "svc_a") == ["a.py"]
+
+
+def test_schema_is_versioned_and_newer_dbs_are_refused(tmp_path):
+    import sqlite3
+
+    import pytest
+    from app.storage.metadata_store import SchemaVersionError
+
+    db = tmp_path / "v.db"
+    store = MetadataStore(str(db))
+    assert store.schema_version() == MetadataStore.SCHEMA_VERSION
+    store.close()
+    MetadataStore(str(db)).close()  # reopening is a no-op
+
+    conn = sqlite3.connect(db)
+    conn.execute(f"PRAGMA user_version = {MetadataStore.SCHEMA_VERSION + 1}")
+    conn.commit()
+    conn.close()
+    with pytest.raises(SchemaVersionError, match="newer version"):
+        MetadataStore(str(db))

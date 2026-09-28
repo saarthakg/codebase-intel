@@ -93,6 +93,7 @@ def test_keyword_index_is_backfilled_for_existing_dbs(tmp_path):
     MetadataStore(str(db)).close()
     conn = sqlite3.connect(db)
     conn.execute("DROP TABLE chunks_fts")
+    conn.execute("PRAGMA user_version = 0")  # before schema versioning
     conn.execute(
         "INSERT INTO chunks VALUES ('c1','r','a.py','python',1,2,'[]','[]','def get_netrc_auth(): pass')"
     )

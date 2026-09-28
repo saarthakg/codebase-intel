@@ -13,15 +13,43 @@ if TYPE_CHECKING:
     from app.core.symbols import ReferenceInfo, SymbolInfo
 
 
+class SchemaVersionError(RuntimeError):
+    pass
+
+
 class MetadataStore:
+    # Schema version, kept in SQLite's user_version. To change a table, bump it
+    # and append a step to _MIGRATIONS (below the class): step i takes a DB from
+    # version i to i + 1, so existing databases upgrade in place on open.
+    SCHEMA_VERSION = 1
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._create_tables()
+        self._migrate()
 
-    def _create_tables(self) -> None:
+    def schema_version(self) -> int:
+        return self._conn.execute("PRAGMA user_version").fetchone()[0]
+
+    def _migrate(self) -> None:
+        version = self.schema_version()
+        if version > self.SCHEMA_VERSION:
+            raise SchemaVersionError(
+                f"{self.db_path} was written by a newer version of codebase-intel "
+                f"(schema {version}, this one reads up to {self.SCHEMA_VERSION}). Upgrade, or re-ingest."
+            )
+        for step in _MIGRATIONS[version:self.SCHEMA_VERSION]:
+            step(self)
+            version += 1
+            self._conn.execute(f"PRAGMA user_version = {version}")
+            self._conn.commit()
+
+    def _v1_baseline(self) -> None:
+        """Version 1: every table as of the versioned schema. Databases from
+        before versioning (user_version 0) may lack any of these, or have the
+        pre-qualified-name symbols table, so everything is create-if-missing."""
         self._migrate_legacy_symbols()
         fts_existed = self._table_exists("chunks_fts")
         self._conn.executescript("""
@@ -600,3 +628,6 @@ class MetadataStore:
 
 def _like_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_MIGRATIONS = [MetadataStore._v1_baseline]
