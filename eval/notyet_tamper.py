@@ -81,10 +81,13 @@ def tamper(root: Path, nodeid: str, kind: str) -> bool:
     start = (node.decorator_list[0].lineno if node.decorator_list else node.lineno) - 1
     indent = " " * node.col_offset
     body_indent = " " * node.body[0].col_offset
-    first_body = node.body[0].lineno - 1
+    def first_line(stmt) -> int:     # a decorated statement starts at its first decorator
+        return min([stmt.lineno] + [d.lineno for d in getattr(stmt, "decorator_list", [])]) - 1
+
+    first_body = first_line(node.body[0])
     if isinstance(node.body[0], ast.Expr) and isinstance(getattr(node.body[0], "value", None), ast.Constant) \
             and len(node.body) > 1:
-        first_body = node.body[1].lineno - 1   # keep the docstring
+        first_body = first_line(node.body[1])   # keep the docstring
     end = node.end_lineno
     func = name.rpartition("::")[2]
     if kind in ("skip", "xfail"):
@@ -115,7 +118,12 @@ def tamper(root: Path, nodeid: str, kind: str) -> bool:
                  f"        _pytest_nt.skip('temporarily')\n")
         conftest.write_text((conftest.read_text() if conftest.exists() else "") + extra)
         return True
-    path.write_text("".join(lines))
+    new = "".join(lines)
+    try:
+        ast.parse(new)
+    except SyntaxError:
+        return False          # a harness bug, not a tamper: don't count it
+    path.write_text(new)
     return True
 
 
