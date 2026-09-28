@@ -63,29 +63,29 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "src/requ
 Impact analysis: src/requests/adapters.py
 
 HIGH CONFIDENCE:
-  [0.97] tests/test_adapters.py  — test named for this file
-  [0.95] src/requests/models.py  — direct import
-  [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_requests.py  — direct import
-  [0.75] src/requests/__init__.py  — transitive import (2 hops)
-  [0.75] src/requests/utils.py  — transitive import (2 hops)
-  [0.75] src/requests/auth.py  — transitive import (2 hops)
-  [0.75] src/requests/cookies.py  — transitive import (2 hops)
-  [0.75] src/requests/_types.py  — transitive import (2 hops)
-  [0.75] src/requests/api.py  — transitive import (2 hops)
-  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
+  [0.98] tests/test_adapters.py  — test named for this file; direct import
+  [0.73] src/requests/models.py  — changed together in 2 of 4 commits; direct import
+  [0.73] src/requests/sessions.py  — changed together in 2 of 4 commits; direct import
+  [0.73] tests/test_requests.py  — changed together in 2 of 4 commits; direct import
+  [0.73] src/requests/__init__.py  — changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.73] src/requests/utils.py  — changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.73] src/requests/auth.py  — changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.73] src/requests/cookies.py  — changed together in 2 of 4 commits; transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
   [0.54] pyproject.toml  — changed together in 2 of 4 commits
   [0.54] src/requests/compat.py  — changed together in 2 of 4 commits
   [0.54] src/requests/help.py  — changed together in 2 of 4 commits
-  [0.50] tests/test_utils.py  — transitive import (3 hops)
-  [0.50] docs/conf.py  — transitive import (3 hops)
-  [0.50] tests/test_hooks.py  — transitive import (3 hops)
-  [0.50] tests/test_lowlevel.py  — transitive import (3 hops)
-  [0.50] tests/test_packages.py  — transitive import (3 hops)
-  [0.50] tests/test_testserver.py  — transitive import (3 hops)
+  [0.40] src/requests/_types.py  — transitive import (2 hops)
+  [0.40] src/requests/api.py  — transitive import (2 hops)
+  [0.40] src/requests/exceptions.py  — transitive import (2 hops)
+  [0.40] src/requests/hooks.py  — transitive import (2 hops)
+  [0.40] tests/test_utils.py  — transitive import (3 hops)
+  [0.40] docs/conf.py  — transitive import (3 hops)
+  [0.40] tests/test_hooks.py  — transitive import (3 hops)
+  [0.40] tests/test_lowlevel.py  — transitive import (3 hops)
+  [0.40] tests/test_packages.py  — transitive import (3 hops)
+  [0.40] tests/test_testserver.py  — transitive import (3 hops)
 
 TESTS TO RUN:
   tests/test_adapters.py
@@ -97,9 +97,12 @@ TESTS TO RUN:
   tests/test_testserver.py
 ```
 
-Five signals are at work here:
+Five signals are at work here, and a file's confidence combines all that found it (noisy-OR,
+reasons listed strongest first):
 - `tests/test_adapters.py` is named for the file, so it ranks first.
-- Direct and transitive importers come from the import graph. The test files that exercise
+- Direct and transitive importers come from the import graph. An import alone counts 0.40: on
+  real commits, most importers don't change with the file. Importers that history also ties
+  to `adapters.py` rise to 0.73. The test files that exercise
   `adapters.py` used to be missing entirely: `requests` uses a `src/` layout, so
   `import requests.adapters` from `tests/` never resolved.
 - "changed together in 2 of 4 commits" comes from git history (confidence 0.54: with so few
@@ -189,25 +192,17 @@ python scripts/demo_query.py --repo-id requests --mode impact --target "HTTPAdap
 Impact analysis: HTTPAdapter.send
 
 HIGH CONFIDENCE:
-  [0.97] tests/test_adapters.py  — test named for this file
-  [0.95] src/requests/models.py  — direct import
-  [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_requests.py  — direct import
-  [0.75] src/requests/__init__.py  — transitive import (2 hops)
-  [0.75] src/requests/utils.py  — transitive import (2 hops)
-  [0.75] src/requests/auth.py  — transitive import (2 hops)
-  [0.75] src/requests/cookies.py  — transitive import (2 hops)
-  [0.75] src/requests/_types.py  — transitive import (2 hops)
-  [0.75] src/requests/api.py  — transitive import (2 hops)
-  [0.75] src/requests/exceptions.py  — transitive import (2 hops)
-  [0.75] src/requests/hooks.py  — transitive import (2 hops)
-  [0.70] tests/test_lowlevel.py  — references symbol
-  [0.70] tests/testserver/server.py  — references symbol
+  [0.98] tests/test_adapters.py  — test named for this file; direct import
+  [0.92] src/requests/sessions.py  — references symbol; changed together in 2 of 4 commits; direct import
+  [0.92] tests/test_requests.py  — references symbol; changed together in 2 of 4 commits; direct import
+  [0.92] src/requests/auth.py  — references symbol; changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.82] tests/test_lowlevel.py  — references symbol; transitive import (3 hops)
+  [0.73] src/requests/models.py  — changed together in 2 of 4 commits; direct import
+  [0.73] src/requests/__init__.py  — changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.73] src/requests/utils.py  — changed together in 2 of 4 commits; transitive import (2 hops)
+  [0.73] src/requests/cookies.py  — changed together in 2 of 4 commits; transitive import (2 hops)
 
 MEDIUM CONFIDENCE:
-  [0.54] pyproject.toml  — changed together in 2 of 4 commits
-  [0.54] src/requests/compat.py  — changed together in 2 of 4 commits
-  [0.54] src/requests/help.py  — changed together in 2 of 4 commits
   ...
 ```
 
@@ -215,9 +210,10 @@ A qualified name pins the target to the right definition. A bare `send` is ambig
 defined on `BaseAdapter`, `HTTPAdapter`, `Session` and more); `/definition` lists the other
 matches under `other_definitions`, and symbol lookup prefers source files over tests.
 
-"references symbol" hits come from identifier usages, which are matched by name. Any
-`.send(...)` call counts, not only calls on an `HTTPAdapter`. For a change you've actually
-made, `/impact/diff` (Q9) works from the changed functions instead.
+"references symbol" hits are files whose calls can reach `HTTPAdapter.send` by inferred
+receiver type, not every `.send(...)` in the repo; with an import and shared history on top,
+they lead the list. For a change you've actually made, `/impact/diff` (Q9) works from the
+changed functions instead.
 
 ---
 

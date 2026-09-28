@@ -33,8 +33,8 @@ with 95–97% recall and at least 76–78% precision.
 affected file with a reason ("direct import", "test named for this file", "changed together
 in 5 of 12 commits"). It combines five signals: an exact import graph, symbol usages, git
 co-change history, test-file naming and code similarity. Give it a `git diff` and it works
-out which functions changed and who calls them. Replayed against real `requests` commits,
-half the files a commit actually touched are in the top 5.
+out which functions changed and who calls them. Replayed against real `requests` commits it
+hasn't been tuned on, 58% of the other files a commit touched are in the top 5.
 
 **Ask questions and get answers you can check.** Answers cite files and line ranges. Every
 citation is resolved, and names the answer mentions that don't exist in the repo are
@@ -196,16 +196,16 @@ The code it quoted is verbatim from `adapters.py` (lines 321–342, inside `cert
 **Impact of changing `adapters.py`:**
 ```
 HIGH CONFIDENCE:
-  [0.97] tests/test_adapters.py    — test named for this file
-  [0.95] src/requests/models.py    — direct import
-  [0.95] src/requests/sessions.py  — direct import
-  [0.95] tests/test_requests.py    — direct import
-  [0.75] src/requests/cookies.py   — transitive import (2 hops)
-  ... 7 more at 2 hops
+  [0.98] tests/test_adapters.py    — test named for this file; direct import
+  [0.73] src/requests/models.py    — changed together in 2 of 4 commits; direct import
+  [0.73] src/requests/sessions.py  — changed together in 2 of 4 commits; direct import
+  [0.73] tests/test_requests.py    — changed together in 2 of 4 commits; direct import
+  ... 4 more with history and an import
 
 MEDIUM CONFIDENCE:
   [0.54] pyproject.toml            — changed together in 2 of 4 commits
   [0.54] src/requests/compat.py    — changed together in 2 of 4 commits
+  [0.40] src/requests/api.py       — transitive import (2 hops)
   ...
 
 TESTS TO RUN:
@@ -335,18 +335,22 @@ functions and classes are matched by name, which their names make reliable.
 {"repo_id": "my-project", "target": "src/requests/adapters.py", "depth": 3}
 ```
 
-`target` is a file path or a symbol. Five signals, each reported as the reason:
+`target` is a file path or a symbol. Five signals, each reported as a reason:
 
 | Signal | Confidence | Reason shown |
 |---|---|---|
 | A test named after the target (`test_adapters.py`, `foo.test.ts`) | 0.97 | `test named for this file` |
-| Import graph, direct / 2 hops / 3 hops | 0.95 / 0.75 / 0.50 | `direct import` … |
+| Import graph, up to `depth` hops | 0.40 | `direct import`, `transitive import (2 hops)` |
 | Files using the target symbol (symbol targets) | 0.70 | `references symbol` |
 | Git history: changed together in N of the target's M commits, p = N / (M + 3) | 0.4 + 0.5·p, max 0.9 | `changed together in N of M commits` |
 | Nearest chunks to the target's own code | 0.35 | `semantically related` |
 
-Results come back as `high_confidence` (≥ 0.7), `medium_confidence` (≥ 0.4) and `related`.
-Ties go to stronger co-change, then to files that change more often overall, then fewer hops,
+A file found by several signals gets their noisy-OR, 1 − ∏(1 − cᵢ), and lists every reason,
+strongest first: an importer that also changed with the target in 2 of 4 commits scores 0.73.
+An import alone is weak evidence that a file changes with the target (see
+[What moved impact](#what-moved-impact-real-commits)), so an importer with nothing else is
+medium; every direct importer is still listed. Results come back as `high_confidence`
+(≥ 0.7), `medium_confidence` (≥ 0.4) and `related`. Ties go to stronger co-change, then to files that change more often overall, then fewer hops,
 then path. `tests` lists the test files among the results, best-first. Co-change comes from
 the last 5,000 commits of the repo's git history.
 
@@ -392,10 +396,11 @@ new side should be the indexed code: ingest the working tree, then send `git dif
   excerpts are added best-first up to 12,000 characters (`excerpts_omitted` counts the rest).
 - **Citations:** `[N]` references and mentions of an excerpt's file path (with line numbers
   when given) are both resolved to files and lines. Small local models often cite by path.
-- **Checks:** `unverified_mentions` lists code names or paths found neither in the excerpts nor
-  in the repo's index, usually an invented name. `uncertainty` is set when the answer cites
-  nothing, cites excerpts that don't exist, names unverified things, or says the evidence is
-  insufficient.
+- **Checks:** `unverified_mentions` lists code names or paths found nowhere in the excerpts or
+  the repo's indexed code, usually an invented name. Names inside the answer's own example
+  code and URLs aren't checked. `uncertainty` is set only for problems a reader can't see in
+  the text: the answer cites nothing, cites excerpts that don't exist, or names unverified
+  things. Naming a symbol an excerpt defines counts as citing it.
 - **Cache:** keyed by a hash of the full prompt (question + excerpt text) and the model, so a
   hit means the same question on unchanged code. `cached: true` means no LLM call was made;
   `"use_cache": false` forces a fresh answer.
@@ -440,8 +445,8 @@ below its floor in `eval/thresholds.yaml`.
 | Definition accuracy (file + line) | 0.71 | **1.00** |
 | References recall / precision | 0.00 / 0.00 | **1.00 / 1.00** |
 | Import graph edge recall / precision | 0.68 / 0.90 | **1.00 / 1.00** |
-| Impact: true direct importers ranked high-confidence | 0.61 | **1.00** |
-| Impact on real commits, held-out: recall@5 / MRR | 0.39 / 0.45 (no history) | **0.52 / 0.64** |
+| Impact: true direct importers listed | 0.61 (in the high tier) | **1.00** |
+| Impact on real commits, held-out: recall@5 / MRR | 0.39 / 0.45 (no history) | **0.58 / 0.64** |
 | Re-index of unchanged code | ~12 s | **0.6 s** |
 
 ### Does it generalize? (Flask, never tuned on)
@@ -453,8 +458,8 @@ below its floor in `eval/thresholds.yaml`.
 | Definitions, including names Flask defines twice (`url_for`, `Blueprint`, ...) | 24/24 |
 | References recall / precision | 1.00 / 1.00 |
 | Import graph edges, recall / precision (191 edges) | 1.00 / 1.00 |
-| Impact on real commits, held-out recall@10: without history → co-change → diff-level | 0.43 → 0.57 → 0.58 |
-| Impact on real commits, held-out MRR: same three | 0.41 → 0.45 → 0.50 |
+| Impact on real commits, held-out recall@5: without history → co-change → diff-level | 0.29 → 0.43 → 0.44 |
+| Impact on real commits, held-out MRR: same three | 0.41 → 0.57 → 0.58 |
 
 The Flask labels were written from the source alone and committed before any search was run
 on it. The benchmark earned its keep straight away, with two findings:
@@ -533,13 +538,23 @@ for plain-English queries) was reverted.
 | Impact ranking | Dev: recall@5 / @10 / MRR | Held-out: recall@5 / @10 / MRR |
 |---|---|---|
 | Without git history (imports, usages, named tests, similarity) | 0.35 / 0.49 / 0.42 | 0.39 / 0.58 / 0.45 |
-| `/impact`, with git co-change | 0.46 / 0.67 / **0.69** | 0.52 / **0.70** / **0.64** |
-| `/impact/diff` (uses each commit's diff) | **0.52 / 0.74** / 0.67 | **0.53** / **0.70** / 0.63 |
+| + git co-change, strongest signal wins | 0.46 / 0.67 / 0.69 | 0.52 / 0.70 / 0.64 |
+| + signals combined, imports weak (`/impact` now) | 0.57 / 0.69 / 0.69 | **0.58 / 0.71** / 0.64 |
+| `/impact/diff` (uses each commit's diff) | **0.63 / 0.77 / 0.72** | **0.58 / 0.71 / 0.66** |
+
+On Flask (held-out, never used to pick the design): combining signals took `/impact` from
+0.33 / 0.57 / 0.45 to 0.43 / 0.55 / 0.57, and `/impact/diff` from 0.37 / 0.56 / 0.50 to
+0.44 / 0.59 / 0.58.
 
 Recall@k is the share of the commit's other changed files in the top k. Co-change is the
-biggest single gain. Diff-level impact adds recall on dev but is roughly even with `/impact`
-on held-out, where many commits are typing passes touching most symbols in a file. The graph
-numbers are slightly optimistic, since today's import graph is used for past commits.
+biggest single gain. The second is not trusting imports: when the strongest single signal
+decided and a direct import counted 0.95, every importer outranked every file that history
+ties to the target, yet on real commits most importers don't change. Now each signal adds
+evidence (noisy-OR) and an import alone counts 0.40, so importers that history also backs
+come first. The weights were chosen on dev commits of both repos. Keeping importers in the
+high tier and only reordering within tiers was also tried; it gained less (Flask held-out
+0.39 / 0.53 / 0.52). The graph numbers are slightly optimistic, since today's import graph is
+used for past commits.
 
 With 14–73 queries per set, one query moves a metric by roughly 0.01–0.07, so small
 differences are noise. That's why every tuning decision was checked against a held-out set.
@@ -613,7 +628,7 @@ The gain is in the usage answers themselves.
 
 ```bash
 pytest tests/
-# 196 passed
+# 200 passed
 ```
 
 The suite covers:
@@ -675,6 +690,16 @@ prompt. The checks make grounding observable: every citation must resolve and ev
 must exist in the excerpts or the repo. Small local models in particular produce fluent,
 uncited answers, and those come back flagged instead of looking as trustworthy as a cited
 one. It's a name check, not a fact check.
+
+`eval/run_ask_eval.py` measures this on the labeled search questions (answer location
+known), with `qwen2.5-coder:7b` on Ollama. The first version of the checks flagged 24% of
+requests answers and 36% of Flask's, and none of the flagged answers were actually wrong:
+they fired on placeholder names in example code, on parameters and config keys that exist
+in the repo but not in the excerpts, and on the model hedging about a side detail. After
+fixing those, 0 of 25 answers are flagged on either repo, and the answer cites the lines that
+answer the question 96% (requests) and 88% (Flask) of the time. The checks can't catch an
+answer built on the wrong code when retrieval missed; nothing measured can (retrieval scores
+for misses and hits overlap), so the citations are what to check.
 
 **Why the answer cache is keyed by prompt content.** The key hashes the exact prompt (which
 contains the code excerpts) plus backend, model and prompt version, so a cached answer is
