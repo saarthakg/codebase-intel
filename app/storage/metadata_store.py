@@ -21,7 +21,7 @@ class MetadataStore:
     # Schema version, kept in SQLite's user_version. To change a table, bump it
     # and append a step to _MIGRATIONS (below the class): step i takes a DB from
     # version i to i + 1, so existing databases upgrade in place on open.
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: str):
         self.db_path = db_path
@@ -195,6 +195,14 @@ class MetadataStore:
                 for repo_id, c in items
             ],
         )
+
+    def _v2_drop_embedding_cache(self) -> None:
+        """Version 2: re-ingest reuses unchanged chunks' vectors from the previous
+        index (it stores each vector's text hash), so this table only duplicated
+        the index, at ~18% of a large repo's database."""
+        self._conn.execute("DROP TABLE IF EXISTS embedding_cache")
+        self._conn.commit()
+        self._conn.execute("VACUUM")  # give the space back
 
     def _migrate_legacy_symbols(self) -> None:
         """Upgrade a pre-qualified-name `symbols` table in place.
@@ -549,39 +557,6 @@ class MetadataStore:
         ).fetchall()
         return CoChange.from_rows([tuple(r) for r in files], [tuple(r) for r in pairs])
 
-    def get_cached_embeddings(self, model: str, text_hashes: list[str]) -> dict[str, "np.ndarray"]:
-        import numpy as np
-        found: dict[str, np.ndarray] = {}
-        unique = list(dict.fromkeys(text_hashes))
-        for i in range(0, len(unique), 500):  # stay under SQLite's variable limit
-            batch = unique[i:i + 500]
-            rows = self._conn.execute(
-                f"SELECT text_hash, vector FROM embedding_cache WHERE model = ? "
-                f"AND text_hash IN ({','.join('?' * len(batch))})",
-                (model, *batch),
-            ).fetchall()
-            for r in rows:
-                found[r["text_hash"]] = np.frombuffer(r["vector"], dtype=np.float32)
-        return found
-
-    def put_cached_embeddings(self, model: str, vectors: dict[str, "np.ndarray"]) -> None:
-        """Store vectors without committing (part of the ingest transaction)."""
-        import numpy as np
-        self._conn.executemany(
-            "INSERT OR REPLACE INTO embedding_cache (model, text_hash, vector) VALUES (?, ?, ?)",
-            [(model, h, np.asarray(v, dtype=np.float32).tobytes()) for h, v in vectors.items()],
-        )
-
-    def prune_embedding_cache(self, model: str, keep: set[str]) -> None:
-        """Drop cached vectors not used by the current index (other models included)."""
-        self._conn.execute("CREATE TEMP TABLE IF NOT EXISTS _keep_hashes (h TEXT PRIMARY KEY)")
-        self._conn.execute("DELETE FROM _keep_hashes")
-        self._conn.executemany("INSERT OR IGNORE INTO _keep_hashes (h) VALUES (?)", [(h,) for h in keep])
-        self._conn.execute(
-            "DELETE FROM embedding_cache WHERE model != ? OR text_hash NOT IN (SELECT h FROM _keep_hashes)",
-            (model,),
-        )
-
     def get_cached_answer(self, cache_key: str) -> Optional[dict]:
         row = self._conn.execute(
             "SELECT response FROM answer_cache WHERE cache_key = ?", (cache_key,)
@@ -630,4 +605,4 @@ def _like_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-_MIGRATIONS = [MetadataStore._v1_baseline]
+_MIGRATIONS = [MetadataStore._v1_baseline, MetadataStore._v2_drop_embedding_cache]

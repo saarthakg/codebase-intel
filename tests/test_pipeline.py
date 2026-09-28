@@ -259,9 +259,27 @@ def test_changing_model_does_not_reuse_other_models_vectors(tmp_path, monkeypatc
         monkeypatch.setenv("EMBEDDING_MODEL", "some/other-model")
         again = run_ingestion(str(repo), "myrepo")
     assert again["chunks_embedded"] == 2 and again["chunks_reused"] == 0
-    store = MetadataStore(str(paths.db_path("myrepo")))
-    models = {r[0] for r in store._conn.execute("SELECT DISTINCT model FROM embedding_cache")}
-    assert models == {"local:some/other-model"}  # old model's vectors pruned
+
+
+def test_old_index_without_text_hashes_is_re_embedded(tmp_path):
+    """An index written before vectors were reusable has no text hashes:
+    re-ingest embeds everything once, then reuses as usual."""
+    import json
+    repo = _make_repo(tmp_path)
+    embed = _CountingEmbedder()
+    with patch("app.core.pipeline.embed_texts", side_effect=embed):
+        run_ingestion(str(repo), "myrepo")
+        idmap = paths.index_path("myrepo").with_suffix(".idmap.json")
+        data = json.loads(idmap.read_text())
+        del data["text_hashes"]
+        idmap.write_text(json.dumps(data))
+        assert run_ingestion(str(repo), "myrepo")["chunks_reused"] == 0
+        assert run_ingestion(str(repo), "myrepo")["chunks_reused"] == 2
+
+
+def test_embedding_cache_table_is_dropped(tmp_path):
+    store = MetadataStore(str(tmp_path / "m.db"))
+    assert store._conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'embedding_cache'").fetchone() is None
 
 
 def test_duplicate_chunks_are_embedded_once(tmp_path):

@@ -68,13 +68,14 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
         )
         embedded = reused = 0
         if all_chunks:
-            embeddings, embedded, reused = _embed_with_cache(
-                embed_inputs, backend, model_name, metadata_store, _report
+            hashes = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in embed_inputs]
+            embeddings, embedded, reused = _embed_reusing(
+                embed_inputs, hashes, backend, model_name, _previous_vectors(repo_id, backend, model_name), _report
             )
             faiss_store = FAISSStore(
                 dim=embeddings.shape[1], embedding_backend=backend, embedding_model=model_name
             )
-            faiss_store.add(embeddings, [c.chunk_id for c in all_chunks])
+            faiss_store.add(embeddings, [c.chunk_id for c in all_chunks], hashes)
         else:
             # Still write an (empty) index so a repo with zero indexable chunks
             # doesn't leave get_repo_state() unable to find anything to load.
@@ -121,28 +122,37 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     return summary
 
 
-def _embed_with_cache(
-    texts: list[str], backend: str, model_name: str, metadata_store: MetadataStore,
-    report: Callable[[str], None],
-) -> tuple["np.ndarray", int, int]:
-    """Embed `texts`, reusing vectors cached from earlier ingests of identical
-    text with the same model. Returns (embeddings, n_embedded, n_reused)."""
-    cache_model = f"{backend}:{model_name}"
-    hashes = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
-    cached = metadata_store.get_cached_embeddings(cache_model, hashes)
-    reused = sum(1 for h in hashes if h in cached)
-    # First occurrence of each uncached text: identical chunks (repeated
+def _previous_vectors(repo_id: str, backend: str, model_name: str) -> dict[str, np.ndarray]:
+    """Vectors from this repo's current index by text hash, if it was built
+    with the same embedding model (otherwise nothing is reusable)."""
+    path = paths.index_path(repo_id)
+    if not path.exists():
+        return {}
+    previous = FAISSStore(dim=1)
+    try:
+        previous.load(str(path))
+    except (OSError, ValueError, KeyError):
+        return {}  # unreadable or old-format index: embed everything
+    if (previous.embedding_backend, previous.embedding_model) != (backend, model_name):
+        return {}
+    return previous.vectors_by_text_hash()
+
+
+def _embed_reusing(
+    texts: list[str], hashes: list[str], backend: str, model_name: str,
+    previous: dict[str, np.ndarray], report: Callable[[str], None],
+) -> tuple[np.ndarray, int, int]:
+    """Embed `texts`, reusing the previous index's vector for any identical
+    text. Returns (embeddings, n_embedded, n_reused)."""
+    vectors = {h: previous[h] for h in hashes if h in previous}
+    reused = sum(1 for h in hashes if h in vectors)
+    # First occurrence of each new text: identical chunks (repeated
     # boilerplate) are embedded once.
-    to_embed = {h: t for h, t in zip(hashes, texts) if h not in cached}
+    to_embed = {h: t for h, t in zip(hashes, texts) if h not in vectors}
     report(f"Embedding {len(to_embed)} chunks ({reused} of {len(texts)} unchanged, reused)")
     if to_embed:
-        fresh = embed_texts(list(to_embed.values()), backend=backend, model=model_name)
-        new_vectors = dict(zip(to_embed.keys(), fresh))
-        metadata_store.put_cached_embeddings(cache_model, new_vectors)
-        cached.update(new_vectors)
-    metadata_store.prune_embedding_cache(cache_model, set(hashes))
-    vectors = np.vstack([cached[h] for h in hashes]).astype(np.float32)
-    return vectors, len(to_embed), reused
+        vectors.update(zip(to_embed.keys(), embed_texts(list(to_embed.values()), backend=backend, model=model_name)))
+    return np.vstack([vectors[h] for h in hashes]).astype(np.float32), len(to_embed), reused
 
 
 def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: MetadataStore) -> None:

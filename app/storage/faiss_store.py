@@ -29,6 +29,9 @@ class FAISSStore:
         self.dim = dim
         self.vectors = np.zeros((0, dim), dtype=np.float32)  # L2-normalized rows
         self.id_map: list[str] = []          # row → chunk_id
+        # row → sha256 of the text embedded, so a re-ingest can reuse the
+        # vectors of unchanged chunks (chunk ids are new each ingest)
+        self.text_hashes: list[str] = []
         # Which embedding backend/model built this index. Persisted so query-time
         # code can embed with the *same* backend the index was built with, rather
         # than trusting whatever EMBEDDING_BACKEND happens to be set to right now.
@@ -47,14 +50,20 @@ class FAISSStore:
         norms = np.where(norms == 0, 1.0, norms)  # avoid div-by-zero
         return vectors / norms
 
-    def add(self, embeddings: np.ndarray, chunk_ids: list[str]) -> None:
-        """Normalize embeddings, add to index, record chunk_ids."""
+    def add(self, embeddings: np.ndarray, chunk_ids: list[str], text_hashes: Optional[list[str]] = None) -> None:
+        """Normalize embeddings, add to index, record chunk_ids (and the hashes
+        of the texts they embed, if known)."""
         if len(embeddings) == 0:
             return
         if embeddings.shape[-1] != self.dim:
             raise ValueError(f"Embeddings have dim {embeddings.shape[-1]}, index has dim {self.dim}")
         self.vectors = np.vstack([self.vectors, self._normalize(embeddings)])
         self.id_map.extend(chunk_ids)
+        self.text_hashes.extend(text_hashes if text_hashes is not None else [""] * len(chunk_ids))
+
+    def vectors_by_text_hash(self) -> dict[str, np.ndarray]:
+        """Stored (normalized) vector for each embedded text hash."""
+        return {h: self.vectors[i] for i, h in enumerate(self.text_hashes) if h}
 
     def search(self, query_embedding: np.ndarray, top_k: int) -> list[tuple[str, float]]:
         """Return list of (chunk_id, score) pairs ordered by score descending."""
@@ -92,6 +101,7 @@ class FAISSStore:
                 {
                     "dim": self.dim,
                     "id_map": self.id_map,
+                    "text_hashes": self.text_hashes,
                     "embedding_backend": self.embedding_backend,
                     "embedding_model": self.embedding_model,
                 },
@@ -106,7 +116,7 @@ class FAISSStore:
         except ValueError:
             raise IndexFormatError(
                 f"The index at {path} was written by an older version (faiss format). "
-                f"Re-run ingest for this repo; unchanged code isn't re-embedded, so it's quick."
+                f"Re-run ingest for this repo."
             ) from None
         idmap_path = path.replace(".index", ".idmap.json")
         with open(idmap_path) as f:
@@ -114,6 +124,7 @@ class FAISSStore:
         self.dim = data["dim"]
         self.vectors = vectors.astype(np.float32).reshape(-1, self.dim)
         self.id_map = data["id_map"]
+        self.text_hashes = data.get("text_hashes") or [""] * len(self.id_map)  # absent before reuse
         self.embedding_backend = data.get("embedding_backend")
         self.embedding_model = data.get("embedding_model")
         self._positions = {}
