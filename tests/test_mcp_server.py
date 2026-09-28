@@ -60,7 +60,7 @@ def test_check_change_and_impact(repo):
 
     imp = call("impact", {"target": "pkg/netrc.py", "repo_path": str(repo)}).structured_content
     assert imp["impacted"][0]["file"] == "tests/test_netrc.py"
-    assert imp["impacted"][0]["why"][0] == "test named for this file"
+    assert "test named after pkg/netrc.py" in imp["impacted"][0]["why"]
 
 
 def test_repo_defaults_to_env_or_cwd(repo, monkeypatch):

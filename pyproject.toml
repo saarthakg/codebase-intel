@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0", "pyyaml>=6.0"]
+dev = ["pytest>=8.0.0", "pyyaml>=6.0", "numpy>=1.26"]  # numpy: training the model (eval/train_model.py)
 
 [project.scripts]
 codebase-intel = "codebase_intel.cli:main"

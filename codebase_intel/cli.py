@@ -10,7 +10,7 @@ import argparse
 import json
 import sys
 
-from codebase_intel.core.check import CheckResult, check_change
+from codebase_intel.core.check import DEFAULT_MIN_CONFIDENCE, CheckResult, check_change
 from codebase_intel.core.workspace import NotAGitRepo
 
 
@@ -37,6 +37,8 @@ def format_check(r: CheckResult) -> str:
             lines.append(f"  {s.confidence:.2f}  {s.file:<{width}}  {'; '.join(s.reasons)}")
     else:
         lines.append("Nothing else is likely to need changing.")
+    if r.also_consider:
+        lines.append("Less likely, worth a look: " + ", ".join(f"{s.file} ({s.confidence:.2f})" for s in r.also_consider))
 
     callers = [s for s in r.changed_symbols if s.callers_outside_change]
     if callers:
@@ -46,7 +48,9 @@ def format_check(r: CheckResult) -> str:
             more = len(s.callers_outside_change) - 8
             lines.append(f"  {s.symbol}: {shown}" + (f" (+{more} more)" if more > 0 else ""))
     if r.tests_to_run:
-        lines += ["", "Tests to run:"] + [f"  {t}" for t in r.tests_to_run]
+        lines += ["", "Tests to run:"] + [f"  {t}" for t in r.tests_to_run[:10]]
+        if len(r.tests_to_run) > 10:
+            lines.append(f"  (+{len(r.tests_to_run) - 10} more linked to this change; --json lists all)")
     if r.not_in_index:
         lines += ["", "Not analyzed (new, or not a source file): " + ", ".join(r.not_in_index)]
     return "\n".join(lines)
@@ -62,21 +66,21 @@ def cmd_check(args) -> int:
 
 
 def cmd_impact(args) -> int:
-    from codebase_intel.core.impact import analyze_impact
+    from codebase_intel.core.predict import predict, target_change
     from codebase_intel.core.workspace import ensure_index
     _, repo_id, state = ensure_index(args.path, _progress)
-    if args.target not in state.graph.G.nodes and not state.metadata_store.find_symbol(repo_id, args.target):
+    change = target_change(args.target, repo_id, state)
+    if not change:
         print(f"'{args.target}' isn't a file (path from the repo root) or a symbol in this repo.", file=sys.stderr)
         return 2
-    resp = analyze_impact(args.target, repo_id, state.graph, state.metadata_store, cochange=state.cochange)
-    ranked = (resp.high_confidence + resp.medium_confidence + resp.related)[: args.limit]
+    ranked = predict(change, repo_id, state)[: args.limit]
     if args.json:
-        print(json.dumps([{"file": f.file_path, "confidence": round(f.confidence, 2), "reasons": f.reason.split("; ")}
-                          for f in ranked], indent=2))
+        print(json.dumps([{"file": p.file, "confidence": round(p.probability, 2), "reasons": p.reasons}
+                          for p in ranked], indent=2))
     else:
-        width = max((len(f.file_path) for f in ranked), default=0)
-        for f in ranked:
-            print(f"  {f.confidence:.2f}  {f.file_path:<{width}}  {f.reason}")
+        width = max((len(p.file) for p in ranked), default=0)
+        for p in ranked:
+            print(f"  {p.probability:.2f}  {p.file:<{width}}  {'; '.join(p.reasons)}")
     return 0
 
 
@@ -101,7 +105,8 @@ def main(argv=None) -> int:
     p.add_argument("path", nargs="?", default=".", help="Anywhere inside the repo (default: current directory)")
     p.add_argument("--base", help="Compare against the merge base with this ref (e.g. origin/main)")
     p.add_argument("--staged", action="store_true", help="Only staged changes (for a pre-commit hook)")
-    p.add_argument("--min-confidence", type=float, default=0.4, help="Hide suggestions below this (default 0.4)")
+    p.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE,
+                   help=f"Probability at which a file is reported as likely missing (default {DEFAULT_MIN_CONFIDENCE})")
     p.add_argument("--limit", type=int, default=15, help="At most this many suggestions (default 15)")
     p.add_argument("--fail-above", type=float, metavar="CONFIDENCE",
                    help="Exit 1 if any suggestion reaches this confidence (for hooks and CI)")

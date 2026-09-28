@@ -88,36 +88,30 @@ def test_subdirectory_of_a_git_repo_uses_relative_paths(repo):
 
 def test_not_a_git_repo_gives_no_history(tmp_path):
     assert read_history(str(tmp_path)) == []
-    assert cochange_for_repo(str(tmp_path), keep={"a.py"}).commits_used == 0
+    everything, recent = cochange_for_repo(str(tmp_path), keep={"a.py"})
+    assert everything.commits_used == recent.commits_used == 0
 
 
 # ── Integration: ingest stores it, impact uses it ────────────────────────────
 
-def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
+def test_index_stores_cochange_and_predictions_use_it(repo, tmp_path, monkeypatch):
     from codebase_intel.core import paths
-    from codebase_intel.core.graph import DependencyGraph
-    from codebase_intel.core.impact import analyze_impact
     from codebase_intel.core.pipeline import run_ingestion
-    from codebase_intel.storage.metadata_store import MetadataStore
+    from codebase_intel.core.predict import predict
+    from codebase_intel.state import _loaded_repos, get_repo_state
 
     monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
+    _loaded_repos.clear()
     summary = run_ingestion(str(repo), "hist")
     assert summary["files_with_history"] == 3
+    state = get_repo_state("hist")
+    assert state.cochange.commits_used == 6 and state.recent.commits_used == 6
 
-    store = MetadataStore(str(paths.db_path("hist")))
-    cochange = store.load_cochange("hist")
-    graph = DependencyGraph()
-    graph.load(str(paths.graph_path("hist")))
-    resp = analyze_impact("src/core.py", "hist", graph, store, cochange=cochange)
-    hits = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
+    hits = {p.file: p for p in predict({"src/core.py": []}, "hist", state)}
     # No import links between these files; only history ties util.py to core.py.
-    # (tests/test_core.py is found by its name, at higher confidence.)
-    assert hits["src/util.py"].reason == "changed together in 3 of 6 commits"
-    assert hits["src/util.py"].confidence == pytest.approx(0.4 + 0.5 * 3 / (6 + 3))
-    assert hits["tests/test_core.py"].reason == "test named for this file; changed together in 4 of 6 commits"
-
-    without = analyze_impact("src/core.py", "hist", graph, store)
-    assert "src/util.py" not in {f.file_path for f in without.high_confidence + without.medium_confidence + without.related}
+    assert hits["src/util.py"].reasons[0] == "changed together with src/core.py in 3 of its 6 changes"
+    assert "test named after src/core.py" in hits["tests/test_core.py"].reasons
+    _loaded_repos.clear()
 
 
 def test_commits_record_path_at_the_time(repo):

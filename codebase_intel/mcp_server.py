@@ -26,7 +26,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
 from codebase_intel.core.check import check_change as run_check
-from codebase_intel.core.impact import analyze_impact
+from codebase_intel.core.predict import predict, target_change
 from codebase_intel.core.workspace import NotAGitRepo, ensure_index
 
 # Keep tool results small: they land in the calling agent's context window.
@@ -76,12 +76,13 @@ def check_change(repo_path: Optional[str] = None, base: Optional[str] = None, st
         "compared_to": r.base,
         "changed_files": r.changed_files,
         "likely_missing": [
-            {"file": s.file, "confidence": s.confidence, "why": s.reasons} for s in r.likely_missing
+            {"file": s.file, "probability": s.confidence, "why": s.reasons} for s in r.likely_missing
         ],
+        "also_consider": [{"file": s.file, "probability": s.confidence} for s in r.also_consider],
         "callers_of_changed_code": {
             s.symbol: s.callers_outside_change for s in r.changed_symbols if s.callers_outside_change
         },
-        "tests_to_run": r.tests_to_run,
+        "tests_to_run": r.tests_to_run[:MAX_FILES],
         "not_analyzed": r.not_in_index,
     }
 
@@ -95,20 +96,19 @@ def impact(target: str, repo_path: Optional[str] = None) -> dict[str, Any]:
         _, repo_id, state = ensure_index(_repo_path(repo_path))
     except NotAGitRepo as e:
         raise ToolInputError(str(e)) from None
-    if target not in state.graph.G.nodes and not state.metadata_store.find_symbol(repo_id, target):
+    change = target_change(target, repo_id, state)
+    if not change:
         raise ToolInputError(
             f"'{target}' isn't a file or symbol in this repo. File paths are relative to the repo root."
         )
-    resp = analyze_impact(target, repo_id, state.graph, state.metadata_store, cochange=state.cochange)
-    ranked = resp.high_confidence + resp.medium_confidence + resp.related
+    ranked = predict(change, repo_id, state)
     return {
         "target": target,
         "impacted": [
-            {"file": f.file_path, "confidence": round(f.confidence, 2), "why": f.reason.split("; ")}
-            for f in ranked[:MAX_FILES]
+            {"file": p.file, "probability": round(p.probability, 2), "why": p.reasons} for p in ranked[:MAX_FILES]
         ],
         "more": max(0, len(ranked) - MAX_FILES),
-        "tests_to_run": [t.file_path for t in resp.tests][:MAX_FILES],
+        "tests_to_run": [p.file for p in ranked if p.kind == "test"][:MAX_FILES],
     }
 
 

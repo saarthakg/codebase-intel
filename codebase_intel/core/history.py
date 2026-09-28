@@ -125,18 +125,19 @@ class CoChange:
             stats.add(commit, keep, max_files)
         return stats
 
-    def add(self, commit: Commit, keep: Optional[set[str]] = None, max_files: int = MAX_FILES_PER_COMMIT) -> None:
-        """Count one more commit."""
+    def add(self, commit: Commit, keep: Optional[set[str]] = None, max_files: int = MAX_FILES_PER_COMMIT,
+            sign: int = 1) -> None:
+        """Count one more commit (sign=-1: uncount one, for a sliding window)."""
         files = [f for f in commit.files if keep is None or f in keep]
         if not files or len(commit.files) > max_files:
             return
-        self.commits_used += 1
+        self.commits_used += sign
         for f in files:
-            self.file_commits[f] += 1
+            self.file_commits[f] += sign
         for a in files:
             for b in files:
                 if a != b:
-                    self.pairs[a][b] += 1
+                    self.pairs[a][b] += sign
 
     def related(self, file: str, min_support: int = MIN_SUPPORT, limit: int = 50) -> list[tuple[str, float, int]]:
         """Files that co-changed with `file`: (other, confidence, support) best-first.
@@ -176,7 +177,17 @@ class CoChange:
         return stats
 
 
-def cochange_for_repo(repo_path: str, keep: set[str], max_commits: int = 5000) -> CoChange:
-    """Co-change stats for the files in `keep` from the repo's most recent
-    `max_commits` commits. Empty if `repo_path` isn't inside a git repo."""
-    return CoChange.from_commits(read_history(repo_path, max_commits=max_commits), keep=keep)
+# Co-change is counted per merged PR (main-line history), not per commit: on
+# the replay eval, per-commit counting was much worse where PRs have many
+# small commits (Flask: missing file ranked first 11% vs 32% of the time).
+MAX_CHANGES = 5000
+RECENT_CHANGES = 200
+
+
+def cochange_for_repo(repo_path: str, keep: set[str], max_changes: int = MAX_CHANGES,
+                      recent: int = RECENT_CHANGES) -> tuple[CoChange, CoChange]:
+    """(all, recent) co-change stats for the files in `keep`, from the latest
+    `max_changes` main-line changes and the latest `recent` of them. Empty if
+    `repo_path` isn't inside a git repo."""
+    changes = read_history(repo_path, max_commits=max_changes, first_parent=True)  # newest first
+    return CoChange.from_commits(changes, keep=keep), CoChange.from_commits(changes[:recent], keep=keep)

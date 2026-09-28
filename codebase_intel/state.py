@@ -18,6 +18,7 @@ class RepoState:
     metadata_store: MetadataStore
     graph: DependencyGraph
     cochange: CoChange
+    recent: CoChange
 
 
 _loaded_repos: dict[str, RepoState] = {}
@@ -49,7 +50,8 @@ def get_repo_state(repo_id: str) -> RepoState:
     state = RepoState(
         metadata_store=metadata_store,
         graph=graph,
-        cochange=metadata_store.load_cochange(repo_id),
+        cochange=metadata_store.load_cochange(repo_id, "all"),
+        recent=metadata_store.load_cochange(repo_id, "recent"),
     )
     _loaded_repos[repo_id] = state
     return state

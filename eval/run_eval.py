@@ -18,7 +18,7 @@ Metrics
               (and line; decorators allowed)
   references  recall / precision of the files that use a symbol (defining file
               excluded both sides)
-  impact      direct_recall_any — true direct importers are all listed
+  impact      direct_recall_any — every true direct importer is a candidate
   graph       precision / recall of the stored import edges (.py files only)
 """
 import argparse
@@ -31,7 +31,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from codebase_intel.core.definitions import lookup_definition
-from codebase_intel.core.impact import analyze_impact
+from codebase_intel.core.features import gather
 from codebase_intel.core.pipeline import run_ingestion
 from codebase_intel.state import forget_repo, get_repo_state
 
@@ -85,9 +85,8 @@ def eval_references(state, repo_id: str, cases: list[dict], verbose: bool) -> di
 def eval_impact(state, repo_id: str, cases: list[dict], verbose: bool) -> dict:
     recall_any = []
     for case in cases:
-        resp = analyze_impact(case["target"], repo_id, state.graph, state.metadata_store,
-                              depth=IMPACT_DEPTH, cochange=state.cochange)
-        listed = {i.file_path for i in resp.high_confidence + resp.medium_confidence + resp.related}
+        listed = set(gather({case["target"]: []}, repo_id, state.graph, state.metadata_store, state.cochange,
+                            depth=IMPACT_DEPTH))
         want = set(case["direct_dependents"])
         recall_any.append(len(listed & want) / len(want) if want else 1.0)
         if verbose and want - listed:

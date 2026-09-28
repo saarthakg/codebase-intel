@@ -15,7 +15,7 @@ class MetadataStore:
     # Schema version, kept in SQLite's user_version. To change a table, bump it
     # and append a step to _MIGRATIONS (below the class): step i takes a DB from
     # version i to i + 1, so existing databases upgrade in place on open.
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, db_path: str):
         self.db_path = db_path
@@ -139,6 +139,37 @@ class MetadataStore:
         self._conn.commit()
         self._conn.execute("VACUUM")  # give the space back
 
+    def _v4_cochange_scopes(self) -> None:
+        """Version 4: co-change is kept for all history and for recent history
+        (`scope`), with the number of changes each covers. Stats are rebuilt
+        by the next index (the index version forces one)."""
+        self._conn.executescript("""
+            DROP TABLE IF EXISTS cochange_files;
+            DROP TABLE IF EXISTS cochange_pairs;
+            CREATE TABLE cochange_files (
+                repo_id   TEXT NOT NULL,
+                scope     TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                commits   INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, scope, file_path)
+            );
+            CREATE TABLE cochange_pairs (
+                repo_id TEXT NOT NULL,
+                scope   TEXT NOT NULL,
+                file_a  TEXT NOT NULL,
+                file_b  TEXT NOT NULL,
+                commits INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, scope, file_a, file_b)
+            );
+            CREATE TABLE IF NOT EXISTS cochange_scopes (
+                repo_id      TEXT NOT NULL,
+                scope        TEXT NOT NULL,
+                commits_used INTEGER NOT NULL,
+                PRIMARY KEY (repo_id, scope)
+            );
+        """)
+        self._conn.commit()
+
     def _migrate_legacy_symbols(self) -> None:
         """Upgrade a pre-qualified-name `symbols` table in place.
 
@@ -181,7 +212,7 @@ class MetadataStore:
     def clear_repo(self, repo_id: str, commit: bool = True) -> None:
         """Delete everything stored for a repo_id, before re-indexing it."""
         for table in ("files", "symbols", "edges", "symbol_refs", "method_refs", "class_bases",
-                      "cochange_files", "cochange_pairs"):
+                      "cochange_files", "cochange_pairs", "cochange_scopes"):
             self._conn.execute(f"DELETE FROM {table} WHERE repo_id = ?", (repo_id,))
         if commit:
             self._conn.commit()
@@ -347,27 +378,34 @@ class MetadataStore:
     def count_references(self, repo_id: str) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM symbol_refs WHERE repo_id = ?", (repo_id,)).fetchone()[0]
 
-    def save_cochange(self, repo_id: str, cochange: "CoChange") -> None:
+    def save_cochange(self, repo_id: str, cochange: "CoChange", scope: str = "all") -> None:
         """Store co-change stats without committing (part of the index transaction)."""
         files, pairs = cochange.to_rows()
         self._conn.executemany(
-            "INSERT OR REPLACE INTO cochange_files (repo_id, file_path, commits) VALUES (?, ?, ?)",
-            [(repo_id, f, n) for f, n in files],
+            "INSERT OR REPLACE INTO cochange_files (repo_id, scope, file_path, commits) VALUES (?, ?, ?, ?)",
+            [(repo_id, scope, f, n) for f, n in files],
         )
         self._conn.executemany(
-            "INSERT OR REPLACE INTO cochange_pairs (repo_id, file_a, file_b, commits) VALUES (?, ?, ?, ?)",
-            [(repo_id, a, b, n) for a, b, n in pairs],
+            "INSERT OR REPLACE INTO cochange_pairs (repo_id, scope, file_a, file_b, commits) VALUES (?, ?, ?, ?, ?)",
+            [(repo_id, scope, a, b, n) for a, b, n in pairs],
+        )
+        self._conn.execute(
+            "INSERT OR REPLACE INTO cochange_scopes (repo_id, scope, commits_used) VALUES (?, ?, ?)",
+            (repo_id, scope, cochange.commits_used),
         )
 
-    def load_cochange(self, repo_id: str) -> "CoChange":
+    def load_cochange(self, repo_id: str, scope: str = "all") -> "CoChange":
         from codebase_intel.core.history import CoChange
         files = self._conn.execute(
-            "SELECT file_path, commits FROM cochange_files WHERE repo_id = ?", (repo_id,)
+            "SELECT file_path, commits FROM cochange_files WHERE repo_id = ? AND scope = ?", (repo_id, scope)
         ).fetchall()
         pairs = self._conn.execute(
-            "SELECT file_a, file_b, commits FROM cochange_pairs WHERE repo_id = ?", (repo_id,)
+            "SELECT file_a, file_b, commits FROM cochange_pairs WHERE repo_id = ? AND scope = ?", (repo_id, scope)
         ).fetchall()
-        return CoChange.from_rows([tuple(r) for r in files], [tuple(r) for r in pairs])
+        used = self._conn.execute(
+            "SELECT commits_used FROM cochange_scopes WHERE repo_id = ? AND scope = ?", (repo_id, scope)
+        ).fetchone()
+        return CoChange.from_rows([tuple(r) for r in files], [tuple(r) for r in pairs], used[0] if used else 0)
 
     def close(self) -> None:
         self._conn.close()
@@ -377,4 +415,7 @@ def _like_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-_MIGRATIONS = [MetadataStore._v1_baseline, MetadataStore._v2_drop_embedding_cache, MetadataStore._v3_impact_only]
+_MIGRATIONS = [
+    MetadataStore._v1_baseline, MetadataStore._v2_drop_embedding_cache, MetadataStore._v3_impact_only,
+    MetadataStore._v4_cochange_scopes,
+]

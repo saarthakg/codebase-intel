@@ -179,4 +179,4 @@ def test_search_era_tables_are_dropped(tmp_path):
     store = MetadataStore(str(db))
     tables = {r[0] for r in store._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"chunks", "answer_cache", "embedding_cache", "chunks_fts"}.isdisjoint(tables)
-    assert "files" in tables and store.schema_version() == 3
+    assert "files" in tables and store.schema_version() == MetadataStore.SCHEMA_VERSION

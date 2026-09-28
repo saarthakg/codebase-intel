@@ -13,8 +13,16 @@ from typing import Callable, Optional
 from pydantic import BaseModel
 
 from codebase_intel.core.definitions import is_test_path
-from codebase_intel.core.diff_impact import analyze_symbol_changes, parse_unified_diff, symbols_touched
+from codebase_intel.core.diffs import parse_unified_diff, symbols_touched
+from codebase_intel.core.predict import predict
 from codebase_intel.core.workspace import NotAGitRepo, ensure_index, git
+
+# Show a file as likely missing at this probability. The model is calibrated:
+# on repos it wasn't trained on, about 1 in 3 files shown at >= 0.2 were
+# really missing, with ~0.6 false warnings per change that needed nothing more
+# (eval/results/model_loro.json).
+DEFAULT_MIN_CONFIDENCE = 0.2
+ALSO_CONSIDER = 0.1
 
 
 class ChangedSymbolReport(BaseModel):
@@ -25,7 +33,7 @@ class ChangedSymbolReport(BaseModel):
 
 class Suggestion(BaseModel):
     file: str
-    confidence: float
+    confidence: float                   # calibrated probability that the change needs this file
     reasons: list[str]                  # strongest evidence first
     because_of: list[str]               # changed files that led here
 
@@ -37,6 +45,7 @@ class CheckResult(BaseModel):
     changed_files: list[str]
     changed_symbols: list[ChangedSymbolReport]
     likely_missing: list[Suggestion]    # files not in the change that likely need to be
+    also_consider: list[Suggestion] = []  # less likely, still worth a look
     tests_to_run: list[str]
     not_in_index: list[str] = []        # new files, or files the index skips
 
@@ -55,7 +64,7 @@ def check_change(
     base: Optional[str] = None,
     staged: bool = False,
     depth: int = 3,
-    min_confidence: float = 0.4,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     limit: int = 15,
     progress: Optional[Callable[[str], None]] = None,
 ) -> CheckResult:
@@ -100,28 +109,36 @@ def check_change(
                            tests_to_run=[f for f in changed_files if is_test_path(f)],
                            not_in_index=not_in_index)
 
-    impact = analyze_symbol_changes(indexed, repo_id, graph, store, depth, state.cochange)
     in_change = set(changed_files)
-    ranked = [f for f in impact.high_confidence + impact.medium_confidence + impact.related
-              if f.file_path not in in_change]
-    missing = [
-        Suggestion(file=f.file_path, confidence=round(f.confidence, 2), reasons=f.reason.split("; "),
-                   because_of=f.triggered_by)
-        for f in ranked if f.confidence >= min_confidence
-    ][:limit]
+    predictions = [p for p in predict(indexed, repo_id, state, depth) if p.file not in in_change]
+
+    def suggestion(p) -> Suggestion:
+        return Suggestion(file=p.file, confidence=round(p.probability, 2), reasons=p.reasons,
+                          because_of=p.because_of)
+
+    missing = [suggestion(p) for p in predictions if p.probability >= min_confidence][:limit]
+    also = [suggestion(p) for p in predictions if min(min_confidence, ALSO_CONSIDER) <= p.probability < min_confidence][:5]
+
+    callers: dict[tuple[str, str], list[str]] = {(f, sym): [] for f, syms in indexed.items() for sym in syms}
+    for p in predictions:
+        for key in p.uses:
+            callers.setdefault(tuple(key), []).append(p.file)
+
+    # Tests: the ones changed, then every test with a link to the change
+    # (named after it, calling it, importing it, changing with it), most likely first.
     tests = [f for f in changed_files if is_test_path(f)]
-    tests += [f.file_path for f in ranked if is_test_path(f.file_path) and f.confidence >= min_confidence][:limit]
+    tests += [p.file for p in predictions if p.kind == "test" and (p.probability >= 0.05 or p.uses or p.reasons)]
     return CheckResult(
         repo=root,
         head=head,
         base=base_label,
         changed_files=changed_files,
         changed_symbols=[
-            ChangedSymbolReport(file=s.file_path, symbol=s.qualified_name,
-                                callers_outside_change=[u for u in s.used_in if u not in in_change])
-            for s in impact.changed_symbols
+            ChangedSymbolReport(file=f, symbol=sym, callers_outside_change=sorted(users))
+            for (f, sym), users in callers.items()
         ],
         likely_missing=missing,
+        also_consider=also,
         tests_to_run=list(dict.fromkeys(tests)),
         not_in_index=not_in_index,
     )

@@ -86,7 +86,7 @@ def test_check_uncommitted_change(repo):
     ]
     missing = {s.file: s for s in r.likely_missing}
     assert "docs/api.md" in missing and "tests/test_api.py" in missing
-    assert any("changed together in 5 of 5 commits" in why for why in missing["docs/api.md"].reasons)
+    assert missing["docs/api.md"].reasons[0] == "changed together with pkg/api.py in 5 of its 5 changes"
     assert missing["docs/api.md"].because_of == ["pkg/api.py"]
     assert "tests/test_api.py" in r.tests_to_run
     assert r.not_in_index == ["pkg/extra.py"]

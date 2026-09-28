@@ -1,7 +1,7 @@
-# Minimum scores for CI (eval/check_thresholds.py). Set a little below the
+# Bounds for CI (eval/check_thresholds.py). Set a little worse than the
 # values measured when each was last improved, so a real regression fails but
 # small differences between machines don't.
-# Raise a floor when a change genuinely improves a metric.
+# Tighten a bound when a change genuinely improves a metric.
 requests:                   # eval/run_eval.py (static analysis), psf/requests
   definition.line_acc: 1.0
   references.recall: 1.0
@@ -16,16 +16,18 @@ flask:                      # eval/run_eval.py --bench eval/flask_bench.yaml (ne
   impact.direct_recall_any: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
-change_requests:            # eval/run_change_eval.py: hidden file of a real change in the top k
-  dev.hit@5: 0.65                   # 0.677
-  dev.mrr: 0.41                     # 0.433
-  heldout.hit@5: 0.51               # 0.537
-  heldout.mrr: 0.37                 # 0.397
-change_flask:
-  dev.hit@5: 0.49                   # 0.519
-  dev.mrr: 0.32                     # 0.341
-  heldout.hit@5: 0.33               # 0.354
-  heldout.mrr: 0.20                 # 0.221
+replay_requests:            # eval/build_replay.py + score_replay.py --scorer shipped: hidden file of a real change
+  # The shipped model is trained on requests' own history (among others), so these are in-sample
+  # regression checks; eval/results/model_loro.json has the numbers on repos it never saw.
+  shipped.all.hit@5: 0.74           # 0.773
+  shipped.all.mrr: 0.55             # 0.578
+  shipped.all.precision@p0.2: 0.40  # 0.436
+  shipped.all.false_alarms@p0.2: {max: 0.7}   # 0.491 per change that needed nothing more
+replay_flask:
+  shipped.all.hit@5: 0.55           # 0.576
+  shipped.all.mrr: 0.42             # 0.446
+  shipped.all.precision@p0.2: 0.31  # 0.343
+  shipped.all.false_alarms@p0.2: {max: 0.6}   # 0.407
 usage_requests:             # eval/run_usage_eval.py vs runtime calls (eval/requests_calls.json)
   methods.recall: 0.92              # 0.947
   methods.precision_lower_bound: 0.73   # 0.759

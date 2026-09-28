@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from codebase_intel.core import paths
-from codebase_intel.core.pipeline import run_ingestion
+from codebase_intel.core.pipeline import INDEX_VERSION, run_ingestion
 from codebase_intel.state import RepoState, forget_repo, get_repo_state
 
 
@@ -51,13 +51,15 @@ def repo_id_for(root: str) -> str:
 
 
 def indexed_head(repo_id: str) -> Optional[str]:
+    """The commit the current index was built from, if it's usable by this version."""
     meta = paths.meta_path(repo_id)
     if not meta.exists():
         return None
     try:
-        return json.loads(meta.read_text()).get("head")
+        data = json.loads(meta.read_text())
     except (OSError, ValueError):
         return None
+    return data.get("head") if data.get("index_version") == INDEX_VERSION else None
 
 
 def _snapshot(root: str, rev: str, dest: str) -> None:

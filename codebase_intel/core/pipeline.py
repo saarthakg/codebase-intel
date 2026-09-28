@@ -23,6 +23,11 @@ from codebase_intel.storage.metadata_store import MetadataStore
 ProgressFn = Optional[Callable[[str], None]]
 
 
+# Bump when an index built by an older version must be rebuilt (new stats,
+# changed meaning); workspace.ensure_index re-indexes on a mismatch.
+INDEX_VERSION = 2
+
+
 class IngestError(ValueError):
     """Raised for user-fixable indexing problems (bad path, bad repo_id, etc.)."""
 
@@ -75,6 +80,7 @@ def run_ingestion(
         "files_with_history": history_files,
         "edges_in_graph": graph.edge_count,
         "ingested_at": datetime.now(timezone.utc).isoformat(),
+        "index_version": INDEX_VERSION,
         **(extra_meta or {}),
     }
     with open(paths.meta_path(repo_id), "w") as f:
@@ -159,10 +165,11 @@ def _index_files(
     metadata_store.prune_references(repo_id)
     _index_method_refs(repo_id, python_sources, metadata_store)
 
-    cochange = cochange_for_repo(history_path, keep=set(graph.G.nodes))
-    metadata_store.save_cochange(repo_id, cochange)
+    cochange, recent = cochange_for_repo(history_path, keep=set(graph.G.nodes))
+    metadata_store.save_cochange(repo_id, cochange, "all")
+    metadata_store.save_cochange(repo_id, recent, "recent")
     if cochange.commits_used:
-        report(f"Co-change history: {cochange.commits_used} commits")
+        report(f"Co-change history: {cochange.commits_used} changes")
     unreadable = len(file_paths) - indexed
     if unreadable:
         scan.skipped["binary_or_unreadable"] += unreadable

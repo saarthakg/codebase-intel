@@ -44,10 +44,12 @@ jobs:
         run: |
           python eval/run_eval.py --repo-id requests --ingest "$RUNNER_TEMP/requests-full" --out eval-out/requests.json
           python eval/run_eval.py --repo-id flask --bench eval/flask_bench.yaml --ingest "$RUNNER_TEMP/flask-full" --out eval-out/flask.json
-      - name: Missing-file eval on real changes
+      - name: Replay real changes and score the shipped model
         run: |
-          python eval/run_change_eval.py --git "$RUNNER_TEMP/requests-full" --repo-id requests --out eval-out/change_requests.json
-          python eval/run_change_eval.py --git "$RUNNER_TEMP/flask-full" --repo-id flask --out eval-out/change_flask.json
+          for r in requests flask; do
+            python eval/build_replay.py --git "$RUNNER_TEMP/$r-full" --repo-id $r --out eval-out/replay_$r.jsonl.gz
+            python eval/score_replay.py eval-out/replay_$r.jsonl.gz --scorer shipped --out eval-out/replay_$r.json
+          done
       - name: Symbol usages vs calls observed at runtime
         run: |
           python eval/run_usage_eval.py --repo-id requests --calls eval/requests_calls.json --out eval-out/usage_requests.json
@@ -55,7 +57,7 @@ jobs:
       - name: Check thresholds
         run: |
           python eval/check_thresholds.py requests=eval-out/requests.json flask=eval-out/flask.json \
-                                          change_requests=eval-out/change_requests.json change_flask=eval-out/change_flask.json \
+                                          replay_requests=eval-out/replay_requests.json replay_flask=eval-out/replay_flask.json \
                                           usage_requests=eval-out/usage_requests.json usage_flask=eval-out/usage_flask.json
       - name: Upload eval results
         if: always()

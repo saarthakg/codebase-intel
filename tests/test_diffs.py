@@ -1,4 +1,4 @@
-from codebase_intel.core.diff_impact import parse_unified_diff, symbols_touched
+from codebase_intel.core.diffs import parse_unified_diff, symbols_touched
 
 DIFF = """\
 diff --git a/src/pkg/adapters.py b/src/pkg/adapters.py
@@ -87,31 +87,6 @@ ADAPTER_REPO = {
 }
 
 
-def _listed(resp):
-    return {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
-
-
-def test_diff_impact_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
-    from codebase_intel.core.diff_impact import analyze_diff
-    state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
-    diff = (
-        "--- a/pkg/adapters.py\n+++ b/pkg/adapters.py\n"
-        "@@ -3 +3 @@\n-        return 1\n+        return 10\n"
-        "--- a/brand_new.py\n+++ b/brand_new.py\n@@ -0,0 +1 @@\n+x = 1\n"
-    )
-    resp = analyze_diff(diff, "dif", state.graph, state.metadata_store, cochange=state.cochange)
-    assert [(c.file_path, c.qualified_name, c.used_in) for c in resp.changed_symbols] == [
-        ("pkg/adapters.py", "Adapter.send", ["pkg/sender.py"])
-    ]
-    assert resp.high_confidence[0].file_path == "pkg/sender.py"
-    assert resp.high_confidence[0].reason == "uses changed Adapter.send; direct import"
-    ranked = list(_listed(resp))
-    assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # both import it; only one calls send
-    users = {f for f, item in _listed(resp).items() if item.reason.startswith("uses changed")}
-    assert "other.py" not in users  # its own class's send() doesn't count
-    assert resp.unindexed_files == ["brand_new.py"]
-
-
 def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     """Callers of Adapter.send: a file calling it via the base type counts
     (dispatch), a file calling a *different* class's send doesn't, and an
@@ -144,22 +119,3 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     # Protocol method: only code typed against the protocol, never untyped .read() calls
     reader_users = symbol_users("typed", "Reader.read", "pkg/proto.py", state.graph, state.metadata_store)
     assert reader_users == ["pkg/proto.py"]
-
-
-def test_file_symbol_and_batch_impact_end_to_end(tmp_path, monkeypatch):
-    from codebase_intel.core.impact import analyze_impact, analyze_impact_batch
-    state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
-    args = ("dif", state.graph, state.metadata_store)
-
-    by_file = _listed(analyze_impact("pkg/adapters.py", *args, cochange=state.cochange))
-    assert by_file["pkg/sender.py"].reason == "direct import"
-    assert by_file["pkg/closer.py"].reason == "direct import"
-    assert "pkg/adapters.py" not in by_file
-
-    by_symbol = _listed(analyze_impact("Adapter.send", *args, cochange=state.cochange))
-    ranked = list(by_symbol)
-    assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # only sender calls send
-    assert by_symbol["pkg/sender.py"].reason.startswith("references symbol")
-
-    batch = _listed(analyze_impact_batch(["pkg/sender.py", "pkg/adapters.py"], *args, cochange=state.cochange))
-    assert batch["pkg/closer.py"].triggered_by == ["pkg/adapters.py"]
