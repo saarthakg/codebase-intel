@@ -151,6 +151,18 @@ def pytest_ids(py: Path, cwd: Path, targets: list[str], timeout=600) -> dict[str
     return out
 
 
+def pytest_by_file(py: Path, cwd: Path, targets: list[str]) -> dict[str, str]:
+    """Like pytest_ids, one test file per run: a test that leaks state (a context left pushed, say)
+    can't fail the other files' tests, which would inflate an answer key with cascade failures."""
+    by_file: dict[str, list[str]] = {}
+    for t in targets:
+        by_file.setdefault(t.split("::")[0], []).append(t)
+    out: dict[str, str] = {}
+    for ids in by_file.values():
+        out.update(pytest_ids(py, cwd, ids))
+    return out
+
+
 def full_suite(work: Path) -> dict[str, str]:
     return pytest_ids(work / ".venv/bin/python", work, [], timeout=1200)
 
@@ -215,7 +227,7 @@ def chain_keys(source: Path, work: Path, base: str, steps: list[dict]) -> list[d
         reset(work)
         for rev, paths in layers:
             put(source, rev, work, paths)
-        return pytest_ids(py, work, [t for t in targets if (work / t.split("::")[0]).exists()])
+        return pytest_by_file(py, work, [t for t in targets if (work / t.split("::")[0]).exists()])
 
     ref: list[tuple[str, list[str]]] = []          # the reference tree after the previous step, as overlays on base
     keys: list[dict] = []
@@ -358,7 +370,7 @@ def grade_step(source: Path, work: Path, k: int, keys: list[dict], start_tree: s
         want = [n for n in key["f2p"] if n not in superseded]
         restore(work, end_tree)
         put(source, key["sha"], work, key["test_files"])
-        results = pytest_ids(py, work, want) if want else {}
+        results = pytest_by_file(py, work, want) if want else {}
         ok = sorted(n for n in want if results.get(n) == "passed")
         # "resolved" is judged on the behavioral tests; the API-dependent ones also need the maintainers'
         # (unprompted) names, so they're reported beside it
@@ -374,7 +386,7 @@ def grade_step(source: Path, work: Path, k: int, keys: list[dict], start_tree: s
     if step_tests:
         restore(work, start_tree)
         put(work, end_tree, work, step_tests)
-        at_start = pytest_ids(py, work, [p for p in step_tests if (work / p).exists()])
+        at_start = pytest_by_file(py, work, [p for p in step_tests if (work / p).exists()])
         known_bad = {n for n, o in before.items() if o != "passed"}
         vacuous["failed_at_start"] = sorted(n for n, o in at_start.items()
                                             if o in ("failed", "error") and n not in known_bad)[:20]
