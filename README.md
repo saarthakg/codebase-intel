@@ -20,7 +20,7 @@ chunked along function and class boundaries and embedded with its file and class
 On 25 held-out questions never used for tuning, the exact function that answers the question
 is in the top 5 results 96% of the time, up from 72% at the start. On Flask, a repo nothing
 was ever tuned on, it's 95%. For a pasted error message or other exact string, use keyword
-(BM25) mode: it finds the line 88–98% of the time, against 78–82% for semantic.
+(BM25) mode: it finds the line 88–98% of the time, against 67–82% for semantic.
 
 **Jump to a definition and every usage.** `Class.method` or bare names, with other matching
 definitions listed, source preferred over tests. Usages come from the parse tree, not text
@@ -547,6 +547,19 @@ On Flask (held-out, never used to pick the design): combining signals took `/imp
 0.33 / 0.57 / 0.45 to 0.43 / 0.55 / 0.57, and `/impact/diff` from 0.37 / 0.56 / 0.50 to
 0.44 / 0.59 / 0.58.
 
+**Checked once on a third repo, `encode/httpx`,** after the weights were fixed (co-change from
+commits up to 2021; recall@5 / @10 / MRR, old scoring → new):
+
+| httpx, never tuned on | 2022–2023 commits (142) | 2024+ commits (64) |
+|---|---|---|
+| `/impact` | 0.28 / 0.40 / 0.48 → **0.31 / 0.44 / 0.52** | **0.24 / 0.32** / 0.34 → 0.19 / 0.28 / **0.36** |
+| `/impact/diff` | 0.28 / 0.41 / 0.54 → **0.34 / 0.47 / 0.58** | **0.27 / 0.35** / 0.40 → 0.25 / 0.34 / **0.41** |
+
+It holds on 2022–2023 but not everywhere on 2024+, where history frozen at 2021 is two or more
+years stale and imports are relatively more useful. (In use, co-change comes from the latest
+commits.) Pooled over all 206 commits, the new scoring is ahead on every metric, by less
+than on requests and Flask.
+
 Recall@k is the share of the commit's other changed files in the top k. Co-change is the
 biggest single gain. The second is not trusting imports: when the strongest single signal
 decided and a direct import counted 0.95, every importer outranked every file that history
@@ -686,6 +699,7 @@ error message). Top-5 hit rate:
 |---|---|---|---|
 | requests, as written / rendered | 0.78 / 0.80 | 0.92 / 0.90 | **0.98 / 0.98** |
 | Flask, as written / rendered | 0.82 / 0.82 | **0.88 / 0.88** | **0.88 / 0.88** |
+| httpx (never used before this), as written / rendered | 0.72 / 0.67 | 0.92 / 0.90 | **0.97 / 0.95** |
 
 The keyword index is about 30% of a repo's database, which is the price of this.
 

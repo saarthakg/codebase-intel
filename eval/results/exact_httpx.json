@@ -1,0 +1,373 @@
+{
+  "n": 60,
+  "hit@k": {
+    "literal.semantic": 0.7166666666666667,
+    "literal.hybrid": 0.9166666666666666,
+    "literal.keyword": 0.9666666666666667,
+    "rendered.semantic": 0.6666666666666666,
+    "rendered.hybrid": 0.9,
+    "rendered.keyword": 0.95
+  },
+  "questions": [
+    {
+      "literal": "Invalid URL component '",
+      "rendered": "Invalid URL component '",
+      "file": "httpx/_urlparse.py",
+      "line": 286
+    },
+    {
+      "literal": "Verbose. Show request as well as response.",
+      "rendered": "Verbose. Show request as well as response.",
+      "file": "httpx/_main.py",
+      "line": 442
+    },
+    {
+      "literal": "Invalid non-printable ASCII character in URL ",
+      "rendered": "Invalid non-printable ASCII character in URL ",
+      "file": "httpx/_urlparse.py",
+      "line": 279
+    },
+    {
+      "literal": "* SSL established using {} / {}",
+      "rendered": "* SSL established using example / example",
+      "file": "httpx/_main.py",
+      "line": 230
+    },
+    {
+      "literal": "Cannot use an async handler in a sync Client",
+      "rendered": "Cannot use an async handler in a sync Client",
+      "file": "httpx/_transports/mock.py",
+      "line": 26
+    },
+    {
+      "literal": "Multipart file uploads require 'io.BytesIO', not 'io.StringIO'.",
+      "rendered": "Multipart file uploads require 'io.BytesIO', not 'io.StringIO'.",
+      "file": "httpx/_multipart.py",
+      "line": 160
+    },
+    {
+      "literal": "Invalid type for value. Expected primitive type, got {}: {}",
+      "rendered": "Invalid type for value. Expected primitive type, got example: example",
+      "file": "httpx/_multipart.py",
+      "line": 82
+    },
+    {
+      "literal": "Invalid URL in location header: ",
+      "rendered": "Invalid URL in location header: ",
+      "file": "httpx/_client.py",
+      "line": 527
+    },
+    {
+      "literal": "Header value must be str or bytes, not ",
+      "rendered": "Header value must be str or bytes, not ",
+      "file": "httpx/_models.py",
+      "line": 81
+    },
+    {
+      "literal": "Invalid type for value. Expected primitive type, got ",
+      "rendered": "Invalid type for value. Expected primitive type, got ",
+      "file": "httpx/_multipart.py",
+      "line": 82
+    },
+    {
+      "literal": "Invalid IPv4 address: ",
+      "rendered": "Invalid IPv4 address: ",
+      "file": "httpx/_urlparse.py",
+      "line": 361
+    },
+    {
+      "literal": "Request-URI Too Long",
+      "rendered": "Request-URI Too Long",
+      "file": "httpx/_status_codes.py",
+      "line": 130
+    },
+    {
+      "literal": "Attempted to call an async close on a sync stream.",
+      "rendered": "Attempted to call an async close on a sync stream.",
+      "file": "httpx/_models.py",
+      "line": 1071
+    },
+    {
+      "literal": "Multipart file uploads must be opened in binary mode, not text mode.",
+      "rendered": "Multipart file uploads must be opened in binary mode, not text mode.",
+      "file": "httpx/_multipart.py",
+      "line": 164
+    },
+    {
+      "literal": "-p, --params [cyan]<NAME VALUE> ...",
+      "rendered": "-p, --params [cyan]<NAME VALUE> ...",
+      "file": "httpx/_main.py",
+      "line": 47
+    },
+    {
+      "literal": "Gets proxy information from the environment",
+      "rendered": "Gets proxy information from the environment",
+      "file": "httpx/_utils.py",
+      "line": 31
+    },
+    {
+      "literal": "Unexpected qop value \"{}\" in digest auth",
+      "rendered": "Unexpected qop value \"example\" in digest auth",
+      "file": "httpx/_auth.py",
+      "line": 339
+    },
+    {
+      "literal": "-d, --data [cyan]<NAME VALUE> ...",
+      "rendered": "-d, --data [cyan]<NAME VALUE> ...",
+      "file": "httpx/_main.py",
+      "line": 54
+    },
+    {
+      "literal": "The 'handle_async_request' method must be implemented.",
+      "rendered": "The 'handle_async_request' method must be implemented.",
+      "file": "httpx/_transports/base.py",
+      "line": 82
+    },
+    {
+      "literal": "Cannot mix named and unnamed arguments.",
+      "rendered": "Cannot mix named and unnamed arguments.",
+      "file": "httpx/_urls.py",
+      "line": 427
+    },
+    {
+      "literal": "Network Authentication Required",
+      "rendered": "Network Authentication Required",
+      "file": "httpx/_status_codes.py",
+      "line": 157
+    },
+    {
+      "literal": "The '__aiter__' method must be implemented.",
+      "rendered": "The '__aiter__' method must be implemented.",
+      "file": "httpx/_types.py",
+      "line": 109
+    },
+    {
+      "literal": "<Cookie {}={} for {} />",
+      "rendered": "<Cookie example=example for example />",
+      "file": "httpx/_models.py",
+      "line": 1236
+    },
+    {
+      "literal": "Header value must be str or bytes, not {}",
+      "rendered": "Header value must be str or bytes, not example",
+      "file": "httpx/_models.py",
+      "line": 81
+    },
+    {
+      "literal": "URL.raw is deprecated.",
+      "rendered": "URL.raw is deprecated.",
+      "file": "httpx/_urls.py",
+      "line": 408
+    },
+    {
+      "literal": "--auth [cyan]<USER PASS>",
+      "rendered": "--auth [cyan]<USER PASS>",
+      "file": "httpx/_main.py",
+      "line": 69
+    },
+    {
+      "literal": "Invalid \"auth\" argument: {}",
+      "rendered": "Invalid \"auth\" argument: example",
+      "file": "httpx/_client.py",
+      "line": 455
+    },
+    {
+      "literal": "Invalid type for url.  Expected str or httpx.URL, got {}: {}",
+      "rendered": "Invalid type for url.  Expected str or httpx.URL, got example: example",
+      "file": "httpx/_urls.py",
+      "line": 122
+    },
+    {
+      "literal": "Relative URLs cannot have a path starting with ':'",
+      "rendered": "Relative URLs cannot have a path starting with ':'",
+      "file": "httpx/_urlparse.py",
+      "line": 444
+    },
+    {
+      "literal": "The 'handle_request' method must be implemented.",
+      "rendered": "The 'handle_request' method must be implemented.",
+      "file": "httpx/_transports/base.py",
+      "line": 58
+    },
+    {
+      "literal": "Unknown scheme for proxy URL {}",
+      "rendered": "Unknown scheme for proxy URL example",
+      "file": "httpx/_config.py",
+      "line": 214
+    },
+    {
+      "literal": "Invalid non-printable ASCII character in URL, ",
+      "rendered": "Invalid non-printable ASCII character in URL, ",
+      "file": "httpx/_urlparse.py",
+      "line": 227
+    },
+    {
+      "literal": "Internal Server Error",
+      "rendered": "Internal Server Error",
+      "file": "httpx/_status_codes.py",
+      "line": 147
+    },
+    {
+      "literal": "Attempted to call a sync iterator on an async stream.",
+      "rendered": "Attempted to call a sync iterator on an async stream.",
+      "file": "httpx/_models.py",
+      "line": 944
+    },
+    {
+      "literal": "Unsupported Media Type",
+      "rendered": "Unsupported Media Type",
+      "file": "httpx/_status_codes.py",
+      "line": 131
+    },
+    {
+      "literal": "Invalid non-printable ASCII character in URL, {} at position {}.",
+      "rendered": "Invalid non-printable ASCII character in URL, example at position example.",
+      "file": "httpx/_urlparse.py",
+      "line": 227
+    },
+    {
+      "literal": "{}(connect={}, read={}, write={}, pool={})",
+      "rendered": "example(connect=example, read=example, write=example, pool=example)",
+      "file": "httpx/_config.py",
+      "line": 154
+    },
+    {
+      "literal": "* Selected ALPN protocol: {}",
+      "rendered": "* Selected ALPN protocol: example",
+      "file": "httpx/_main.py",
+      "line": 231
+    },
+    {
+      "literal": " is an invalid keyword argument for URL()",
+      "rendered": " is an invalid keyword argument for URL()",
+      "file": "httpx/_urls.py",
+      "line": 97
+    },
+    {
+      "literal": "Zstandard data is incomplete",
+      "rendered": "Zstandard data is incomplete",
+      "file": "httpx/_decoders.py",
+      "line": 199
+    },
+    {
+      "literal": "Invalid IPv4 address: {}",
+      "rendered": "Invalid IPv4 address: example",
+      "file": "httpx/_urlparse.py",
+      "line": 361
+    },
+    {
+      "literal": "{} is an invalid keyword argument for URL()",
+      "rendered": "example is an invalid keyword argument for URL()",
+      "file": "httpx/_urls.py",
+      "line": 97
+    },
+    {
+      "literal": "Attempted to call a sync close on an async stream.",
+      "rendered": "Attempted to call a sync close on an async stream.",
+      "file": "httpx/_models.py",
+      "line": 967
+    },
+    {
+      "literal": "Request Header Fields Too Large",
+      "rendered": "Request Header Fields Too Large",
+      "file": "httpx/_status_codes.py",
+      "line": 143
+    },
+    {
+      "literal": "Invalid URL in location header: {}.",
+      "rendered": "Invalid URL in location header: example.",
+      "file": "httpx/_client.py",
+      "line": 527
+    },
+    {
+      "literal": "Invalid URL component '{}'",
+      "rendered": "Invalid URL component 'example'",
+      "file": "httpx/_urlparse.py",
+      "line": 286
+    },
+    {
+      "literal": "Requested Range Not Satisfiable",
+      "rendered": "Requested Range Not Satisfiable",
+      "file": "httpx/_status_codes.py",
+      "line": 132
+    },
+    {
+      "literal": "Proxy Authentication Required",
+      "rendered": "Proxy Authentication Required",
+      "file": "httpx/_status_codes.py",
+      "line": 123
+    },
+    {
+      "literal": " bytes of binary data>",
+      "rendered": " bytes of binary data>",
+      "file": "httpx/_main.py",
+      "line": 186
+    },
+    {
+      "literal": "The '__iter__' method must be implemented.",
+      "rendered": "The '__iter__' method must be implemented.",
+      "file": "httpx/_types.py",
+      "line": 95
+    },
+    {
+      "literal": "Attempted to send an async request with a sync Client instance.",
+      "rendered": "Attempted to send an async request with a sync Client instance.",
+      "file": "httpx/_client.py",
+      "line": 1010
+    },
+    {
+      "literal": "A next generation HTTP client.",
+      "rendered": "A next generation HTTP client.",
+      "file": "httpx/_main.py",
+      "line": 31
+    },
+    {
+      "literal": "-j, --json [cyan]TEXT",
+      "rendered": "-j, --json [cyan]TEXT",
+      "file": "httpx/_main.py",
+      "line": 60
+    },
+    {
+      "literal": "Multiple cookies exist with name={}",
+      "rendered": "Multiple cookies exist with name=example",
+      "file": "httpx/_models.py",
+      "line": 1160
+    },
+    {
+      "literal": "A next generation HTTP client, for Python 3.",
+      "rendered": "A next generation HTTP client, for Python 3.",
+      "file": "httpx/__version__.py",
+      "line": 2
+    },
+    {
+      "literal": "Invalid type for name. Expected str, got {}: {}",
+      "rendered": "Invalid type for name. Expected str, got example: example",
+      "file": "httpx/_multipart.py",
+      "line": 78
+    },
+    {
+      "literal": "* SSL established using ",
+      "rendered": "* SSL established using ",
+      "file": "httpx/_main.py",
+      "line": 230
+    },
+    {
+      "literal": "Request Entity Too Large",
+      "rendered": "Request Entity Too Large",
+      "file": "httpx/_status_codes.py",
+      "line": 129
+    },
+    {
+      "literal": "Unexpected qop value \"",
+      "rendered": "Unexpected qop value \"",
+      "file": "httpx/_auth.py",
+      "line": 339
+    },
+    {
+      "literal": "-h, --headers [cyan]<NAME VALUE> ...",
+      "rendered": "-h, --headers [cyan]<NAME VALUE> ...",
+      "file": "httpx/_main.py",
+      "line": 62
+    }
+  ]
+}
