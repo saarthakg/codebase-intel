@@ -42,7 +42,18 @@ def run_gate(root: Path, baseline: str, label: str) -> dict:
     decision = gate.check(str(root), session)
     return {"verdict": decision.verdict,
             "blocks": sorted({f.rule for f in decision.findings if f.severity == "block"}),
-            "resolves": sorted({f.rule for f in decision.findings if f.severity == "resolve"})}
+            "resolves": sorted({f.rule for f in decision.findings if f.severity == "resolve"}),
+            "findings": [{"rule": f.rule, "severity": f.severity, "location": f.location} for f in decision.findings]}
+
+
+TAMPER_RULES = {"test-disabled", "test-changed-to-pass", "test-removed", "assertions-removed"}
+
+
+def caught(row: dict, test: str) -> bool:
+    """A tamper rule fired on the tampered test itself (not just other regressions)."""
+    base = test.split("[")[0]
+    return any(f["rule"] in TAMPER_RULES and f["location"].split("[")[0] in (base, base.split("::")[0])
+               for f in row.get("findings", []))
 
 
 def find_test(source: str, name: str):
@@ -164,14 +175,17 @@ def main() -> int:
             (root / ".notyet.toml").unlink(missing_ok=True)
         report[root.name] = cases
     Path(args.out).write_text(json.dumps(report, indent=1))
-    print("\ntamper      " + "  ".join(f"{k:>8}" for k in TAMPERS))
+    print("\ncells: caught on the tampered test / blocked at all / cases")
+    print("tamper      " + "  ".join(f"{k:>8}" for k in TAMPERS))
     for name, cases in report.items():
         cells = []
         for kind in TAMPERS:
             rows = [c["tampers"].get(kind, {}) for c in cases]
             applicable = [r for r in rows if r.get("verdict") not in (None, "n/a")]
-            caught = sum(1 for r in applicable if r["verdict"] == "blocked")
-            cells.append(f"{caught}/{len(applicable)}")
+            hit = sum(1 for c in cases for k, r in c["tampers"].items()
+                      if k == kind and r.get("verdict") not in (None, "n/a") and caught(r, c["test"]))
+            blocked = sum(1 for r in applicable if r["verdict"] == "blocked")
+            cells.append(f"{hit}/{blocked}/{len(applicable)}")
         print(f"{name:10}  " + "  ".join(f"{c:>8}" for c in cells))
     return 0
 
