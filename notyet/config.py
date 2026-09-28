@@ -28,6 +28,7 @@ budget_seconds = 60
 # Optional: linters/type checkers diffed against the session-start tree.
 # Only diagnostics the session introduced are reported. Uncomment to enable.
 {static}
+
 [gate]
 # "report": never block; leave a receipt and a short summary.
 # "enforce": block the agent's stop on execution evidence (see docs/PLAN.md).

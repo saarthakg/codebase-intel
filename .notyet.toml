@@ -1,0 +1,19 @@
+# notyet: a completion gate for AI coding agents. https://github.com/saarthakg/codebase-intel
+
+[test]
+# How to run this repo's tests. notyet adds its own flags (test selection,
+# junit output), so this must be a pytest invocation for now.
+command = ".venv/bin/python -m pytest"
+# Seconds the gate may spend running tests at each check.
+budget_seconds = 60
+
+[static]
+# Optional: linters/type checkers diffed against the session-start tree.
+# Only diagnostics the session introduced are reported. Uncomment to enable.
+ruff = ".venv/bin/ruff"
+pyright = ".venv/bin/pyright"
+
+[gate]
+# "report": never block; leave a receipt and a short summary.
+# "enforce": block the agent's stop on execution evidence (see docs/PLAN.md).
+mode = "report"
