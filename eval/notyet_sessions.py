@@ -41,7 +41,8 @@ TEST_DEPS = {"click": ["pytest"], "attrs": ["pytest>9", "hypothesis", "pympler",
 
 
 def sh(cmd: list[str], cwd=None, timeout=None, check=True) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=check)
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=check,
+                          stdin=subprocess.DEVNULL)
 
 
 def git(cwd, *args, check=True) -> str:
