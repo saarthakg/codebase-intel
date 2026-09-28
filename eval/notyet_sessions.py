@@ -17,6 +17,10 @@ them, both at C_k's own parent and on top of the reference tree after the
 previous step (so a test that only passes thanks to upstream work in between
 isn't counted). An earlier key test that the reference chain itself later
 breaks is "superseded" and isn't held against the agent.
+Key tests that import a name the commit adds are "API-dependent": passing them
+also needs the maintainers' names, which the prompt may not give. A step is
+"resolved" when its behavioral key tests pass; API-dependent ones are reported
+beside that.
 
 After each step the harness snapshots the agent's tree (a git tree object),
 grades it, and puts it back exactly before the next step:
@@ -62,7 +66,7 @@ NOTYET_PY = Path.home() / ".local/share/uv/tools/notyet/bin/python3"
 BENCH = Path.home() / "code/notyet-bench"
 AGENT_TIMEOUT = 25 * 60
 TEST_DEPS = {"click": ["pytest"], "attrs": ["pytest>9", "hypothesis", "pympler", "cloudpickle"],
-             "flask": ["pytest", "asgiref"], "httpx": ["-r", "requirements.txt"], "rich": ["pytest", "attrs"]}
+             "flask": ["pytest<9", "asgiref"], "httpx": ["-r", "requirements.txt"], "rich": ["pytest", "attrs"]}
 UPSTREAM = {"click": "pallets/click", "flask": "pallets/flask", "attrs": "python-attrs/attrs",
             "httpx": "encode/httpx", "rich": "Textualize/rich"}
 PRESSURE = {
@@ -356,7 +360,13 @@ def grade_step(source: Path, work: Path, k: int, keys: list[dict], start_tree: s
         put(source, key["sha"], work, key["test_files"])
         results = pytest_ids(py, work, want) if want else {}
         ok = sorted(n for n in want if results.get(n) == "passed")
-        key_results.append({"step": key["step"], "f2p": len(want), "passed": len(ok), "resolved": len(ok) == len(want),
+        # "resolved" is judged on the behavioral tests; the API-dependent ones also need the maintainers'
+        # (unprompted) names, so they're reported beside it
+        api = set(key["api_dependent"])
+        behavioral = [n for n in want if n not in api] or want
+        key_results.append({"step": key["step"], "f2p": len(want), "passed": len(ok),
+                            "behavioral": len(behavioral), "behavioral_passed": len(set(behavioral) & set(ok)),
+                            "resolved": set(behavioral) <= set(ok),
                             "failed": sorted(set(want) - set(ok))[:10], "superseded": sorted(superseded)})
     # the agent's test edits this step, run on the step-start code: does any of them fail there?
     step_tests = [p for p in step_files if is_test_module(p)]
@@ -408,8 +418,10 @@ def prepare(task: dict, source: Path, work: Path) -> Prepared:
     return Prepared(keys, before, texts)
 
 
-def usable(task: dict, keys: list[dict]) -> str | None:
+def usable(task: dict, keys: list[dict], before: dict[str, str]) -> str | None:
     """Why a task can't be graded (None if it can): every commit step needs a fail-to-pass key."""
+    if before and not passing(before):
+        return f"test environment broken: 0 of {len(before)} tests pass at the parent"
     empty = [k["step"] for k in keys if k["kind"] == "commit" and not k["f2p"]]
     return f"no fail-to-pass tests for step {', '.join(map(str, empty))}" if empty else None
 
@@ -424,7 +436,7 @@ def run_task(task: dict, source: Path, work: Path, prep: Prepared | None, mode: 
     prep = prep or prepare(task, source, work)
     row["answer_keys"] = prep.keys
     row["baseline_suite"] = {"passed": len(passing(prep.before)), "total": len(prep.before)}
-    reason = usable(task, prep.keys)
+    reason = usable(task, prep.keys, prep.before)
     if reason:
         row["skipped"] = reason
         return row, prep
@@ -485,7 +497,7 @@ def load_tasks(args) -> list[dict]:
     if args.tasks:
         tasks = json.loads(Path(args.tasks).read_text())
         only = {t for t in args.only.split(",") if t}
-        tasks = [t for t in tasks if not only or t["id"] in only]
+        tasks = [t for t in tasks if (t["id"] in only) if only else not t.get("dropped")]
         for t in tasks:
             t["source"] = str(Path(args.bench).expanduser() / t["repo"])
     else:

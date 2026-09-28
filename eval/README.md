@@ -36,6 +36,7 @@ reports those as failing before the session, which is the realistic case.
 | `notyet_replay.py OUT REPO…` | how often each rule fires on real merged commits (parent → commit) | no |
 | `notyet_tamper.py OUT REPO…` | 8 ways of hiding a failing test on a real seeded bug; caught on the tampered test? | no |
 | `notyet_sessions.py OUT CLONE --commits A,B --mode report\|enforce` | headless Claude Code on real commits, graded by the maintainers' held-back tests and a full-suite regression check | yes: `claude -p` on the subscription |
+| `sessions_aggregate.py RESULTS… [--labels L]` | the SESSIONS_NEXT.md tables from `notyet_sessions.py` rows | no |
 
 Run them from this repo with `PYTHONPATH=. .venv/bin/python eval/<script>.py …`.
 
@@ -45,6 +46,12 @@ About `notyet_sessions.py`:
 - It gives each task a fresh clone whose history ends at the parent commit.
 - It strips `PYTHONPATH` from everything it starts.
 - `--no-agent` grades the untouched parent. It's a free check of the harness.
+- Tasks come from `sessions_tasks.json` (`--tasks eval/sessions_tasks.json [--only ID,…]`). A task is a
+  chain of steps, either commits or pressure prompts, run in one session with `claude -p --resume`. After
+  each step, the tree is snapshotted, graded on every answer key so far, and restored before the next step.
+- `--repeat N` gives each repeat its own workdir and row. Rows already in OUT are skipped, so a batch can
+  resume in a later usage window.
+- `--dry-run` measures the answer keys along the chain and prints the prompts. It's free.
 - `claude -p` saves each session's transcript under `~/.claude/projects/`. That's useful for
   seeing how the agent reacted to a block.
 
