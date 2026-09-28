@@ -22,8 +22,8 @@ INCLUDE_EXTENSIONS = {
 }
 
 
-# Larger files are almost always generated, vendored or data, and would flood
-# the index with chunks. Override with INGEST_MAX_FILE_BYTES.
+# Larger files are almost always generated, vendored or data.
+# Override with INGEST_MAX_FILE_BYTES.
 DEFAULT_MAX_FILE_BYTES = 1_000_000
 
 # Dependency lockfiles: huge, generated, and never what a code question is about.

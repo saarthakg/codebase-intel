@@ -15,17 +15,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install dependencies (CPU-only torch)
-        # Without the CPU index, pip on Linux pulls ~2 GB of CUDA libraries.
-        run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
+      - run: pip install -r requirements.txt
       - name: Run tests
         run: pytest -q
 
   eval:
-    # Re-runs the benchmarks (psf/requests, and pallets/flask out-of-sample) and fails on regressions
-    # (floors in eval/thresholds.yaml). No LLM or API key involved.
+    # Replays real changes from psf/requests and pallets/flask and fails on
+    # regressions (floors in eval/thresholds.yaml). Everything runs locally.
     needs: tests
     runs-on: ubuntu-latest
     steps:
@@ -34,16 +30,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install dependencies (CPU-only torch)
-        run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
-      - name: Cache embedding model
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: hf-bge-small-en-v1.5
-      - name: Clone benchmark repos at their pinned commits (full history, for the history evals)
+      - run: pip install -r requirements.txt
+      - name: Clone benchmark repos at their pinned commits (full history)
         run: |
           for spec in "requests eval/requests_bench.yaml https://github.com/psf/requests" \
                       "flask eval/flask_bench.yaml https://github.com/pallets/flask"; do
@@ -52,22 +40,22 @@ jobs:
             git clone --quiet "$3" "$RUNNER_TEMP/$1-full"
             git -C "$RUNNER_TEMP/$1-full" checkout --quiet "$COMMIT"
           done
-      - name: requests - search, definition, references, impact, graph
-        run: python eval/run_eval.py --repo-id requests --ingest "$RUNNER_TEMP/requests-full" --out eval-out/requests.json
-      - name: requests - impact against real commits
-        run: python eval/run_history_eval.py --git "$RUNNER_TEMP/requests-full" --repo-id requests --out eval-out/requests_history.json
-      - name: flask (out-of-sample) - search, definition, references, impact, graph
-        run: python eval/run_eval.py --repo-id flask --bench eval/flask_bench.yaml --ingest "$RUNNER_TEMP/flask-full" --out eval-out/flask.json
-      - name: flask - impact against real commits
-        run: python eval/run_history_eval.py --git "$RUNNER_TEMP/flask-full" --repo-id flask --out eval-out/flask_history.json
-      - name: Symbol usages vs calls observed at runtime (both repos)
+      - name: Static analysis (definitions, references, import graph)
+        run: |
+          python eval/run_eval.py --repo-id requests --ingest "$RUNNER_TEMP/requests-full" --out eval-out/requests.json
+          python eval/run_eval.py --repo-id flask --bench eval/flask_bench.yaml --ingest "$RUNNER_TEMP/flask-full" --out eval-out/flask.json
+      - name: Missing-file eval on real changes
+        run: |
+          python eval/run_change_eval.py --git "$RUNNER_TEMP/requests-full" --repo-id requests --out eval-out/change_requests.json
+          python eval/run_change_eval.py --git "$RUNNER_TEMP/flask-full" --repo-id flask --out eval-out/change_flask.json
+      - name: Symbol usages vs calls observed at runtime
         run: |
           python eval/run_usage_eval.py --repo-id requests --calls eval/requests_calls.json --out eval-out/usage_requests.json
           python eval/run_usage_eval.py --repo-id flask --calls eval/flask_calls.json --out eval-out/usage_flask.json
       - name: Check thresholds
         run: |
-          python eval/check_thresholds.py requests=eval-out/requests.json requests_history=eval-out/requests_history.json \
-                                          flask=eval-out/flask.json flask_history=eval-out/flask_history.json \
+          python eval/check_thresholds.py requests=eval-out/requests.json flask=eval-out/flask.json \
+                                          change_requests=eval-out/change_requests.json change_flask=eval-out/change_flask.json \
                                           usage_requests=eval-out/usage_requests.json usage_flask=eval-out/usage_flask.json
       - name: Upload eval results
         if: always()

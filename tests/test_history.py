@@ -1,8 +1,6 @@
 import os
 import subprocess
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from app.core.history import CoChange, Commit, cochange_for_repo, read_history
@@ -95,36 +93,23 @@ def test_not_a_git_repo_gives_no_history(tmp_path):
 
 # ── Integration: ingest stores it, impact uses it ────────────────────────────
 
-def _fake_embed(texts, backend=None, **kw):
-    return np.random.rand(len(texts), 8).astype(np.float32)
-
-
 def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
     from app.core import paths
     from app.core.graph import DependencyGraph
     from app.core.impact import analyze_impact
     from app.core.pipeline import run_ingestion
-    from app.storage.faiss_store import FAISSStore
     from app.storage.metadata_store import MetadataStore
 
     monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
     monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
-    with patch("app.core.pipeline.embed_texts", side_effect=_fake_embed):
-        summary = run_ingestion(str(repo), "hist")
+    summary = run_ingestion(str(repo), "hist")
     assert summary["files_with_history"] == 3
 
     store = MetadataStore(str(paths.db_path("hist")))
     cochange = store.load_cochange("hist")
     graph = DependencyGraph()
     graph.load(str(paths.graph_path("hist")))
-    faiss = MagicMock(spec=FAISSStore)
-    faiss.search.return_value = []
-
-    class NoEmbed:
-        def index_embedding_settings(self, s): return None, None
-        def embed_query(self, *a, **k): return np.zeros((1, 8), dtype=np.float32)
-
-    resp = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed(), cochange=cochange)
+    resp = analyze_impact("src/core.py", "hist", graph, store, cochange=cochange)
     hits = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
     # No import links between these files; only history ties util.py to core.py.
     # (tests/test_core.py is found by its name, at higher confidence.)
@@ -132,7 +117,7 @@ def test_ingest_stores_cochange_and_impact_uses_it(repo, tmp_path, monkeypatch):
     assert hits["src/util.py"].confidence == pytest.approx(0.4 + 0.5 * 3 / (6 + 3))
     assert hits["tests/test_core.py"].reason == "test named for this file; changed together in 4 of 6 commits"
 
-    without = analyze_impact("src/core.py", "hist", graph, faiss, store, NoEmbed())
+    without = analyze_impact("src/core.py", "hist", graph, store)
     assert "src/util.py" not in {f.file_path for f in without.high_confidence + without.medium_confidence + without.related}
 
 

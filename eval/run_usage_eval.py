@@ -20,11 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from app.core.usages import symbol_users
-from app.main import get_repo_state
+from app.state import get_repo_state
 
 
 def main() -> None:

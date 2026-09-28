@@ -1,43 +1,31 @@
 # Minimum scores for CI (eval/check_thresholds.py). Set a little below the
 # values measured when each was last improved, so a real regression fails but
-# float differences between machines (e.g. macOS vs Linux embeddings) don't.
+# small differences between machines don't.
 # Raise a floor when a change genuinely improves a metric.
-requests:                   # eval/run_eval.py, psf/requests
-  search.span_mrr: 0.78             # measured 0.804
-  search.span_hit@5: 0.92           # 0.952
-  search_holdout.span_mrr: 0.86     # 0.898
-  search_holdout.span_hit@5: 0.92   # 0.960
-  search_identifier.span_mrr: 0.91  # 0.946
+requests:                   # eval/run_eval.py (static analysis), psf/requests
   definition.line_acc: 1.0
   references.recall: 1.0
   references.precision: 1.0
   impact.direct_recall_any: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
-requests_history:           # eval/run_history_eval.py (file-level /impact)
-  dev.recall@5: 0.54                # 0.570
-  dev.recall@10: 0.66               # 0.691
-  dev.mrr: 0.66                     # 0.692
-  heldout.recall@5: 0.55            # 0.582
-  heldout.recall@10: 0.68           # 0.711
-  heldout.mrr: 0.61                 # 0.644
 flask:                      # eval/run_eval.py --bench eval/flask_bench.yaml (never tuned on)
-  search.span_mrr: 0.75             # 0.781
-  search.span_hit@5: 0.92           # 0.953
-  search_identifier.span_mrr: 0.95  # 1.000
   definition.line_acc: 1.0
   references.recall: 1.0
   references.precision: 1.0
   impact.direct_recall_any: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
-flask_history:
-  dev.recall@5: 0.43                # 0.458
-  dev.recall@10: 0.57               # 0.596
-  dev.mrr: 0.59                     # 0.615
-  heldout.recall@5: 0.40            # 0.426
-  heldout.recall@10: 0.52           # 0.553
-  heldout.mrr: 0.54                 # 0.565
+change_requests:            # eval/run_change_eval.py: hidden file of a real change in the top k
+  dev.hit@5: 0.65                   # 0.677
+  dev.mrr: 0.41                     # 0.433
+  heldout.hit@5: 0.51               # 0.537
+  heldout.mrr: 0.37                 # 0.397
+change_flask:
+  dev.hit@5: 0.49                   # 0.519
+  dev.mrr: 0.32                     # 0.341
+  heldout.hit@5: 0.33               # 0.354
+  heldout.mrr: 0.20                 # 0.221
 usage_requests:             # eval/run_usage_eval.py vs runtime calls (eval/requests_calls.json)
   methods.recall: 0.92              # 0.947
   methods.precision_lower_bound: 0.73   # 0.759

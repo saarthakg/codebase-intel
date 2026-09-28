@@ -26,10 +26,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-load_dotenv()
-
-import app.core.embeddings as embeddings_module
 from app.core.definitions import is_test_path
 import subprocess
 
@@ -37,7 +33,7 @@ from app.core.diff_impact import analyze_symbol_changes, parse_unified_diff, sym
 from app.core.history import CoChange, read_history
 from app.core.impact import analyze_impact
 from app.core.symbols import analyze_file
-from app.main import get_repo_state
+from app.state import get_repo_state
 
 KS = (5, 10)
 
@@ -125,18 +121,18 @@ def main() -> None:
             if args.diff_level:
                 symbols = changed_symbols(args.git, commit.sha, commit.paths_then.get(query, query))
                 response = analyze_symbol_changes(
-                    {query: symbols}, args.repo_id, state.graph, state.faiss_store,
-                    state.metadata_store, embeddings_module, depth=3, cochange=cochange,
+                    {query: symbols}, args.repo_id, state.graph,
+                    state.metadata_store, depth=3, cochange=cochange,
                 )
             else:
                 response = analyze_impact(
-                    query, args.repo_id, state.graph, state.faiss_store, state.metadata_store,
-                    embeddings_module, depth=3, cochange=cochange,
+                    query, args.repo_id, state.graph, state.metadata_store,
+                    depth=3, cochange=cochange,
                 )
             splits[split].append((query, truth, ranked_files(response)))
 
     results = {name: score(cases) for name, cases in splits.items() if cases}
-    label = ("graph+semantic" if args.no_cochange else "with co-change") + (", diff-level" if args.diff_level else "")
+    label = ("without co-change" if args.no_cochange else "with co-change") + (", diff-level" if args.diff_level else "")
     print(f"\nHistory eval ({label}); co-change from commits ≤ {args.cutoff}, "
           f"{cochange.commits_used if cochange else 0} commits used\n")
     for name, metrics in results.items():

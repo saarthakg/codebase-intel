@@ -1,22 +1,20 @@
-"""Loaded per-repo state (vector index, metadata, import graph, co-change),
-cached per process and shared by the API routes, the MCP server and the evals."""
+"""Loaded per-repo state (metadata, import graph, co-change), cached per
+process and shared by the CLI, the MCP server and the evals."""
 from dataclasses import dataclass
 
 from app.core import paths
 from app.core.graph import DependencyGraph
 from app.core.history import CoChange
 from app.core.validation import validate_repo_id
-from app.storage.faiss_store import FAISSStore, IndexFormatError
 from app.storage.metadata_store import MetadataStore
 
 
 class RepoNotIndexed(FileNotFoundError):
-    """No usable index for a repo_id: never ingested, or an old index format."""
+    """No index for a repo_id: it was never indexed."""
 
 
 @dataclass
 class RepoState:
-    faiss_store: FAISSStore
     metadata_store: MetadataStore
     graph: DependencyGraph
     cochange: CoChange
@@ -41,24 +39,14 @@ def get_repo_state(repo_id: str) -> RepoState:
     if repo_id in _loaded_repos:
         return _loaded_repos[repo_id]
 
-    index_path = paths.index_path(repo_id)
-    if not index_path.exists():
-        raise RepoNotIndexed(
-            f"No index found for repo '{repo_id}'. Run POST /ingest first."
-        )
-
-    faiss_store = FAISSStore(dim=384)  # dim/backend overwritten by load
-    try:
-        faiss_store.load(str(index_path))
-    except IndexFormatError as e:
-        raise RepoNotIndexed(str(e)) from e
+    if not paths.graph_path(repo_id).exists():
+        raise RepoNotIndexed(f"No index found for repo '{repo_id}'. Index it first.")
 
     metadata_store = MetadataStore(str(paths.db_path(repo_id)))
 
     graph = load_graph(repo_id, metadata_store)
 
     state = RepoState(
-        faiss_store=faiss_store,
         metadata_store=metadata_store,
         graph=graph,
         cochange=metadata_store.load_cochange(repo_id),

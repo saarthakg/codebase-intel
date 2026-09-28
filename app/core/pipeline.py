@@ -1,24 +1,12 @@
-"""The full ingest pipeline, shared by the HTTP route and the CLI script.
-
-Previously this ~70-line sequence (walk → chunk → extract symbols/imports →
-build graph → embed → save) was duplicated almost verbatim in
-app/api/routes_ingest.py and scripts/ingest_repo.py. Any fix (e.g. clearing
-stale rows before re-ingest, validating repo_id) had to be made twice and was
-easy to miss in one of the two places. This module is now the single
-implementation; both callers just format the result for their own interface.
-"""
-import hashlib
+"""Indexing: parse the repo, link imports, infer method receivers and mine
+git co-change history. Shared by the CLI, the MCP server and the evals."""
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-import numpy as np
-
 from app.core import paths
-from app.core.chunking import chunk_file, embedding_text
-from app.core.embeddings import embed_texts, get_embedding_dim, get_embedding_model_name
 from app.core.graph import (
     DependencyGraph,
     find_python_source_roots,
@@ -30,23 +18,19 @@ from app.core.history import cochange_for_repo
 from app.core.ingest import RepoScan, detect_language, load_file, scan_repo
 from app.core.symbols import analyze_file, python_parser
 from app.core.validation import validate_repo_id
-from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
 
 ProgressFn = Optional[Callable[[str], None]]
 
 
 class IngestError(ValueError):
-    """Raised for user-fixable ingest problems (bad path, bad repo_id, etc.)."""
+    """Raised for user-fixable indexing problems (bad path, bad repo_id, etc.)."""
 
 
 def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> dict:
-    """Ingest `repo_path` under `repo_id`. Returns a dict of summary counts.
+    """Index `repo_path` under `repo_id`. Returns a dict of summary counts.
 
-    Safe to call repeatedly with the same repo_id — each run fully replaces
-    the previous one (stale chunks/symbols/edges from an earlier ingest of
-    this repo_id are cleared first, and the FAISS index/graph are rebuilt
-    from scratch rather than appended to).
+    Each run fully replaces the previous one for this repo_id.
     """
     validate_repo_id(repo_id)
     resolved_repo_path = str(Path(repo_path).resolve())
@@ -58,35 +42,11 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
             progress(msg)
 
     paths.ensure_data_dirs()
-
     metadata_store = MetadataStore(str(paths.db_path(repo_id)))
-    backend = os.environ.get("EMBEDDING_BACKEND", "local").lower()
-    model_name = get_embedding_model_name(backend)
     try:
-        graph, all_chunks, embed_inputs, scan = _index_files(
-            resolved_repo_path, repo_id, metadata_store, _report
-        )
-        embedded = reused = 0
-        if all_chunks:
-            hashes = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in embed_inputs]
-            embeddings, embedded, reused = _embed_reusing(
-                embed_inputs, hashes, backend, model_name, _previous_vectors(repo_id, backend, model_name), _report
-            )
-            faiss_store = FAISSStore(
-                dim=embeddings.shape[1], embedding_backend=backend, embedding_model=model_name
-            )
-            faiss_store.add(embeddings, [c.chunk_id for c in all_chunks], hashes)
-        else:
-            # Still write an (empty) index so a repo with zero indexable chunks
-            # doesn't leave get_repo_state() unable to find anything to load.
-            faiss_store = FAISSStore(
-                dim=get_embedding_dim(backend, model_name), embedding_backend=backend,
-                embedding_model=model_name,
-            )
-        # Commit the DB rebuild only once everything that can fail slowly
-        # (parsing, embedding) has succeeded: an error mid-ingest leaves the
-        # previous index intact instead of a half-cleared DB that no longer
-        # matches the FAISS index on disk.
+        graph, scan = _index_files(resolved_repo_path, repo_id, metadata_store, _report)
+        # Commit only once everything has succeeded: an error mid-index leaves
+        # the previous index intact instead of a half-cleared database.
         metadata_store.commit()
     except BaseException:
         metadata_store.rollback()
@@ -96,63 +56,24 @@ def run_ingestion(repo_path: str, repo_id: str, progress: ProgressFn = None) -> 
     history_files = len(metadata_store.load_cochange(repo_id).file_commits)
     metadata_store.close()
 
-    faiss_store.save(str(paths.index_path(repo_id)))
     graph.save(str(paths.graph_path(repo_id)))
-    paths.legacy_graph_path(repo_id).unlink(missing_ok=True)  # superseded by the JSON graph
-    edge_count = graph.edge_count
+    for stale in (paths.legacy_graph_path(repo_id), *paths.legacy_index_paths(repo_id)):
+        stale.unlink(missing_ok=True)  # formats this version no longer uses
 
     summary = {
         "repo_id": repo_id,
+        "repo_path": resolved_repo_path,
         "files_indexed": scan.indexed,
         "files_skipped": dict(scan.skipped),
-        "chunks_indexed": len(all_chunks),
         "symbols_extracted": total_symbols,
         "references_indexed": total_references,
-        "chunks_embedded": embedded,
-        "chunks_reused": reused,
         "files_with_history": history_files,
-        "edges_in_graph": edge_count,
-        "embedding_backend": backend,
-        "embedding_model": model_name,
+        "edges_in_graph": graph.edge_count,
         "ingested_at": datetime.now(timezone.utc).isoformat(),
     }
     with open(paths.meta_path(repo_id), "w") as f:
         json.dump(summary, f)
-
     return summary
-
-
-def _previous_vectors(repo_id: str, backend: str, model_name: str) -> dict[str, np.ndarray]:
-    """Vectors from this repo's current index by text hash, if it was built
-    with the same embedding model (otherwise nothing is reusable)."""
-    path = paths.index_path(repo_id)
-    if not path.exists():
-        return {}
-    previous = FAISSStore(dim=1)
-    try:
-        previous.load(str(path))
-    except (OSError, ValueError, KeyError):
-        return {}  # unreadable or old-format index: embed everything
-    if (previous.embedding_backend, previous.embedding_model) != (backend, model_name):
-        return {}
-    return previous.vectors_by_text_hash()
-
-
-def _embed_reusing(
-    texts: list[str], hashes: list[str], backend: str, model_name: str,
-    previous: dict[str, np.ndarray], report: Callable[[str], None],
-) -> tuple[np.ndarray, int, int]:
-    """Embed `texts`, reusing the previous index's vector for any identical
-    text. Returns (embeddings, n_embedded, n_reused)."""
-    vectors = {h: previous[h] for h in hashes if h in previous}
-    reused = sum(1 for h in hashes if h in vectors)
-    # First occurrence of each new text: identical chunks (repeated
-    # boilerplate) are embedded once.
-    to_embed = {h: t for h, t in zip(hashes, texts) if h not in vectors}
-    report(f"Embedding {len(to_embed)} chunks ({reused} of {len(texts)} unchanged, reused)")
-    if to_embed:
-        vectors.update(zip(to_embed.keys(), embed_texts(list(to_embed.values()), backend=backend, model=model_name)))
-    return np.vstack([vectors[h] for h in hashes]).astype(np.float32), len(to_embed), reused
 
 
 def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: MetadataStore) -> None:
@@ -175,9 +96,9 @@ def _index_method_refs(repo_id: str, sources: dict[str, str], metadata_store: Me
 
 def _index_files(
     repo_path: str, repo_id: str, metadata_store: MetadataStore, report: Callable[[str], None]
-) -> tuple[DependencyGraph, list, list[str], "RepoScan"]:
-    """Walk, parse, chunk and link every file. Writes to `metadata_store`
-    without committing; returns (graph, chunks, embedding inputs, scan)."""
+) -> tuple[DependencyGraph, "RepoScan"]:
+    """Walk, parse and link every file. Writes to `metadata_store` without
+    committing; returns (graph, scan)."""
     metadata_store.clear_repo(repo_id, commit=False)  # replace, don't accumulate, on re-ingest
     graph = DependencyGraph()
 
@@ -190,8 +111,6 @@ def _index_files(
     python_roots = find_python_source_roots(repo_path)
     ts_config = load_ts_config(repo_path)
 
-    all_chunks = []
-    embed_inputs: list[str] = []  # parallel to all_chunks: header + content
     scanned = {os.path.relpath(f, repo_path) for f in file_paths}
     indexed = 0
     python_sources: dict[str, str] = {}  # rel path → content, for typed method refs
@@ -209,13 +128,7 @@ def _index_files(
             python_sources[rel_path] = content
         metadata_store.add_symbols(repo_id, analysis.symbols)
         metadata_store.add_references(repo_id, rel_path, analysis.references)
-
-        chunks = chunk_file(
-            content, rel_path, language, symbols=analysis.symbols, imports=analysis.imports
-        )
-        metadata_store.add_chunks(chunks, repo_id)
-        all_chunks.extend(chunks)
-        embed_inputs.extend(embedding_text(c, analysis.symbols) for c in chunks)
+        metadata_store.add_files(repo_id, [(rel_path, language)])
 
         for imp in analysis.imports:
             targets: list[str] = []
@@ -247,4 +160,4 @@ def _index_files(
     if unreadable:
         scan.skipped["binary_or_unreadable"] += unreadable
     scan.indexed = indexed
-    return graph, all_chunks, embed_inputs, scan
+    return graph, scan

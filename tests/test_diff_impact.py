@@ -1,7 +1,3 @@
-from unittest.mock import MagicMock, patch
-
-import numpy as np
-
 from app.core.diff_impact import parse_unified_diff, symbols_touched
 
 DIFF = """\
@@ -59,100 +55,87 @@ def test_symbols_touched_reports_innermost():
     assert names([(55, 56)]) == []                               # module-level code
 
 
-def _ingest(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
+def _index(tmp_path, monkeypatch, files: dict[str, str], repo_id: str):
     from app.core import paths
-    from app.main import _loaded_repos, app
+    from app.core.pipeline import run_ingestion
+    from app.state import _loaded_repos, get_repo_state
 
     monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
     monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
     _loaded_repos.clear()
     repo = tmp_path / "repo"
-    (repo / "pkg").mkdir(parents=True)
-    (repo / "pkg" / "__init__.py").write_text("")
-    (repo / "pkg" / "adapters.py").write_text(
+    for rel, text in files.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(text)
+    run_ingestion(str(repo), repo_id)
+    return get_repo_state(repo_id)
+
+
+ADAPTER_REPO = {
+    "pkg/__init__.py": "",
+    "pkg/adapters.py": (
         "class Adapter:\n"            # 1
         "    def send(self):\n"       # 2
         "        return 1\n"          # 3
         "\n"                          # 4
         "    def close(self):\n"      # 5
         "        return 2\n"          # 6
-    )
-    (repo / "pkg" / "sender.py").write_text("from pkg.adapters import Adapter\n\ndef go():\n    return Adapter().send()\n")
-    (repo / "pkg" / "closer.py").write_text("from pkg.adapters import Adapter\n\ndef stop():\n    return Adapter().close()\n")
+    ),
+    "pkg/sender.py": "from pkg.adapters import Adapter\n\ndef go():\n    return Adapter().send()\n",
+    "pkg/closer.py": "from pkg.adapters import Adapter\n\ndef stop():\n    return Adapter().close()\n",
     # Unrelated module with its own `send`: must not count as a user of Adapter.send
-    (repo / "other.py").write_text("class Mailer:\n    def send(self):\n        return self.send()\n")
-    fake = lambda texts, backend=None, **kw: np.random.rand(len(texts), 8).astype(np.float32)
-    monkeypatch.setattr("app.core.pipeline.embed_texts", fake)
-    client = TestClient(app)
-    assert client.post("/ingest", json={"repo_path": str(repo), "repo_id": "dif"}).status_code == 200
-    return client
+    "other.py": "class Mailer:\n    def send(self):\n        return self.send()\n",
+}
 
 
-def test_impact_diff_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
-    client = _ingest(tmp_path, monkeypatch)
+def _listed(resp):
+    return {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
+
+
+def test_diff_impact_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
+    from app.core.diff_impact import analyze_diff
+    state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
     diff = (
         "--- a/pkg/adapters.py\n+++ b/pkg/adapters.py\n"
         "@@ -3 +3 @@\n-        return 1\n+        return 10\n"
         "--- a/brand_new.py\n+++ b/brand_new.py\n@@ -0,0 +1 @@\n+x = 1\n"
     )
-    body = client.post("/impact/diff", json={"repo_id": "dif", "diff": diff}).json()
-    assert body["changed_symbols"] == [
-        {"file_path": "pkg/adapters.py", "qualified_name": "Adapter.send", "used_in": ["pkg/sender.py"]}
+    resp = analyze_diff(diff, "dif", state.graph, state.metadata_store, cochange=state.cochange)
+    assert [(c.file_path, c.qualified_name, c.used_in) for c in resp.changed_symbols] == [
+        ("pkg/adapters.py", "Adapter.send", ["pkg/sender.py"])
     ]
-    assert body["high_confidence"][0]["file_path"] == "pkg/sender.py"
-    assert body["high_confidence"][0]["reason"] == "uses changed Adapter.send; direct import"
-    ranked = [f["file_path"] for f in body["high_confidence"] + body["medium_confidence"] + body["related"]]
+    assert resp.high_confidence[0].file_path == "pkg/sender.py"
+    assert resp.high_confidence[0].reason == "uses changed Adapter.send; direct import"
+    ranked = list(_listed(resp))
     assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # both import it; only one calls send
-    users = {f["file_path"] for f in body["high_confidence"] + body["medium_confidence"] + body["related"]
-             if f["reason"].startswith("uses changed")}
+    users = {f for f, item in _listed(resp).items() if item.reason.startswith("uses changed")}
     assert "other.py" not in users  # its own class's send() doesn't count
-    assert body["unindexed_files"] == ["brand_new.py"]
-
-
-def test_impact_diff_rejects_empty_diff(tmp_path, monkeypatch):
-    client = _ingest(tmp_path, monkeypatch)
-    assert client.post("/impact/diff", json={"repo_id": "dif", "diff": "  "}).status_code == 400
+    assert resp.unindexed_files == ["brand_new.py"]
 
 
 def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     """Callers of Adapter.send: a file calling it via the base type counts
     (dispatch), a file calling a *different* class's send doesn't, and an
     untyped receiver in an importing file falls back to name matching."""
-    from fastapi.testclient import TestClient
-    from app.core import paths
     from app.core.usages import symbol_users
-    from app.main import _loaded_repos, app, get_repo_state
-
-    monkeypatch.setattr(paths, "DATA_INDEXES", tmp_path / "indexes")
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "metadata")
-    _loaded_repos.clear()
-    repo = tmp_path / "repo"
-    (repo / "pkg").mkdir(parents=True)
-    (repo / "pkg" / "__init__.py").write_text("")
-    (repo / "pkg" / "adapters.py").write_text(
-        "class Base:\n    def send(self, r): ...\n\n"
-        "class Adapter(Base):\n    def send(self, r): ...\n\n"
-        "def get_adapter() -> Base: ...\n"
-    )
-    (repo / "pkg" / "mail.py").write_text("class Mailer:\n    def send(self, m): ...\n")
-    (repo / "pkg" / "proto.py").write_text(
-        "from typing import Protocol\n\nclass Reader(Protocol):\n    def read(self): ...\n\n"
-        "def consume(r: Reader):\n    return r.read()\n")
-    (repo / "pkg" / "files.py").write_text(
-        "from pkg import proto\n\ndef load(fp):\n    return fp.read()\n")
-    (repo / "pkg" / "via_base.py").write_text(
-        "from pkg.adapters import get_adapter\n\ndef go():\n    get_adapter().send(1)\n")
-    (repo / "pkg" / "other.py").write_text(
-        "from pkg.adapters import Adapter\nfrom pkg.mail import Mailer\n\n"
-        "def go(m: Mailer):\n    m.send(1)\n")
-    (repo / "pkg" / "untyped.py").write_text(
-        "from pkg import adapters\n\ndef go(x):\n    x.send(1)\n")
-    fake = lambda texts, backend=None, **kw: np.random.rand(len(texts), 8).astype(np.float32)
-    monkeypatch.setattr("app.core.pipeline.embed_texts", fake)
-    assert TestClient(app).post("/ingest", json={"repo_path": str(repo), "repo_id": "typed"}).status_code == 200
-
-    state = get_repo_state("typed")
+    state = _index(tmp_path, monkeypatch, {
+        "pkg/__init__.py": "",
+        "pkg/adapters.py": (
+            "class Base:\n    def send(self, r): ...\n\n"
+            "class Adapter(Base):\n    def send(self, r): ...\n\n"
+            "def get_adapter() -> Base: ...\n"
+        ),
+        "pkg/mail.py": "class Mailer:\n    def send(self, m): ...\n",
+        "pkg/proto.py": (
+            "from typing import Protocol\n\nclass Reader(Protocol):\n    def read(self): ...\n\n"
+            "def consume(r: Reader):\n    return r.read()\n"),
+        "pkg/files.py": "from pkg import proto\n\ndef load(fp):\n    return fp.read()\n",
+        "pkg/via_base.py": "from pkg.adapters import get_adapter\n\ndef go():\n    get_adapter().send(1)\n",
+        "pkg/other.py": (
+            "from pkg.adapters import Adapter\nfrom pkg.mail import Mailer\n\n"
+            "def go(m: Mailer):\n    m.send(1)\n"),
+        "pkg/untyped.py": "from pkg import adapters\n\ndef go(x):\n    x.send(1)\n",
+    }, "typed")
     users = symbol_users("typed", "Adapter.send", "pkg/adapters.py", state.graph, state.metadata_store)
     assert "pkg/via_base.py" in users       # Base.send can dispatch to Adapter.send
     assert "pkg/untyped.py" in users        # unknown receiver, importer: name fallback
@@ -162,40 +145,22 @@ def test_method_users_follow_types_and_dispatch(tmp_path, monkeypatch):
     # Protocol method: only code typed against the protocol, never untyped .read() calls
     reader_users = symbol_users("typed", "Reader.read", "pkg/proto.py", state.graph, state.metadata_store)
     assert reader_users == ["pkg/proto.py"]
-    _loaded_repos.clear()
 
 
-def _listed(body):
-    return {f["file_path"]: f for f in body["high_confidence"] + body["medium_confidence"] + body["related"]}
+def test_file_symbol_and_batch_impact_end_to_end(tmp_path, monkeypatch):
+    from app.core.impact import analyze_impact, analyze_impact_batch
+    state = _index(tmp_path, monkeypatch, ADAPTER_REPO, "dif")
+    args = ("dif", state.graph, state.metadata_store)
 
-
-def test_impact_endpoints_over_http(tmp_path, monkeypatch):
-    client = _ingest(tmp_path, monkeypatch)
-
-    by_file = _listed(client.post("/impact", json={"repo_id": "dif", "target": "pkg/adapters.py"}).json())
-    assert by_file["pkg/sender.py"]["reason"] == "direct import"
-    assert by_file["pkg/closer.py"]["reason"] == "direct import"
+    by_file = _listed(analyze_impact("pkg/adapters.py", *args, cochange=state.cochange))
+    assert by_file["pkg/sender.py"].reason == "direct import"
+    assert by_file["pkg/closer.py"].reason == "direct import"
     assert "pkg/adapters.py" not in by_file
 
-    by_symbol = client.post("/impact", json={"repo_id": "dif", "target": "Adapter.send"}).json()
-    ranked = list(_listed(by_symbol))
+    by_symbol = _listed(analyze_impact("Adapter.send", *args, cochange=state.cochange))
+    ranked = list(by_symbol)
     assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # only sender calls send
-    assert _listed(by_symbol)["pkg/sender.py"]["reason"].startswith("references symbol")
+    assert by_symbol["pkg/sender.py"].reason.startswith("references symbol")
 
-    batch = client.post("/impact/batch", json={"repo_id": "dif", "targets": ["pkg/sender.py", "pkg/adapters.py"]})
-    assert "pkg/adapters.py" in _listed(batch.json())["pkg/closer.py"]["triggered_by"]
-    assert client.post("/impact/batch", json={"repo_id": "dif", "targets": []}).status_code == 400
-
-
-def test_unindexed_repo_is_404_everywhere(tmp_path, monkeypatch):
-    client = _ingest(tmp_path, monkeypatch)
-    for path, body in [
-        ("/impact", {"repo_id": "nope", "target": "a.py"}),
-        ("/impact/batch", {"repo_id": "nope", "targets": ["a.py"]}),
-        ("/impact/diff", {"repo_id": "nope", "diff": "x"}),
-        ("/search", {"repo_id": "nope", "query": "x"}),
-        ("/ask", {"repo_id": "nope", "question": "x"}),
-    ]:
-        r = client.post(path, json=body)
-        assert r.status_code == 404 and "No index found" in r.json()["detail"], path
-    assert client.get("/definition", params={"repo_id": "nope", "symbol": "x"}).status_code == 404
+    batch = _listed(analyze_impact_batch(["pkg/sender.py", "pkg/adapters.py"], *args, cochange=state.cochange))
+    assert batch["pkg/closer.py"].triggered_by == ["pkg/adapters.py"]

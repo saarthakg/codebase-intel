@@ -1,7 +1,7 @@
 """Shared machinery for building benchmark YAML files from a Python repo.
 
-A repo's builder script supplies only hand-written labels (search questions
-and which symbols/files to probe). Everything mechanical: exact line spans,
+A repo's builder script supplies only hand-written labels (which symbols
+and files to probe). Everything mechanical: exact line spans,
 the true import graph, which files reference a symbol, is derived here with
 Python's own `ast` module, which is deliberately independent of
 codebase-intel's tree-sitter/regex extraction so a benchmark can't inherit
@@ -12,9 +12,6 @@ import subprocess
 from pathlib import Path
 
 import yaml
-
-Label = tuple[str, list[tuple[str, str]]]  # (query, [(file, qualified symbol), ...])
-
 
 def symbol_spans(path: Path) -> dict[str, list[int]]:
     """Qualified name → [start_line, end_line] for every def/class in a file.
@@ -153,7 +150,6 @@ def build_bench(
     repo: str,
     builder: str,
     prefix: str,
-    search_sets: dict[str, list[Label]],
     definitions: list[tuple[str, str]],
     ref_symbols: list[str],
     impact_targets: list[str],
@@ -161,8 +157,7 @@ def build_bench(
 ) -> dict:
     """Assemble a benchmark dict.
 
-    `search_sets` maps a section name ("search", "search_holdout", ...) to
-    labeled questions; `definitions` are (symbol, file relative to `prefix`);
+    `definitions` are (symbol, file relative to `prefix`);
     `impact_targets` are files relative to `prefix`.
     """
     source = Path(source).resolve()
@@ -202,14 +197,6 @@ def build_bench(
             f"python {builder} --source <{repo.split('/')[-1]} checkout>"
         ),
     }
-    for name, labels in search_sets.items():
-        bench[name] = [
-            {
-                "query": q,
-                "expected": [{"file": f, "symbol": s, "lines": span(f, s)} for f, s in expected],
-            }
-            for q, expected in labels
-        ]
     bench["definition"] = [
         {"symbol": s, "file": prefix + f, "line": span(prefix + f, s)[0]} for s, f in definitions
     ]

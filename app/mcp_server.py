@@ -1,7 +1,5 @@
-"""MCP server: codebase-intel's index as tools for Claude Code, Cursor and other MCP clients.
-
-The client's own model does the reasoning, so there is no LLM call (and no
-API cost) here: tools return code, definitions, usages and impact rankings.
+"""MCP server: codebase-intel's change-impact analysis as tools for Claude Code,
+Cursor and other MCP clients.
 
 Run over stdio (what MCP clients launch):
   /path/to/codebase-intel/.venv/bin/python /path/to/codebase-intel/app/mcp_server.py
@@ -12,47 +10,36 @@ Register with Claude Code:
 import os
 import sys
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 if __package__ in (None, ""):
     # Launched as a script by an MCP client from any working directory.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-import app.core.embeddings as embeddings_module
 from app.core import paths
-from app.core.definitions import lookup_definition
 from app.core.diff_impact import analyze_diff
 from app.core.impact import analyze_impact
 from app.core.pipeline import IngestError, run_ingestion
-from app.core.search import search_chunks
-from app.main import _loaded_repos, get_repo_state
+from app.state import forget_repo, get_repo_state
 
 # Keep tool results small: they land in the calling agent's context window.
-MAX_SNIPPET_CHARS = 1500
 MAX_IMPACT_FILES = 25
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
 mcp = MCPServer(
     name="codebase-intel",
-    # Logs go to stderr; INFO would include every HTTP request made while
-    # loading the embedding model.
-    log_level="WARNING",
+    log_level="WARNING",  # logs go to stderr
     instructions=(
-        "Code intelligence over locally indexed repositories. Use search_code to find where "
-        "something is implemented (natural language or identifiers), find_definition to jump "
-        "to a symbol and list every file that uses it, impact to see which files and tests a "
-        "change to a file or symbol is likely to affect, and impact_of_diff for an actual "
-        "`git diff`. Results cite file paths and line ranges; read those files for full "
-        "context. If the repo isn't indexed yet, call ingest_repo first."
+        "Change-impact analysis over locally indexed repositories, from the import graph, "
+        "type-resolved symbol usages and git co-change history. Use impact_of_diff on a change "
+        "(e.g. `git diff HEAD`) to see which other files usually change with it, which tests to "
+        "run and who calls the changed functions; use impact for a single file or symbol. "
+        "If the repo isn't indexed yet, call ingest_repo first."
     ),
 )
 
@@ -108,67 +95,9 @@ def list_repos() -> dict[str, Any]:
         repos.append({
             "repo_id": rid,
             "files": meta.get("files_indexed"),
-            "chunks": meta.get("chunks_indexed"),
             "indexed_at": meta.get("ingested_at"),
         })
     return {"repos": repos}
-
-
-@mcp.tool(annotations=READ_ONLY)
-def search_code(
-    query: str,
-    repo_id: Optional[str] = None,
-    top_k: int = 6,
-    mode: Literal["semantic", "hybrid", "keyword"] = "semantic",
-) -> dict[str, Any]:
-    """Find the code that answers a question or matches identifiers.
-
-    Works for natural language ("where are redirects followed?") and for
-    identifiers ("get_netrc_auth", "HTTPAdapter.send"). Returns the best
-    matching code chunks with file paths and line ranges, best first.
-    Use mode="keyword" to match an exact string such as an error message.
-    """
-    rid, state = _state(repo_id)
-    top_k = max(1, min(top_k, 20))
-    results = search_chunks(query, rid, top_k, state.faiss_store, state.metadata_store, mode=mode)
-    out = []
-    for r in results:
-        chunk = state.metadata_store.get_chunk(r.chunk_id)
-        code = chunk.content if chunk else r.snippet
-        out.append({
-            "file": r.file_path,
-            "lines": f"{r.start_line}-{r.end_line}",
-            "code": code if len(code) <= MAX_SNIPPET_CHARS else code[:MAX_SNIPPET_CHARS] + "\n… (truncated)",
-        })
-    return {"repo_id": rid, "results": out}
-
-
-@mcp.tool(annotations=READ_ONLY)
-def find_definition(symbol: str, repo_id: Optional[str] = None) -> dict[str, Any]:
-    """Where a function/class/method is defined, and every file that uses it.
-
-    `symbol` may be bare ("send") or qualified ("HTTPAdapter.send"). For a
-    bare name matching several definitions, the best match is returned and
-    the rest are listed in other_definitions. Usages are matched by name.
-    """
-    rid, state = _state(repo_id)
-    found = lookup_definition(symbol, state.metadata_store, rid, state.graph)
-    if found is None:
-        raise ToolInputError(f"No definition of '{symbol}' in '{rid}'. Try search_code instead.")
-    lines_by_file: dict[str, list[int]] = {}
-    for loc in found.reference_locations:
-        lines_by_file.setdefault(loc.file_path, []).append(loc.line)
-    return {
-        "symbol": found.qualified_name,
-        "kind": found.kind,
-        "defined_in": found.defining_file,
-        "lines": f"{found.start_line}-{found.end_line}",
-        "used_in": [{"file": f, "lines": ls[:20]} for f, ls in sorted(lines_by_file.items())],
-        "other_definitions": [
-            {"symbol": d.qualified_name, "kind": d.kind, "file": d.file_path, "line": d.start_line}
-            for d in found.other_definitions[:10]
-        ],
-    }
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -185,11 +114,10 @@ def impact(target: str, repo_id: Optional[str] = None, depth: int = 3) -> dict[s
     if target not in state.graph.G.nodes and not state.metadata_store.find_symbol(rid, target):
         raise ToolInputError(
             f"'{target}' isn't a file or symbol in '{rid}'. File paths are relative to the repo "
-            f"root; use search_code to find the right name."
+            f"root."
         )
     resp = analyze_impact(
-        target, rid, state.graph, state.faiss_store, state.metadata_store, embeddings_module,
-        depth=depth, cochange=state.cochange,
+        target, rid, state.graph, state.metadata_store, depth=depth, cochange=state.cochange,
     )
     ranked = resp.high_confidence + resp.medium_confidence + resp.related
     return {
@@ -213,8 +141,7 @@ def impact_of_diff(diff: str, repo_id: Optional[str] = None, depth: int = 3) -> 
         raise ToolInputError("diff is empty.")
     rid, state = _state(repo_id)
     resp = analyze_diff(
-        diff, rid, state.graph, state.faiss_store, state.metadata_store, embeddings_module,
-        depth=depth, cochange=state.cochange,
+        diff, rid, state.graph, state.metadata_store, depth=depth, cochange=state.cochange,
     )
     ranked = resp.high_confidence + resp.medium_confidence + resp.related
     return {
@@ -242,10 +169,9 @@ def ingest_repo(repo_path: str, repo_id: str) -> dict[str, Any]:
         summary = run_ingestion(os.path.expanduser(repo_path), repo_id)
     except (IngestError, ValueError) as e:
         raise ToolInputError(str(e)) from None
-    _loaded_repos.pop(repo_id, None)  # drop any stale in-memory state for this repo
+    forget_repo(repo_id)  # drop any stale in-memory state for this repo
     return {k: summary[k] for k in (
-        "repo_id", "files_indexed", "chunks_indexed", "symbols_extracted", "edges_in_graph",
-        "files_skipped", "chunks_embedded", "chunks_reused",
+        "repo_id", "files_indexed", "symbols_extracted", "edges_in_graph", "files_skipped",
     )}
 
 

@@ -23,10 +23,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dotenv import load_dotenv
-load_dotenv()
-
-import app.core.embeddings as embeddings_module
 from app.core.history import CoChange, read_history
 from app.core.impact import analyze_impact_batch
 from app.state import get_repo_state
@@ -82,8 +78,8 @@ def main() -> None:
             for hidden in files:
                 query = [f for f in files if f != hidden]
                 resp = analyze_impact_batch(
-                    query, args.repo_id, state.graph, state.faiss_store, state.metadata_store,
-                    embeddings_module, depth=3, cochange=None if args.no_cochange else history,
+                    query, args.repo_id, state.graph, state.metadata_store,
+                    depth=3, cochange=None if args.no_cochange else history,
                 )
                 order = ranked(resp)
                 r = order.index(hidden) + 1 if hidden in order else None

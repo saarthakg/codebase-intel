@@ -3,56 +3,17 @@ import tempfile
 import pytest
 
 from app.storage.metadata_store import MetadataStore
-from app.models.schemas import ChunkMetadata
 from app.core.ingest import walk_repo, detect_language, load_file
 
 
 # ── MetadataStore tests ───────────────────────────────────────────────────────
 
-def make_chunk(**kwargs) -> ChunkMetadata:
-    defaults = dict(
-        chunk_id="test-chunk-1",
-        file_path="src/foo.py",
-        language="python",
-        start_line=1,
-        end_line=20,
-        symbols=["foo", "Bar"],
-        imports=["os", "sys"],
-        content="def foo(): pass",
-    )
-    defaults.update(kwargs)
-    return ChunkMetadata(**defaults)
-
-
 def test_metadata_store_creates_tables(tmp_path):
     store = MetadataStore(str(tmp_path / "test.db"))
     # If tables are missing, queries below would raise; passing means tables exist
-    assert store.get_chunk("nonexistent") is None
-    store.close()
-
-
-def test_upsert_and_get_chunk(tmp_path):
-    store = MetadataStore(str(tmp_path / "test.db"))
-    chunk = make_chunk()
-    store.upsert_chunk(chunk, repo_id="repo1")
-    retrieved = store.get_chunk("test-chunk-1")
-    assert retrieved is not None
-    assert retrieved.chunk_id == "test-chunk-1"
-    assert retrieved.file_path == "src/foo.py"
-    assert retrieved.symbols == ["foo", "Bar"]
-    assert retrieved.imports == ["os", "sys"]
-    store.close()
-
-
-def test_get_chunks_by_file(tmp_path):
-    store = MetadataStore(str(tmp_path / "test.db"))
-    c1 = make_chunk(chunk_id="c1", start_line=1, end_line=10)
-    c2 = make_chunk(chunk_id="c2", start_line=8, end_line=20)
-    store.upsert_chunk(c1, "repo1")
-    store.upsert_chunk(c2, "repo1")
-    chunks = store.get_chunks_by_file("repo1", "src/foo.py")
-    assert len(chunks) == 2
-    assert chunks[0].chunk_id == "c1"
+    assert store.indexed_files("repo1") == []
+    store.add_files("repo1", [("src/foo.py", "python")])
+    assert store.indexed_files("repo1") == ["src/foo.py"]
     store.close()
 
 

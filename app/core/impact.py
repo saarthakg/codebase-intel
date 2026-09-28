@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Optional
 from app.core.definitions import best_definition, is_test_path, tests_named_for
 from app.core.graph import DependencyGraph
 from app.models.schemas import BatchImpactedFile, ImpactBatchResponse, ImpactedFile, ImpactResponse
-from app.storage.faiss_store import FAISSStore
 from app.storage.metadata_store import MetadataStore
 
 if TYPE_CHECKING:
@@ -21,13 +20,9 @@ if TYPE_CHECKING:
 # same and only breaks ties.
 _GRAPH_CONFIDENCE = 0.40
 _SYMBOL_CONFIDENCE = 0.70
-_SEMANTIC_CONFIDENCE = 0.35
 # A test named after the target (adapters.py → tests/test_adapters.py) is the
 # file most likely to change with it.
 _NAMED_TEST_CONFIDENCE = 0.97
-# Semantic neighbours: read this many chunks, keep up to this many new files.
-_SEMANTIC_POOL = 20
-_SEMANTIC_FILES = 5
 # Co-change: a file that changed together with the target in a fraction p of
 # the target's commits gets confidence 0.4 + 0.5·p (capped at 0.9), and p also
 # breaks ties among files with equal confidence from other signals.
@@ -66,9 +61,7 @@ def analyze_impact(
     target: str,
     repo_id: str,
     graph: DependencyGraph,
-    faiss_store: FAISSStore,
     metadata_store: MetadataStore,
-    embeddings_module,
     depth: int = 3,
     cochange: Optional["CoChange"] = None,
 ) -> ImpactResponse:
@@ -137,40 +130,6 @@ def analyze_impact(
             _add(other, min(_COCHANGE_CAP, _COCHANGE_BASE + _COCHANGE_SCALE * p),
                  f"changed together in {n} of {total} commits", 0)
 
-    # ── Signal 3: Semantic similarity ─────────────────────────────────────────
-    # Query with the target's own code: the mean of its chunk vectors (the
-    # defining chunk for a symbol). Embedding the *text* of a file path, as
-    # before, says almost nothing about what the file does.
-    try:
-        query_emb = None
-        if root_file and root_file == target:
-            source_ids = [c.chunk_id for c in metadata_store.get_chunks_by_file(repo_id, root_file)]
-        elif root_file:
-            source_ids = metadata_store.chunks_defining(repo_id, [target])
-        else:
-            source_ids = []
-        vectors = faiss_store.vectors_for(source_ids) if source_ids else None
-        if vectors is not None and len(vectors):
-            query_emb = vectors.mean(axis=0, keepdims=True)
-        if query_emb is None:  # target not indexed: fall back to embedding its text
-            backend, model = embeddings_module.index_embedding_settings(faiss_store)
-            query_emb = embeddings_module.embed_query(target, backend=backend, model=model)
-        hits = faiss_store.search(query_emb, top_k=_SEMANTIC_POOL)
-        added = 0
-        for chunk_id, _score in hits:
-            chunk = metadata_store.get_chunk(chunk_id)
-            if chunk is None:
-                continue
-            fp = chunk.file_path
-            if fp in results or fp == root_file:
-                continue  # already covered by a stronger signal, or the target itself
-            _add(fp, _SEMANTIC_CONFIDENCE, "semantically related", 0)
-            added += 1
-            if added >= _SEMANTIC_FILES:
-                break
-    except Exception:
-        pass  # FAISS/embedding failure is non-fatal
-
     # ── Bucket and sort ───────────────────────────────────────────────────────
     high_confidence: list[ImpactedFile] = []
     medium_confidence: list[ImpactedFile] = []
@@ -206,9 +165,7 @@ def analyze_impact_batch(
     targets: list[str],
     repo_id: str,
     graph: DependencyGraph,
-    faiss_store: FAISSStore,
     metadata_store: MetadataStore,
-    embeddings_module,
     depth: int = 3,
     cochange: Optional["CoChange"] = None,
 ) -> ImpactBatchResponse:
@@ -225,7 +182,7 @@ def analyze_impact_batch(
 
     for target in targets:
         single = analyze_impact(
-            target, repo_id, graph, faiss_store, metadata_store, embeddings_module, depth=depth,
+            target, repo_id, graph, metadata_store, depth=depth,
             cochange=cochange,
         )
         for item in single.high_confidence + single.medium_confidence + single.related:

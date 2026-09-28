@@ -18,12 +18,10 @@ def ensure_data_dirs() -> None:
     DATA_METADATA.mkdir(parents=True, exist_ok=True)
 
 
-def index_path(repo_id: str) -> Path:
-    return DATA_INDEXES / f"{validate_repo_id(repo_id)}.index"
-
-
-def idmap_path(repo_id: str) -> Path:
-    return DATA_INDEXES / f"{validate_repo_id(repo_id)}.idmap.json"
+def legacy_index_paths(repo_id: str) -> list[Path]:
+    """Vector-index files written before search was removed."""
+    rid = validate_repo_id(repo_id)
+    return [DATA_INDEXES / f"{rid}.index", DATA_INDEXES / f"{rid}.idmap.json"]
 
 
 def db_path(repo_id: str) -> Path:
@@ -46,8 +44,7 @@ def meta_path(repo_id: str) -> Path:
 def repo_artifact_paths(repo_id: str) -> list[Path]:
     """All files on disk that belong to a given repo_id (for deletion)."""
     return [
-        index_path(repo_id),
-        idmap_path(repo_id),
+        *legacy_index_paths(repo_id),
         db_path(repo_id),
         graph_path(repo_id),
         legacy_graph_path(repo_id),
@@ -56,7 +53,7 @@ def repo_artifact_paths(repo_id: str) -> list[Path]:
 
 
 def known_repo_ids() -> list[str]:
-    """repo_ids that have a saved FAISS index (i.e. have been ingested)."""
-    if not DATA_INDEXES.exists():
+    """repo_ids that have been indexed (they have a saved import graph)."""
+    if not DATA_METADATA.exists():
         return []
-    return sorted(p.stem for p in DATA_INDEXES.glob("*.index"))
+    return sorted(p.name[: -len(".graph.json")] for p in DATA_METADATA.glob("*.graph.json"))

@@ -256,7 +256,7 @@ def test_legacy_index_graph_is_rebuilt_from_sqlite_not_unpickled(tmp_path, monke
     ignored (never unpickled) and the graph rebuilt from the edges table."""
     import pickle
     from app.core import paths
-    from app.main import load_graph
+    from app.state import load_graph
     from app.storage.metadata_store import MetadataStore
 
     monkeypatch.setattr(paths, "DATA_METADATA", tmp_path)

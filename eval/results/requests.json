@@ -16,7 +16,7 @@
   "graph": {
     "edge_recall": 1.0,
     "edge_precision": 1.0,
-    "edges_found": 191,
-    "edges_true": 191
+    "edges_found": 107,
+    "edges_true": 107
   }
 }

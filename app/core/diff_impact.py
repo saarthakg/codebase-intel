@@ -14,7 +14,6 @@ from app.models.schemas import ChangedSymbol, DiffImpactResponse
 if TYPE_CHECKING:
     from app.core.graph import DependencyGraph
     from app.core.history import CoChange
-    from app.storage.faiss_store import FAISSStore
     from app.storage.metadata_store import MetadataStore
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -98,9 +97,7 @@ def analyze_symbol_changes(
     changes: dict[str, list[str]],
     repo_id: str,
     graph: "DependencyGraph",
-    faiss_store: "FAISSStore",
     metadata_store: "MetadataStore",
-    embeddings_module,
     depth: int = 3,
     cochange: Optional["CoChange"] = None,
 ) -> DiffImpactResponse:
@@ -118,7 +115,7 @@ def analyze_symbol_changes(
 
     files = sorted(changes)
     base = analyze_impact_batch(
-        files, repo_id, graph, faiss_store, metadata_store, embeddings_module,
+        files, repo_id, graph, metadata_store,
         depth=depth, cochange=cochange,
     )
     merged: dict[str, BatchImpactedFile] = {
@@ -167,9 +164,7 @@ def analyze_diff(
     diff: str,
     repo_id: str,
     graph: "DependencyGraph",
-    faiss_store: "FAISSStore",
     metadata_store: "MetadataStore",
-    embeddings_module,
     depth: int = 3,
     cochange: Optional["CoChange"] = None,
 ) -> DiffImpactResponse:
@@ -192,7 +187,7 @@ def analyze_diff(
     if not changes:
         return DiffImpactResponse(targets=[], unindexed_files=unindexed)
     response = analyze_symbol_changes(
-        changes, repo_id, graph, faiss_store, metadata_store, embeddings_module, depth, cochange,
+        changes, repo_id, graph, metadata_store, depth, cochange,
     )
     response.unindexed_files = unindexed
     return response
