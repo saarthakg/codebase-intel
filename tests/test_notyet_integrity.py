@@ -1,6 +1,6 @@
 """The integrity engine: tests weakened instead of code fixed."""
 from notyet.engines import integrity
-from tests.test_notyet_execution import _git, _write, repo  # noqa: F401  (fixture)
+from tests.conftest import _write
 
 
 def check(repo):
