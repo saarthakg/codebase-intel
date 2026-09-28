@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from codebase_intel.core.history import CoChange, Commit, cochange_for_repo, read_history
+from notyet.history import CoChange, Commit, cochange_for_repo, read_history
 
 _ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t"}
@@ -74,13 +74,6 @@ def test_large_commits_are_ignored():
     assert "f1.py" not in cc.file_commits
 
 
-def test_rows_round_trip():
-    cc = CoChange.from_commits([Commit("y", "d", ["a.py", "b.py"])] * 3)
-    files, pairs = cc.to_rows()
-    again = CoChange.from_rows(files, pairs)
-    assert again.related("a.py") == cc.related("a.py")
-
-
 def test_subdirectory_of_a_git_repo_uses_relative_paths(repo):
     commits = read_history(str(repo / "src"))
     assert {f for c in commits for f in c.files} == {"core.py", "util.py"}
@@ -94,26 +87,6 @@ def test_not_a_git_repo_gives_no_history(tmp_path):
 
 # ── Integration: ingest stores it, impact uses it ────────────────────────────
 
-def test_index_stores_cochange_and_predictions_use_it(repo, tmp_path, monkeypatch):
-    from codebase_intel.core import paths
-    from codebase_intel.core.pipeline import run_ingestion
-    from codebase_intel.core.predict import predict
-    from codebase_intel.state import _loaded_repos, get_repo_state
-
-    monkeypatch.setattr(paths, "DATA_METADATA", tmp_path / "data")
-    _loaded_repos.clear()
-    summary = run_ingestion(str(repo), "hist")
-    assert summary["files_with_history"] == 3
-    state = get_repo_state("hist")
-    assert state.cochange.commits_used == 6 and state.recent.commits_used == 6
-
-    hits = {p.file: p for p in predict({"src/core.py": []}, "hist", state)}
-    # No import links between these files; only history ties util.py to core.py.
-    assert hits["src/util.py"].reasons[0] == "changed together with src/core.py in 3 of its 6 changes"
-    assert "test named after src/core.py" in hits["tests/test_core.py"].reasons
-    _loaded_repos.clear()
-
-
 def test_commits_record_path_at_the_time(repo):
     commits = read_history(str(repo))
     oldest = commits[-1]
@@ -124,7 +97,7 @@ def test_commits_record_path_at_the_time(repo):
 
 def test_sparse_history_is_not_high_confidence():
     """3-of-3 commits (a shallow clone) must not look like near-certain coupling."""
-    from codebase_intel.core.history import CONFIDENCE_PRIOR_COMMITS
+    from notyet.history import CONFIDENCE_PRIOR_COMMITS
     cc = CoChange.from_commits([Commit(str(i), "d", ["a.py", "b.py"]) for i in range(3)])
     [(other, p, n)] = cc.related("a.py")
     assert (other, n) == ("b.py", 3) and p == 3 / (3 + CONFIDENCE_PRIOR_COMMITS) == 0.5

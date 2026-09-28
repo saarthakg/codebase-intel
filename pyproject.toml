@@ -7,21 +7,14 @@ name = "notyet"
 version = "0.1.0"
 description = "A completion gate for AI coding agents: when the agent says it's done, check whether it is."
 readme = "README.md"
-requires-python = ">=3.11,<3.13"  # tomllib (3.11); tree-sitter-languages has no 3.13 wheels yet
-dependencies = [
-    "pydantic>=2.0.0",
-    "networkx>=3.3",
-    "tree-sitter==0.21.3",
-    "tree-sitter-languages>=1.10.2",
-    "mcp>=2.2,<3",
-]
+requires-python = ">=3.11"  # tomllib
+dependencies = []            # standard library only: it runs inside other projects' environments
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0", "pyyaml>=6.0", "numpy>=1.26"]  # numpy: training the model (eval/train_model.py)
+dev = ["pytest>=8.0.0", "ruff", "pyright"]  # ruff/pyright: the static engine's tests
 
 [project.scripts]
 notyet = "notyet.cli:main"
-codebase-intel = "codebase_intel.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["notyet*", "codebase_intel*"]
+include = ["notyet*"]

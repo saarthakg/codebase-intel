@@ -21,7 +21,7 @@ import time
 import tomllib
 from pathlib import PurePosixPath
 
-from codebase_intel.core.graph import find_python_source_roots
+from notyet.pyresolve import find_python_source_roots
 from notyet import pyimports, snapshot, testrun
 from notyet.findings import Context, EngineResult, Finding
 

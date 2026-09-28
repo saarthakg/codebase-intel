@@ -98,8 +98,8 @@ replacement for the type checker (it runs the repo's own).
 
 ## 4. MVP (about 4 weeks, Python, Claude Code)
 
-A new `notyet/` package in this repo. It reuses `codebase_intel` for the import graph, history and
-diff parsing where useful; no restructure first.
+A new `notyet/` package in this repo. The pieces of the old `codebase_intel` package worth keeping
+(Python import resolution, git co-change history) were ported into `notyet/`, and the rest removed.
 
 | Week | Build | Checks at the end |
 |---|---|---|
@@ -172,7 +172,7 @@ notyet/
     execution.py   selection, run, junit, baseline comparison, collection counts, linter diffs
     integrity.py   test-edit findings, baseline-test-on-new-code, undone work
     coverage.py    changed lines not executed by selected tests
-    history.py     advisory co-change (wraps codebase_intel predict)
+    history.py     advisory co-change (built on notyet/history.py)
   gate.py          findings → decision; fingerprints; loop guard
   receipt.py       receipt (markdown + JSON), short summary for the transcript
   hooks/claude.py  SessionStart / UserPromptSubmit / Stop / ConfigChange entry points; install

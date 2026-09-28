@@ -156,26 +156,6 @@ class CoChange:
         out.sort(key=lambda t: (-t[1], -t[2], t[0]))
         return out[:limit]
 
-    def to_rows(self, min_support: int = MIN_SUPPORT) -> tuple[list[tuple[str, int]], list[tuple[str, str, int]]]:
-        """(file_commit_rows, pair_rows) for storage; pairs below min_support are dropped."""
-        files = sorted(self.file_commits.items())
-        pairs = [
-            (a, b, n)
-            for a, others in sorted(self.pairs.items())
-            for b, n in sorted(others.items())
-            if n >= min_support
-        ]
-        return files, pairs
-
-    @classmethod
-    def from_rows(cls, file_rows, pair_rows, commits_used: int = 0) -> "CoChange":
-        stats = cls(commits_used=commits_used)
-        for f, n in file_rows:
-            stats.file_commits[f] = n
-        for a, b, n in pair_rows:
-            stats.pairs[a][b] = n
-        return stats
-
 
 # Co-change is counted per merged PR (main-line history), not per commit: on
 # the replay eval, per-commit counting was much worse where PRs have many

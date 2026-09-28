@@ -1,7 +1,7 @@
 """Which files import which, in the working tree: for choosing the tests that
 exercise a change.
 
-Imports are parsed with `ast` and resolved with codebase_intel's resolver
+Imports are parsed with `ast` and resolved with notyet.pyresolve
 (source roots, relative imports, submodule names). Results are cached in
 .git/notyet/cache/ per file content (git blob id); the cache is dropped when
 the set of Python files changes, since that changes how imports resolve. On
@@ -16,7 +16,7 @@ from collections import deque
 from pathlib import Path
 from typing import Iterable
 
-from codebase_intel.core.graph import find_python_source_roots, resolve_python_import
+from notyet.pyresolve import find_python_source_roots, resolve_python_import
 from notyet import snapshot, store
 
 
