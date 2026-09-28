@@ -7,7 +7,6 @@ and how to acknowledge.
 """
 import sys
 import time
-from pathlib import Path
 
 from notyet import store
 from notyet.findings import Context, EngineResult, Finding

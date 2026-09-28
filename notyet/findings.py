@@ -1,7 +1,6 @@
 """Findings, and the context engines work from."""
 import hashlib
 from dataclasses import dataclass, field
-from typing import Optional
 
 from notyet.config import Config
 from notyet.snapshot import FileDelta

@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from notyet import config, gate, snapshot, store
+from notyet import config, snapshot, store
 from notyet.engines import execution
 from notyet.findings import Context
 
