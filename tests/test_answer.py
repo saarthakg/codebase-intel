@@ -453,10 +453,10 @@ def test_naming_a_defined_symbol_cites_its_excerpt():
     assert symbol_citations("```python\nScaffold.route\n```", [a, b, c]) == []  # only inside example code
 
 
-def test_hedges_count_only_when_about_the_evidence():
+
+def test_model_hedges_alone_do_not_flag():
     from app.core.answer import _uncertainty
 
-    describes_code = "It returns True when the Location header is not present and the status is 308 [1]."
-    assert _uncertainty(describes_code, [1], [], []) is None
-    hedge = "The provided excerpts are insufficient to say where retries happen [1]."
-    assert "insufficient" in _uncertainty(hedge, [1], [], [])
+    hedge = "`codes` is imported from elsewhere (not shown in the provided excerpts) [1]."
+    assert _uncertainty(hedge, [1], [], []) is None
+    assert "cites none" in _uncertainty(hedge, [], [], [])

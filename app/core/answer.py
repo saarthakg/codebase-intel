@@ -378,14 +378,6 @@ def check_llm_config() -> tuple[str, str]:
 
 # [1], [1][2], [3, 10] — groups are common in model output
 _CITATION_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
-_UNCERTAINTY_PHRASES = (
-    "insufficient", "unclear", "cannot determine", "not enough",
-    "don't have enough", "no evidence", "not shown", "not present",
-)
-# A hedge counts only in a sentence about the evidence itself: "the header is
-# not present" describes code, "not present in the excerpts" is a hedge.
-_EVIDENCE_WORDS = ("excerpt", "context", "provided", "snippet", "code shown", "given code")
-_SENTENCE_RE = re.compile(r"[^.!?\n]+")
 _BACKTICK_RE = re.compile(r"`([^`\n]{1,80})`")
 _PATH_RE = re.compile(r"\b[\w./-]+\.(?:py|pyi|ts|tsx|js|jsx|mjs|cjs|md|json|toml|ya?ml|txt)\b")
 _NAME_RE = re.compile(r"[A-Za-z_][\w.]*[\w]")
@@ -523,13 +515,10 @@ def unverified_mentions(
 
 
 def _uncertainty(answer: str, cited: list[int], invalid: list[int], unknown: list[str]) -> Optional[str]:
+    # Only problems a reader can't see in the answer itself. The model's own
+    # hedges ("not shown in the excerpts") are already in the text; flagging
+    # them fired mostly on correct answers hedging about a side detail.
     notes = []
-    prose = _FENCE_RE.sub(" ", answer).lower()
-    if any(
-        any(p in sent for p in _UNCERTAINTY_PHRASES) and any(w in sent for w in _EVIDENCE_WORDS)
-        for sent in _SENTENCE_RE.findall(prose)
-    ):
-        notes.append("the model says the evidence may be insufficient")
     if not cited:
         notes.append("the answer cites none of the excerpts")
     if invalid:
