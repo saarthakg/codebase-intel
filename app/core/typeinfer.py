@@ -301,84 +301,109 @@ def attribute_refs(root, src: bytes, file_path: str, index: TypeIndex, method_na
     `__init__`) where `name` is a method some repo class defines, with the
     receiver's inferred type(s): one AttrRef per possible class, EXTERNAL, or
     UNKNOWN."""
-    refs: set[AttrRef] = set()
+    collector = _RefCollector(src, index, method_names)
+    collector.walk(root, _Scope(None, None, []))
+    return sorted(collector.refs, key=lambda r: (r.line, r.name, r.receiver))
 
-    def expr_type(node, scope: _Scope) -> Optional[set[str]]:
-        t = node.type
-        if t == "parenthesized_expression" and node.named_children:
-            return expr_type(node.named_children[0], scope)
-        if t == "identifier":
-            name = _text(node, src)
-            if name in ("self", "cls") and scope.cls:
-                return {scope.cls}
-            found, types = scope.lookup(name)
-            if found:
-                return types
+
+class _RefCollector:
+    """Walks one file's tree. Each scope binds names first (flow-insensitive),
+    then its nodes are visited: `_visit_<node type>` records references."""
+
+    def __init__(self, src: bytes, index: TypeIndex, method_names: set[str]):
+        self.src = src
+        self.index = index
+        self.method_names = method_names
+        self.refs: set[AttrRef] = set()
+
+    def text(self, node) -> str:
+        return _text(node, self.src)
+
+    # ── Types of expressions ──────────────────────────────────────────────────
+
+    def expr_type(self, node, scope: _Scope) -> Optional[set[str]]:
+        handler = getattr(self, f"_type_{node.type}", None)
+        return handler(node, scope) if handler else None
+
+    def _type_parenthesized_expression(self, node, scope: _Scope) -> Optional[set[str]]:
+        return self.expr_type(node.named_children[0], scope) if node.named_children else None
+
+    def _type_identifier(self, node, scope: _Scope) -> Optional[set[str]]:
+        name = self.text(node)
+        if name in ("self", "cls") and scope.cls:
+            return {scope.cls}
+        found, types = scope.lookup(name)
+        if found:
+            return types
+        if self.index.is_class(name):
+            return {name}
+        return None
+
+    def _type_call(self, node, scope: _Scope) -> Optional[set[str]]:
+        index = self.index
+        fn = node.child_by_field_name("function")
+        if fn is None:
+            return None
+        if fn.type == "identifier":
+            name = self.text(fn)
+            if name == "super":
+                return set(scope.bases) or None
             if index.is_class(name):
                 return {name}
+            anns = index.returns_by_name.get(name)
+            if anns and len(anns) == 1:
+                return index.resolve_annotation(anns[0])
             return None
-        if t == "call":
-            fn = node.child_by_field_name("function")
-            if fn is None:
-                return None
-            if fn.type == "identifier":
-                name = _text(fn, src)
-                if name == "super":
-                    return set(scope.bases) or None
-                if index.is_class(name):
-                    return {name}
-                anns = index.returns_by_name.get(name)
-                if anns and len(anns) == 1:
-                    return index.resolve_annotation(anns[0])
-                return None
-            if fn.type == "attribute":
-                recv = fn.child_by_field_name("object")
-                meth = _text(fn.child_by_field_name("attribute"), src)
-                recv_types = expr_type(recv, scope) if recv is not None else None
-                if not recv_types:
-                    return None
-                out: set[str] = set()
-                for rt in recv_types:
-                    if rt == EXTERNAL:
-                        return None
-                    if index.is_class(meth) and not index.defines(rt, meth):
-                        out.add(meth)  # module-like access: pkg.Session()
-                        continue
-                    r = index.method_return(rt, meth)
-                    if r is None:
-                        return None
-                    out |= r
-                return out or None
-            return None
-        if t == "attribute":
-            recv = node.child_by_field_name("object")
-            attr = _text(node.child_by_field_name("attribute"), src)
-            recv_types = expr_type(recv, scope) if recv is not None else None
+        if fn.type == "attribute":
+            recv = fn.child_by_field_name("object")
+            meth = self.text(fn.child_by_field_name("attribute"))
+            recv_types = self.expr_type(recv, scope) if recv is not None else None
             if not recv_types:
                 return None
-            if index.is_class(attr):
-                return {attr}  # module.Class
             out: set[str] = set()
             for rt in recv_types:
                 if rt == EXTERNAL:
                     return None
-                types = index.attr_types(rt, attr)
-                if types is None:
+                if index.is_class(meth) and not index.defines(rt, meth):
+                    out.add(meth)  # module-like access: pkg.Session()
+                    continue
+                r = index.method_return(rt, meth)
+                if r is None:
                     return None
-                out |= types
+                out |= r
             return out or None
         return None
 
-    def bind(target, types: Optional[set[str]], scope: _Scope) -> None:
+    def _type_attribute(self, node, scope: _Scope) -> Optional[set[str]]:
+        recv = node.child_by_field_name("object")
+        attr = self.text(node.child_by_field_name("attribute"))
+        recv_types = self.expr_type(recv, scope) if recv is not None else None
+        if not recv_types:
+            return None
+        if self.index.is_class(attr):
+            return {attr}  # module.Class
+        out: set[str] = set()
+        for rt in recv_types:
+            if rt == EXTERNAL:
+                return None
+            types = self.index.attr_types(rt, attr)
+            if types is None:
+                return None
+            out |= types
+        return out or None
+
+    # ── Binding names ─────────────────────────────────────────────────────────
+
+    def bind(self, target, types: Optional[set[str]], scope: _Scope) -> None:
         if target is not None and target.type == "identifier":
-            name = _text(target, src)
+            name = self.text(target)
             if name in scope.vars and scope.vars[name] != types:
                 prev = scope.vars[name]
                 scope.vars[name] = (prev | types) if (prev and types) else None  # conflicting → merge/unknown
             else:
                 scope.vars[name] = types
 
-    def declare_params(fn_node, scope: _Scope) -> None:
+    def declare_params(self, fn_node, scope: _Scope) -> None:
         params = fn_node.child_by_field_name("parameters")
         if params is None:
             return
@@ -388,100 +413,16 @@ def attribute_refs(root, src: bytes, file_path: str, index: TypeIndex, method_na
                     (c for c in p.children if c.type == "identifier"), None)
                 ann = p.child_by_field_name("type")
                 if name_node is not None:
-                    scope.vars[_text(name_node, src)] = (
-                        index.resolve_annotation(_text(ann, src), scope.cls) if ann is not None else None)
+                    scope.vars[self.text(name_node)] = (
+                        self.index.resolve_annotation(self.text(ann), scope.cls) if ann is not None else None)
             elif p.type in ("identifier", "default_parameter"):
                 name_node = p if p.type == "identifier" else p.child_by_field_name("name")
                 if name_node is not None:
-                    name = _text(name_node, src)
+                    name = self.text(name_node)
                     if name not in ("self", "cls"):
                         scope.vars[name] = None
 
-    def record(name_node_text: str, recv_types: Optional[set[str]], line: int) -> None:
-        if name_node_text not in method_names:
-            return
-        if recv_types is None:
-            refs.add(AttrRef(name_node_text, UNKNOWN, line))
-        else:
-            for rt in recv_types:
-                refs.add(AttrRef(name_node_text, rt, line))
-
-    def implicit(methods: tuple, expr, scope: _Scope, line: int, instances_only: bool = False) -> None:
-        """Protocol methods Python calls for us (with, for, calling an instance).
-        Only recorded when the operand's type is known; these never fall back
-        to name matching, since no call site spells the method out."""
-        if instances_only and expr.type == "identifier" and index.is_class(_text(expr, src)):
-            return  # that's a constructor call, handled above
-        types = expr_type(expr, scope)
-        if not types:
-            return
-        for t in types:
-            if t == EXTERNAL:
-                continue
-            for m in methods:
-                if m in method_names:
-                    refs.add(AttrRef(m, t, line))
-
-    def walk(node, scope: _Scope) -> None:
-        # Bind names first (flow-insensitive within a scope), then record refs.
-        prebind(node, scope)
-        stack = [node]
-        while stack:
-            n = stack.pop()
-            if n is not node and n.type in ("function_definition", "class_definition"):
-                enter(n, scope)
-                continue
-            if n.type == "attribute":
-                recv = n.child_by_field_name("object")
-                attr_node = n.child_by_field_name("attribute")
-                if recv is not None and attr_node is not None:
-                    record(_text(attr_node, src), expr_type(recv, scope), n.start_point[0] + 1)
-            elif n.type == "call":
-                fn = n.child_by_field_name("function")
-                line = n.start_point[0] + 1
-                if fn is not None and fn.type == "identifier" and index.is_class(_text(fn, src)):
-                    refs.add(AttrRef("__init__", _text(fn, src), line))
-                elif fn is not None and fn.type == "attribute" and index.is_class(
-                        _text(fn.child_by_field_name("attribute"), src)):  # pkg.Session(...)
-                    refs.add(AttrRef("__init__", _text(fn.child_by_field_name("attribute"), src), line))
-                elif fn is not None and fn.type == "identifier" and _text(fn, src) in _BUILTIN_PROTOCOLS:
-                    args = n.child_by_field_name("arguments")
-                    if args is not None and args.named_children:  # len(x) → x.__len__
-                        implicit((_BUILTIN_PROTOCOLS[_text(fn, src)],), args.named_children[0], scope, line)
-                elif fn is not None and fn.type in ("identifier", "attribute"):
-                    # calling an *instance* runs its __call__ (e.g. auth(r))
-                    implicit(("__call__",), fn, scope, line, instances_only=True)
-            elif n.type == "with_item":
-                value = n.child_by_field_name("value")
-                expr = value.named_children[0] if value is not None and value.type == "as_pattern" and value.named_children else value
-                if expr is not None:
-                    implicit(("__enter__", "__exit__"), expr, scope, n.start_point[0] + 1)
-            elif n.type in ("for_statement", "for_in_clause"):
-                right = n.child_by_field_name("right")
-                if right is not None:
-                    implicit(("__iter__",), right, scope, n.start_point[0] + 1)
-            elif n.type == "subscript":
-                value = n.child_by_field_name("value")
-                parent = n.parent
-                if value is not None:
-                    if parent is not None and parent.type == "assignment" and parent.child_by_field_name("left") == n:
-                        dunder = "__setitem__"
-                    elif parent is not None and parent.type == "delete_statement":
-                        dunder = "__delitem__"
-                    else:
-                        dunder = "__getitem__"
-                    implicit((dunder,), value, scope, n.start_point[0] + 1)
-            elif n.type == "comparison_operator":
-                ops = [c.type for c in n.children if not c.is_named]
-                operands = n.named_children
-                if len(operands) == 2:
-                    if "in" in ops or "not in" in ops:
-                        implicit(("__contains__",), operands[1], scope, n.start_point[0] + 1)
-                    elif "==" in ops or "!=" in ops:
-                        implicit(("__eq__", "__ne__"), operands[0], scope, n.start_point[0] + 1)
-            stack.extend(reversed(n.children))
-
-    def prebind(node, scope: _Scope) -> None:
+    def prebind(self, node, scope: _Scope) -> None:
         stack = [node]
         while stack:
             n = stack.pop()
@@ -490,9 +431,9 @@ def attribute_refs(root, src: bytes, file_path: str, index: TypeIndex, method_na
             if n.type == "assignment":
                 left, right, ann = (n.child_by_field_name(f) for f in ("left", "right", "type"))
                 if ann is not None:
-                    bind(left, index.resolve_annotation(_text(ann, src), scope.cls), scope)
+                    self.bind(left, self.index.resolve_annotation(self.text(ann), scope.cls), scope)
                 elif right is not None:
-                    bind(left, expr_type(right, scope), scope)
+                    self.bind(left, self.expr_type(right, scope), scope)
             elif n.type == "with_item":
                 value = n.child_by_field_name("value")
                 if value is not None and value.type == "as_pattern":
@@ -502,32 +443,123 @@ def attribute_refs(root, src: bytes, file_path: str, index: TypeIndex, method_na
                     if target is not None and target.type == "as_pattern_target" and target.named_children:
                         target = target.named_children[0]
                     if expr is not None:
-                        bind(target, expr_type(expr, scope), scope)
+                        self.bind(target, self.expr_type(expr, scope), scope)
             elif n.type in ("for_statement", "for_in_clause"):
                 left = n.child_by_field_name("left")
                 if left is not None and left.type == "identifier":
-                    scope.vars[_text(left, src)] = None
+                    scope.vars[self.text(left)] = None
             stack.extend(n.children)
 
-    def enter(defn, scope: _Scope) -> None:
+    # ── Recording references ──────────────────────────────────────────────────
+
+    def record(self, name: str, recv_types: Optional[set[str]], line: int) -> None:
+        if name not in self.method_names:
+            return
+        if recv_types is None:
+            self.refs.add(AttrRef(name, UNKNOWN, line))
+        else:
+            for rt in recv_types:
+                self.refs.add(AttrRef(name, rt, line))
+
+    def implicit(self, methods: tuple, expr, scope: _Scope, line: int, instances_only: bool = False) -> None:
+        """Protocol methods Python calls for us (with, for, calling an instance).
+        Only recorded when the operand's type is known; these never fall back
+        to name matching, since no call site spells the method out."""
+        if instances_only and expr.type == "identifier" and self.index.is_class(self.text(expr)):
+            return  # that's a constructor call, handled by _visit_call
+        types = self.expr_type(expr, scope)
+        if not types:
+            return
+        for t in types:
+            if t == EXTERNAL:
+                continue
+            for m in methods:
+                if m in self.method_names:
+                    self.refs.add(AttrRef(m, t, line))
+
+    def walk(self, node, scope: _Scope) -> None:
+        self.prebind(node, scope)
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n is not node and n.type in ("function_definition", "class_definition"):
+                self.enter(n, scope)
+                continue
+            visit = getattr(self, f"_visit_{n.type}", None)
+            if visit:
+                visit(n, scope, n.start_point[0] + 1)
+            stack.extend(reversed(n.children))
+
+    def enter(self, defn, scope: _Scope) -> None:
+        body = defn.child_by_field_name("body")
         if defn.type == "class_definition":
             name_node = defn.child_by_field_name("name")
-            cname = _text(name_node, src) if name_node is not None else None
-            inner = _Scope(scope, cname, index.bases(cname) if cname else [])
-            body = defn.child_by_field_name("body")
+            cname = self.text(name_node) if name_node is not None else None
             if body is not None:
-                walk(body, inner)
+                self.walk(body, _Scope(scope, cname, self.index.bases(cname) if cname else []))
         else:
             inner = _Scope(scope, scope.cls, scope.bases)
-            declare_params(defn, inner)
-            body = defn.child_by_field_name("body")
+            self.declare_params(defn, inner)
             if body is not None:
-                walk(body, inner)
+                self.walk(body, inner)
             # decorators, defaults and annotations belong to the enclosing scope
             for c in defn.children:
                 if c.type not in ("block", "identifier", "parameters"):
-                    walk(c, scope)
+                    self.walk(c, scope)
 
-    walk(root, _Scope(None, None, []))
-    return sorted(refs, key=lambda r: (r.line, r.name, r.receiver))
+    def _visit_attribute(self, n, scope: _Scope, line: int) -> None:
+        recv = n.child_by_field_name("object")
+        attr_node = n.child_by_field_name("attribute")
+        if recv is not None and attr_node is not None:
+            self.record(self.text(attr_node), self.expr_type(recv, scope), line)
 
+    def _visit_call(self, n, scope: _Scope, line: int) -> None:
+        fn = n.child_by_field_name("function")
+        if fn is None:
+            return
+        if fn.type == "identifier" and self.index.is_class(self.text(fn)):
+            self.refs.add(AttrRef("__init__", self.text(fn), line))
+        elif fn.type == "attribute" and self.index.is_class(self.text(fn.child_by_field_name("attribute"))):
+            self.refs.add(AttrRef("__init__", self.text(fn.child_by_field_name("attribute")), line))  # pkg.Session(...)
+        elif fn.type == "identifier" and self.text(fn) in _BUILTIN_PROTOCOLS:
+            args = n.child_by_field_name("arguments")
+            if args is not None and args.named_children:  # len(x) → x.__len__
+                self.implicit((_BUILTIN_PROTOCOLS[self.text(fn)],), args.named_children[0], scope, line)
+        elif fn.type in ("identifier", "attribute"):
+            # calling an *instance* runs its __call__ (e.g. auth(r))
+            self.implicit(("__call__",), fn, scope, line, instances_only=True)
+
+    def _visit_with_item(self, n, scope: _Scope, line: int) -> None:
+        value = n.child_by_field_name("value")
+        expr = value.named_children[0] if value is not None and value.type == "as_pattern" and value.named_children else value
+        if expr is not None:
+            self.implicit(("__enter__", "__exit__"), expr, scope, line)
+
+    def _visit_for_statement(self, n, scope: _Scope, line: int) -> None:
+        right = n.child_by_field_name("right")
+        if right is not None:
+            self.implicit(("__iter__",), right, scope, line)
+
+    _visit_for_in_clause = _visit_for_statement
+
+    def _visit_subscript(self, n, scope: _Scope, line: int) -> None:
+        value = n.child_by_field_name("value")
+        if value is None:
+            return
+        parent = n.parent
+        if parent is not None and parent.type == "assignment" and parent.child_by_field_name("left") == n:
+            dunder = "__setitem__"
+        elif parent is not None and parent.type == "delete_statement":
+            dunder = "__delitem__"
+        else:
+            dunder = "__getitem__"
+        self.implicit((dunder,), value, scope, line)
+
+    def _visit_comparison_operator(self, n, scope: _Scope, line: int) -> None:
+        ops = [c.type for c in n.children if not c.is_named]
+        operands = n.named_children
+        if len(operands) == 2:
+            if "in" in ops or "not in" in ops:
+                self.implicit(("__contains__",), operands[1], scope, line)
+            elif "==" in ops or "!=" in ops:
+                self.implicit(("__eq__", "__ne__"), operands[0], scope, line)
