@@ -7,6 +7,7 @@ touched; the only side effect is new objects in the object store, which git
 garbage-collects in time if nothing references them.
 """
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -93,6 +94,26 @@ def diff_trees(root: str, old: str, new: str) -> list[FileDelta]:
 
 def unified_diff(root: str, old: str, new: str, *paths: str, context: int = 0) -> str:
     return git(root, "diff", f"-U{context}", "-M", "--no-color", "--no-ext-diff", old, new, "--", *paths)
+
+
+def added_lines(root: str, old: str, new: str, deltas: list[FileDelta]) -> dict[str, set[int]]:
+    """Line numbers (in the current tree) each changed .py file gained."""
+    diff = unified_diff(root, old, new, *[d.path for d in deltas],
+                                 *[d.old_path for d in deltas if d.old_path])
+    out: dict[str, set[int]] = {}
+    path, line = None, 0
+    for text in diff.splitlines():
+        if text.startswith("+++ "):
+            path = text[6:] if text.startswith("+++ b/") else None
+        elif text.startswith("@@"):
+            m = re.match(r"@@ -\S+ \+(\d+)", text)
+            line = int(m.group(1)) if m else 0
+        elif text.startswith("+") and path:
+            out.setdefault(path, set()).add(line)
+            line += 1
+        elif text.startswith(" "):
+            line += 1
+    return out
 
 
 def show(root: str, tree: str, path: str) -> Optional[str]:

@@ -22,7 +22,7 @@ import tomllib
 from pathlib import PurePosixPath
 
 from notyet.pyresolve import find_python_source_roots
-from notyet import pyimports, snapshot, testrun
+from notyet import coverage, pyimports, snapshot, testrun
 from notyet.findings import Context, EngineResult, Finding
 
 DOC_SUFFIXES = (".md", ".rst", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
@@ -167,26 +167,45 @@ def run(ctx: Context) -> EngineResult:
     graph = pyimports.ImportGraph(ctx.root, ctx.current_tree)
     tests, notes = select_tests(ctx, graph)
     result.not_checked += notes
+    changed_src = [d.path for d in ctx.deltas if d.status != "D" and d.path.endswith(".py")
+                   and not is_test_module(d.path) and not in_test_dir(d.path)]
     if not tests:
         result.not_checked.append("tests: no tests exercise the changed files (none import them or are named for them)")
+        result.findings += _coverage_findings(ctx, changed_src, {})
         return result
 
-    # ── run the selection on the current tree ────────────────────────────────
+    # ── run the selection on the current tree, recording which changed lines run ─
     current = testrun.Run()
     skipped_files: list[str] = []
     crashed: list[tuple[list[str], str]] = []
-    for batch in _batches(tests):
-        remaining = cfg.budget_seconds - (time.monotonic() - started)
-        if remaining <= 1:
-            skipped_files += batch
-            continue
-        run_ = testrun.run_pytest(command, ctx.root, batch, timeout=remaining)
-        if run_.crashed:
-            crashed.append((batch, run_.crashed))
-            continue
-        if run_.timed_out:
-            skipped_files += [f for f in batch if not any(n.startswith(f + "::") for n in run_.results)]
-        current.results.update(run_.results)
+    with tempfile.TemporaryDirectory(prefix="notyet-lines-") as trace_dir:
+        env, extra, trace_out = None, None, None
+        if changed_src:
+            env, trace_out = coverage.setup(trace_dir, ctx.root, changed_src)
+            extra = ["-p", coverage.PLUGIN]
+        for batch in _batches(tests):
+            remaining = cfg.budget_seconds - (time.monotonic() - started)
+            if remaining <= 1:
+                skipped_files += batch
+                continue
+            run_ = testrun.run_pytest(command, ctx.root, batch, timeout=remaining, env=env, extra=extra)
+            if run_.crashed:
+                crashed.append((batch, run_.crashed))
+                continue
+            if run_.timed_out:
+                skipped_files += [f for f in batch if not any(n.startswith(f + "::") for n in run_.results)]
+            current.results.update(run_.results)
+        hits = coverage.read(trace_out, ctx.root) if trace_out else {}
+    coverage_check = None
+    if changed_src:
+        if hits is None:
+            result.not_checked.append("coverage: couldn't record which changed lines ran")
+        elif skipped_files or crashed:
+            result.not_checked.append("coverage: not all selected tests ran, so changed lines that didn't run "
+                                      "aren't reported")
+        else:
+            result.findings += _coverage_findings(ctx, changed_src, hits)
+            coverage_check = f"coverage: recorded which changed lines in {len(changed_src)} file(s) ran"
     for batch, why in crashed:
         _report_crash(ctx, command, batch, why, result)
     if crashed and not current.results:
@@ -317,7 +336,16 @@ def run(ctx: Context) -> EngineResult:
                          f"selected because: {', '.join(why)}")
     if baseline_ok and need_baseline:
         result.checks.append("failures and changed tests compared with an isolated checkout of the session-start tree")
+    if coverage_check:
+        result.checks.append(coverage_check)
     return result
+
+
+def _coverage_findings(ctx: Context, changed_src: list[str], hits: dict[str, set[int]]) -> list[Finding]:
+    deltas = [d for d in ctx.deltas if d.path in set(changed_src)]
+    added = snapshot.added_lines(ctx.root, ctx.baseline_tree, ctx.current_tree, deltas)
+    sources = {p: snapshot.show(ctx.root, ctx.current_tree, p) or "" for p in changed_src}
+    return coverage.findings(sources, added, hits)
 
 
 def _report_crash(ctx: Context, command: str, batch: list[str], why: str, result: EngineResult) -> None:

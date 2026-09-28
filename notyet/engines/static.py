@@ -50,7 +50,7 @@ def run(ctx: Context) -> EngineResult:
     py_changed = [d for d in ctx.deltas if d.status != "D" and d.path.endswith(".py")]
     if not py_changed:
         return result
-    added_lines = _added_lines(ctx, py_changed)
+    added_lines = snapshot.added_lines(ctx.root, ctx.baseline_tree, ctx.current_tree, py_changed)
     result.findings += _suppressions(ctx, py_changed, added_lines)
 
     tools = [t for t in ("ruff", "pyright") if getattr(ctx.config, t)]
@@ -206,26 +206,6 @@ def _use_baseline_configs(ctx: Context, after_dir: str) -> list[str]:
 
 
 # ── suppressions ───────────────────────────────────────────────────────────────
-
-def _added_lines(ctx: Context, deltas) -> dict[str, set[int]]:
-    """Line numbers (in the current tree) each changed .py file gained."""
-    diff = snapshot.unified_diff(ctx.root, ctx.baseline_tree, ctx.current_tree, *[d.path for d in deltas],
-                                 *[d.old_path for d in deltas if d.old_path])
-    out: dict[str, set[int]] = {}
-    path, line = None, 0
-    for text in diff.splitlines():
-        if text.startswith("+++ "):
-            path = text[6:] if text.startswith("+++ b/") else None
-        elif text.startswith("@@"):
-            m = re.match(r"@@ -\S+ \+(\d+)", text)
-            line = int(m.group(1)) if m else 0
-        elif text.startswith("+") and path:
-            out.setdefault(path, set()).add(line)
-            line += 1
-        elif text.startswith(" "):
-            line += 1
-    return out
-
 
 def _suppressions(ctx: Context, deltas, added_lines: dict[str, set[int]]) -> list[Finding]:
     """Suppression comments on lines this session wrote, when the file now has

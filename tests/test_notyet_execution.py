@@ -130,6 +130,7 @@ def test_end_to_end_through_the_gate(repo):
     assert out["decision"] == "block" and "passed at session start and fails now" in out["reason"]
     _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n")
     _write(repo, "pkg/extra.py", "from pkg.calc import add\n\n\ndef twice(x):\n    return add(x, x)\n")
+    _write(repo, "tests/test_extra.py", "from pkg.extra import twice\n\n\ndef test_twice():\n    assert twice(2) == 4\n")
     out = claude.handle("stop", {**payload, "stop_hook_active": True})
     assert "decision" not in out
 
@@ -200,3 +201,27 @@ def test_a_crash_that_already_happened_at_session_start_is_not_blocked(repo):
     _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b + 1\n\n\ndef sub(a, b):\n    return a - b\n")
     result = check(repo)
     assert result.findings == [] and any("didn't run at session start either" in n for n in result.not_checked)
+
+
+def test_changed_lines_no_test_runs_are_reported(repo):
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n\n\n"
+                                "def mul(a, b):\n    \"\"\"Multiply.\"\"\"\n    if a == 0:\n        return 0\n    return a * b\n\n\n"
+                                "def div(a, b):  # pragma: no cover\n    return a / b\n")
+    _write(repo, "tests/test_calc.py", (repo / "tests/test_calc.py").read_text()
+           + "\n\ndef test_mul():\n    from pkg.calc import mul\n    assert mul(2, 3) == 6\n")
+    result = check(repo)
+    found = [f for f in result.findings if f.rule == "untested-change"]
+    assert [f.title for f in found] == ["1 changed line(s) in pkg/calc.py never ran in the selected tests (12)"]
+    assert found[0].evidence == ["12: return 0"]
+
+
+def test_new_module_with_no_tests_at_all_is_reported(repo):
+    _write(repo, "pkg/orphan.py", "def lonely():\n    return 1\n")
+    found = [f.title for f in check(repo).findings]
+    assert found == ["2 changed line(s) in pkg/orphan.py never ran in the selected tests (1-2)"]
+
+
+def test_fully_exercised_change_has_no_coverage_findings(repo):
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    total = a + b\n    return total\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert result.findings == [] and any(c.startswith("coverage: recorded") for c in result.checks)
