@@ -90,9 +90,10 @@ replacement for the type checker (it runs the repo's own).
     - coverage wasn't available;
     - baseline isolation failed;
     - non-Python files changed.
-12. **History as advice.** The existing calibrated co-change model adds up to three advisory lines
+12. **History as advice.** Co-change counts from main-line history add up to three advisory lines
     ("usually changes with this: X, in 5 of 7 changes, e.g. a1b2c3"). It is never a block, and it
-    costs almost nothing because it's already built.
+    costs almost nothing (cached per HEAD). The old calibrated probability model was dropped with
+    the rest of codebase_intel: advice lines need counts and an example, not a probability.
 13. **Repos with no tests or slow suites** (decision pending, §8). Default: report "not checked",
     don't block; configurable.
 
