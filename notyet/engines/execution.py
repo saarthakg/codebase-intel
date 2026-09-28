@@ -234,13 +234,29 @@ def run(ctx: Context) -> EngineResult:
     need_baseline = bool(failing) or bool(changed_tests)
     baseline: dict[str, testrun.TestResult] = {}
     baseline_collected: dict[str, set[str]] = {}
+    baseline_errors: set[str] = set()
     baseline_ok, baseline_note = False, ""
     if need_baseline:
-        baseline_ok, baseline_note, baseline, baseline_collected = _baseline(ctx, failing, changed_tests)
+        baseline_ok, baseline_note, baseline, baseline_collected, baseline_errors = _baseline(ctx, failing, changed_tests)
         if not baseline_ok:
             result.not_checked.append(f"comparison with session start: {baseline_note}")
 
     unverified: list[testrun.TestResult] = []
+    for f in [f for f in failing if "::" not in f.nodeid]:     # a test file that can't be imported/collected
+        evidence = [line for line in f.message.splitlines() if line.strip()][:3]
+        if baseline_ok and f.nodeid in baseline_errors:
+            result.findings.append(Finding(
+                rule="test-failing-before", severity="note", location=f.nodeid, evidence=evidence,
+                title=f"{f.nodeid} can't be collected, but it couldn't at session start either"))
+        elif baseline_ok and baseline_collected.get(f.nodeid):
+            result.findings.append(Finding(
+                rule="test-regression", severity="block", location=f.nodeid, evidence=evidence,
+                title=f"{f.nodeid} can't be collected now, so none of its "
+                      f"{len(baseline_collected[f.nodeid])} test(s) run; it could at session start",
+                action="Fix the import or collection error."))
+        else:
+            unverified.append(f)
+    failing = [f for f in failing if "::" in f.nodeid]
     for f in failing:
         test_file = f.nodeid.split("::")[0]
         existed = baseline_ok and (_strip_params(f.nodeid) in {
@@ -421,6 +437,7 @@ def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: li
     results: dict[str, testrun.TestResult] = {}
     command = testrun.anchored(cfg.test_command, ctx.root)
     collected: dict[str, set[str]] = {}
+    errors: set[str] = set()
     with tempfile.TemporaryDirectory(prefix="notyet-baseline-") as tmp:
         # Resolve symlinks (macOS temp dirs live behind /var -> /private/var):
         # source roots come back resolved, and every path check compares with them.
@@ -428,25 +445,26 @@ def _baseline(ctx: Context, failing: list[testrun.TestResult], changed_tests: li
         snapshot.materialize(ctx.root, ctx.baseline_tree, tmp)
         roots = find_python_source_roots(tmp)
         env = {"PYTHONPATH": os.pathsep.join(str(r) for r in roots)}
-        files = sorted({f.nodeid.split("::")[0] for f in failing} | set(changed_tests))
+        files = sorted({f.nodeid.split("::")[0] for f in failing} | set(changed_tests))  # file-level ids are files
         present = [p for p in files if os.path.exists(os.path.join(tmp, p))]
         if not present:
-            return True, "", results, collected       # nothing existed then: everything is new
+            return True, "", results, collected, errors       # nothing existed then: everything is new
         ok, why = _canary(ctx, tmp, present, env)
         if not ok:
-            return False, why, results, collected
+            return False, why, results, collected, errors
         got = testrun.collect(command, tmp, present, env=env, timeout=60)
         if got is None:
-            return False, "couldn't collect the relevant test files at session start", results, collected
+            return False, "couldn't collect the relevant test files at session start", results, collected, errors
+        errors = got.errors
         for p in present:
             collected[p] = {n for n in got if n.startswith(p + "::")}
         existed = [f.nodeid for f in failing if f.nodeid in got]
         if existed:
             run = testrun.run_pytest(command, tmp, existed, env=env, timeout=max(30, cfg.budget_seconds))
             if run.crashed:
-                return False, f"the test command failed on the session-start tree ({run.crashed})", results, collected
+                return False, f"the test command failed on the session-start tree ({run.crashed})", results, collected, errors
             results = run.results
-    return True, "", results, collected
+    return True, "", results, collected, errors
 
 
 def _canary(ctx: Context, tmp: str, test_files: list[str], env) -> tuple[bool, str]:

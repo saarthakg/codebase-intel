@@ -261,3 +261,22 @@ def test_harmless_config_change_is_quiet(repo):
     _write(repo, "pkg/calc.py", "def add(a, b):\n    return b + a\n\n\ndef sub(a, b):\n    return a - b\n")
     result = check(repo)
     assert result.findings == [] and any("test collection compared" in c for c in result.checks)
+
+
+def test_a_test_file_that_stops_importing_blocks_and_others_still_run(repo):
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return a + b\n")          # sub() removed
+    result = check(repo)
+    blocks = [(f.rule, f.location) for f in result.findings if f.severity == "block"]
+    assert blocks == [("test-regression", "tests/test_calc.py")]
+    assert "can't be collected now, so none of its 2 test(s) run" in result.findings[0].title
+    assert "1 passed" in result.checks[0]                                     # test_shapes still ran
+
+
+def test_a_collection_error_that_existed_at_session_start_is_a_note(repo):
+    _write(repo, "tests/test_calc.py", "from pkg.calc import add, missing\n\n\ndef test_add():\n    assert add(1, 2) == 3\n")
+    _git(repo, "commit", "-qam", "broken import")
+    _write(repo, "pkg/calc.py", "def add(a, b):\n    return b + a\n\n\ndef sub(a, b):\n    return a - b\n")
+    result = check(repo)
+    assert [(f.rule, f.severity) for f in result.findings if f.location == "tests/test_calc.py"] == \
+        [("test-failing-before", "note")]
+    assert not any(f.severity == "block" for f in result.findings)

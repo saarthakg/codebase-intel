@@ -5,6 +5,7 @@ agent (or a background shell) reporting "exit 0" is exactly the signal that
 can't be trusted. Every run gets a hard timeout.
 """
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -45,6 +46,8 @@ def _nodeid(case: ET.Element) -> str:
     if not path:
         return f"{classname}::{name}"
     module = path[:-3].replace("/", ".") if path.endswith(".py") else path
+    if not classname and name == module:
+        return path       # the file itself failed to import or collect
     inner = classname[len(module) + 1:] if classname.startswith(module + ".") else ""
     return "::".join([path, *(inner.split(".") if inner else []), name])
 
@@ -89,7 +92,7 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
     with tempfile.TemporaryDirectory(prefix="notyet-junit-") as tmp:
         junit = os.path.join(tmp, "junit.xml")
         argv = shlex.split(command) + [
-            *targets, "-q", "-p", "no:cacheprovider", f"--junitxml={junit}",
+            *targets, "-q", "-p", "no:cacheprovider", "--continue-on-collection-errors", f"--junitxml={junit}",
             "-o", "junit_family=xunit1", *(extra or []),
         ]
         start = time.monotonic()
@@ -109,15 +112,29 @@ def run_pytest(command: str, cwd: str, targets: list[str], timeout: float,
         return run
 
 
+class Collected(set):
+    """Collected node ids, plus the files that failed to import or collect."""
+    def __init__(self, ids=(), errors=()):
+        super().__init__(ids)
+        self.errors: set[str] = set(errors)
+
+
+_COLLECT_ERROR = re.compile(r"^ERROR (\S+?\.py)\b")
+
+
 def collect(command: str, cwd: str, targets: list[str], timeout: float,
-            env: Optional[dict] = None) -> Optional[set[str]]:
-    """Node ids pytest collects from `targets`, or None if collection failed."""
-    argv = shlex.split(command) + [*targets, "--collect-only", "-q", "-p", "no:cacheprovider"]
+            env: Optional[dict] = None) -> Optional[Collected]:
+    """Node ids pytest collects from `targets` (and files it couldn't), or
+    None if pytest itself failed."""
+    argv = shlex.split(command) + [*targets, "--collect-only", "-q", "-p", "no:cacheprovider",
+                                   "--continue-on-collection-errors"]
     try:
         proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout,
                               env={**os.environ, **(env or {}), "PYTHONDONTWRITEBYTECODE": "1"})
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return None
-    if proc.returncode not in (0, 5):
+    lines = proc.stdout.splitlines()
+    errors = {m.group(1) for line in lines if (m := _COLLECT_ERROR.match(line))}
+    if proc.returncode not in (0, 5) and not errors:
         return None
-    return {line.strip() for line in proc.stdout.splitlines() if "::" in line and not line.startswith(" ")}
+    return Collected((line.strip() for line in lines if "::" in line and not line.startswith((" ", "ERROR"))), errors)
