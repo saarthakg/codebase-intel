@@ -57,8 +57,9 @@ def replay(root: Path, sha: str, budget: int) -> dict:
                       f'[gate]\nmode = "enforce"\n')
     baseline = snapshot.snapshot(str(root))          # parent + config
     git(root, "checkout", "-q", "--force", sha)      # the untracked config stays
+    parent_tree = git(root, "rev-parse", f"{sha}^^{{tree}}").strip()   # HEAD when the "session" started
     session = store.Session(session_id=f"replay-{sha[:10]}", started=time.time(), baseline_tree=baseline,
-                            baseline_head=snapshot.head_tree(str(root)), baseline_source="session-start")
+                            baseline_head=parent_tree, baseline_source="session-start")
     start = time.monotonic()
     decision = gate.check(str(root), session)
     seconds = time.monotonic() - start
