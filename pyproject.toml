@@ -3,11 +3,11 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codebase-intel"
-version = "2.0.0"
-description = "Change-impact analysis for git repos: what else a change needs, which tests to run, who calls it."
+name = "notyet"
+version = "0.1.0"
+description = "A completion gate for AI coding agents: when the agent says it's done, check whether it is."
 readme = "README.md"
-requires-python = ">=3.10,<3.13"  # tree-sitter-languages has no wheels for 3.13 yet
+requires-python = ">=3.11,<3.13"  # tomllib (3.11); tree-sitter-languages has no 3.13 wheels yet
 dependencies = [
     "pydantic>=2.0.0",
     "networkx>=3.3",
@@ -20,7 +20,8 @@ dependencies = [
 dev = ["pytest>=8.0.0", "pyyaml>=6.0", "numpy>=1.26"]  # numpy: training the model (eval/train_model.py)
 
 [project.scripts]
+notyet = "notyet.cli:main"
 codebase-intel = "codebase_intel.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["codebase_intel*"]
+include = ["notyet*", "codebase_intel*"]
