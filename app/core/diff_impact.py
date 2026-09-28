@@ -112,7 +112,7 @@ def analyze_symbol_changes(
     files that depend on the changed file (within `depth` import hops) or are
     the file itself, so an unrelated class's `send` doesn't match.
     """
-    from app.core.impact import analyze_impact_batch
+    from app.core.impact import analyze_impact_batch, combine_evidence
     from app.models.schemas import BatchImpactedFile
     from app.core.definitions import is_test_path
 
@@ -135,12 +135,16 @@ def analyze_symbol_changes(
                     continue  # changed in this same diff
                 reason = f"uses changed {qualified}"
                 existing = merged.get(user)
-                if existing is None or existing.confidence < _SYMBOL_USE_CONFIDENCE:
+                if existing is None:
                     merged[user] = BatchImpactedFile(
                         file_path=user, reason=reason, confidence=_SYMBOL_USE_CONFIDENCE,
-                        depth=existing.depth if existing else 1,
-                        triggered_by=sorted(set(existing.triggered_by if existing else []) | {file_path}),
+                        depth=1, triggered_by=[file_path],
                     )
+                elif not existing.reason.startswith("uses changed "):
+                    # Combined with the file-level evidence as in combine_evidence
+                    existing.confidence, existing.reason, _ = combine_evidence([
+                        (_SYMBOL_USE_CONFIDENCE, reason, 0), (existing.confidence, existing.reason, 0)])
+                    existing.triggered_by = sorted(set(existing.triggered_by) | {file_path})
                 else:
                     existing.triggered_by = sorted(set(existing.triggered_by) | {file_path})
 

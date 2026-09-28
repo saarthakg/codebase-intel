@@ -24,10 +24,9 @@ Metrics
               line_acc    — ...and the right line (decorators allowed, ±0 otherwise)
   references  recall / precision of /definition's `references` vs. every file
               that actually uses the symbol (defining file excluded both sides)
-  impact      direct_recall_high — true direct importers found in high_confidence
-              direct_recall_any  — ...found in any bucket
-              high_precision     — high_confidence files that truly depend on the
-                                   target (transitively, within the query depth)
+  impact      direct_recall_any — true direct importers listed, in any tier. (Tiers
+              rank by likelihood of changing together, which the history eval
+              measures; an importer with no other evidence is medium.)
   graph       precision / recall of the stored import edges (.py files only)
 """
 import argparse
@@ -154,43 +153,20 @@ def eval_references(client: TestClient, repo_id: str, cases: list[dict], verbose
     return {"recall": _mean(recalls), "precision": _mean(precisions), "n": len(cases)}
 
 
-def _transitive_dependents(graph: dict[str, list[str]], target: str, depth: int) -> set[str]:
-    reverse: dict[str, set[str]] = {}
-    for src, targets in graph.items():
-        for t in targets:
-            reverse.setdefault(t, set()).add(src)
-    seen: set[str] = set()
-    frontier = {target}
-    for _ in range(depth):
-        frontier = {d for f in frontier for d in reverse.get(f, ())} - seen - {target}
-        seen |= frontier
-    return seen
-
-
-def eval_impact(client: TestClient, repo_id: str, cases: list[dict], gt_graph: dict, verbose: bool) -> dict:
-    recall_high, recall_any, precision_high = [], [], []
+def eval_impact(client: TestClient, repo_id: str, cases: list[dict], verbose: bool) -> dict:
+    recall_any = []
     for case in cases:
         resp = client.post(
             "/impact", json={"repo_id": repo_id, "target": case["target"], "depth": IMPACT_DEPTH}
         )
         resp.raise_for_status()
         body = resp.json()
-        high = {i["file_path"] for i in body["high_confidence"]}
-        anyb = high | {i["file_path"] for i in body["medium_confidence"] + body["related"]}
+        listed = {i["file_path"] for i in body["high_confidence"] + body["medium_confidence"] + body["related"]}
         want = set(case["direct_dependents"])
-        truly_dependent = _transitive_dependents(gt_graph, case["target"], IMPACT_DEPTH)
-
-        recall_high.append(len(high & want) / len(want) if want else 1.0)
-        recall_any.append(len(anyb & want) / len(want) if want else 1.0)
-        precision_high.append(len(high & truly_dependent) / len(high) if high else (1.0 if not want else 0.0))
-        if verbose and want - high:
-            print(f"  impact {case['target']}: direct dependents not in high: {sorted(want - high)}")
-    return {
-        "direct_recall_high": _mean(recall_high),
-        "direct_recall_any": _mean(recall_any),
-        "high_precision": _mean(precision_high),
-        "n": len(cases),
-    }
+        recall_any.append(len(listed & want) / len(want) if want else 1.0)
+        if verbose and want - listed:
+            print(f"  impact {case['target']}: direct dependents not listed: {sorted(want - listed)}")
+    return {"direct_recall_any": _mean(recall_any), "n": len(cases)}
 
 
 def eval_graph(repo_id: str, gt_graph: dict) -> dict:
@@ -237,7 +213,7 @@ def main() -> None:
         },
         "definition": eval_definition(client, args.repo_id, bench["definition"], args.verbose),
         "references": eval_references(client, args.repo_id, bench["references"], args.verbose),
-        "impact": eval_impact(client, args.repo_id, bench["impact"], gt_graph, args.verbose),
+        "impact": eval_impact(client, args.repo_id, bench["impact"], args.verbose),
         "graph": eval_graph(args.repo_id, gt_graph),
     }
 

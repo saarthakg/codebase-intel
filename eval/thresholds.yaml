@@ -11,15 +11,16 @@ requests:                   # eval/run_eval.py, psf/requests
   definition.line_acc: 1.0
   references.recall: 1.0
   references.precision: 1.0
-  impact.direct_recall_high: 1.0
-  impact.high_precision: 1.0
+  impact.direct_recall_any: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
 requests_history:           # eval/run_history_eval.py (file-level /impact)
-  dev.recall@10: 0.64               # 0.666
-  dev.mrr: 0.66                     # 0.693
-  heldout.recall@10: 0.67           # 0.696
-  heldout.mrr: 0.61                 # 0.636
+  dev.recall@5: 0.54                # 0.570
+  dev.recall@10: 0.66               # 0.691
+  dev.mrr: 0.66                     # 0.692
+  heldout.recall@5: 0.55            # 0.582
+  heldout.recall@10: 0.68           # 0.711
+  heldout.mrr: 0.61                 # 0.644
 flask:                      # eval/run_eval.py --bench eval/flask_bench.yaml (never tuned on)
   search.span_mrr: 0.75             # 0.781
   search.span_hit@5: 0.92           # 0.953
@@ -27,15 +28,16 @@ flask:                      # eval/run_eval.py --bench eval/flask_bench.yaml (ne
   definition.line_acc: 1.0
   references.recall: 1.0
   references.precision: 1.0
-  impact.direct_recall_high: 1.0
-  impact.high_precision: 1.0
+  impact.direct_recall_any: 1.0
   graph.edge_recall: 1.0
   graph.edge_precision: 1.0
 flask_history:
-  dev.recall@10: 0.51               # 0.533
-  dev.mrr: 0.54                     # 0.567
-  heldout.recall@10: 0.54           # 0.567
-  heldout.mrr: 0.43                 # 0.454
+  dev.recall@5: 0.43                # 0.458
+  dev.recall@10: 0.57               # 0.596
+  dev.mrr: 0.59                     # 0.615
+  heldout.recall@5: 0.40            # 0.426
+  heldout.recall@10: 0.52           # 0.553
+  heldout.mrr: 0.54                 # 0.565
 usage_requests:             # eval/run_usage_eval.py vs runtime calls (eval/requests_calls.json)
   methods.recall: 0.92              # 0.947
   methods.precision_lower_bound: 0.73   # 0.759

@@ -101,10 +101,12 @@ def test_impact_diff_ranks_users_of_changed_symbol_first(tmp_path, monkeypatch):
         {"file_path": "pkg/adapters.py", "qualified_name": "Adapter.send", "used_in": ["pkg/sender.py"]}
     ]
     assert body["high_confidence"][0]["file_path"] == "pkg/sender.py"
-    assert body["high_confidence"][0]["reason"] == "uses changed Adapter.send"
-    ranked = [f["file_path"] for f in body["high_confidence"]]
+    assert body["high_confidence"][0]["reason"] == "uses changed Adapter.send; direct import"
+    ranked = [f["file_path"] for f in body["high_confidence"] + body["medium_confidence"] + body["related"]]
     assert ranked.index("pkg/sender.py") < ranked.index("pkg/closer.py")  # both import it; only one calls send
-    assert "other.py" not in ranked
+    users = {f["file_path"] for f in body["high_confidence"] + body["medium_confidence"] + body["related"]
+             if f["reason"].startswith("uses changed")}
+    assert "other.py" not in users  # its own class's send() doesn't count
     assert body["unindexed_files"] == ["brand_new.py"]
 
 

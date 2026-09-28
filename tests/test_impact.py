@@ -63,21 +63,22 @@ class MockEmbeddings:
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-def test_high_confidence_direct_import():
-    """Files that directly import target get confidence 0.95."""
+def test_direct_import_alone_is_medium_confidence():
+    """An import alone is weak evidence a file changes with the target (0.40)."""
     g = make_graph_abc()
     meta = make_mock_metadata()
     faiss = MagicMock(spec=FAISSStore)
     faiss.search.return_value = []
 
     resp = analyze_impact("C.py", "repo1", g, faiss, meta, MockEmbeddings())
-    high_files = [f.file_path for f in resp.high_confidence]
-    assert "B.py" in high_files
-    assert resp.high_confidence[0].confidence == 0.95
+    medium = {f.file_path: f for f in resp.medium_confidence}
+    assert medium["B.py"].confidence == 0.40
+    assert medium["B.py"].reason == "direct import"
 
 
-def test_medium_confidence_transitive_import():
-    """A is 2 hops from C, so confidence = 0.75 → high_confidence bucket."""
+def test_transitive_import_counts_like_a_direct_one():
+    """A is 2 hops from C: same confidence as a direct import; the hop count
+    only breaks ties."""
     g = make_graph_abc()
     meta = make_mock_metadata()
     faiss = MagicMock(spec=FAISSStore)
@@ -87,7 +88,9 @@ def test_medium_confidence_transitive_import():
     all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
     assert "A.py" in all_files
     a = all_files["A.py"]
-    assert a.confidence == 0.75  # depth=2 → 0.75 → high_confidence bucket
+    assert a.confidence == 0.40 and a.depth == 2
+    ranked = [f.file_path for f in resp.medium_confidence]
+    assert ranked.index("B.py") < ranked.index("A.py")
 
 
 def test_symbol_target_resolves_through_defining_file():
@@ -100,8 +103,7 @@ def test_symbol_target_resolves_through_defining_file():
     faiss.search.return_value = []
 
     resp = analyze_impact("some_func", "repo1", g, faiss, meta, MockEmbeddings())
-    high_files = [f.file_path for f in resp.high_confidence]
-    assert "B.py" in high_files
+    assert "B.py" in [f.file_path for f in resp.medium_confidence]
 
 
 def test_symbol_reference_medium_confidence():
@@ -146,15 +148,26 @@ def test_semantic_similarity_low_confidence():
     assert resp.related[0].confidence == 0.35
 
 
-def test_deduplication_keeps_highest_confidence():
-    """If a file appears in both graph signal and semantic, keep higher confidence."""
+def test_evidence_from_several_signals_combines():
+    """A file found by the graph and by history gets their noisy-OR and both
+    reasons, and outranks files found by one signal. Semantic neighbours only
+    add files no other signal found."""
+    from app.core.history import CoChange, Commit
     g = make_graph_abc()
     faiss, meta = make_mock_faiss({"chunk-b": "B.py"})
 
     resp = analyze_impact("C.py", "repo1", g, faiss, meta, MockEmbeddings())
-    # B.py is in graph (0.95); also in semantic (0.35) — should keep 0.95
     all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
-    assert all_files["B.py"].confidence == 0.95
+    assert all_files["B.py"].confidence == 0.40  # semantic hit on B.py is ignored
+
+    history = CoChange.from_commits([Commit(str(i), "d", ["C.py", "A.py"]) for i in range(3)])
+    resp = analyze_impact("C.py", "repo1", g, faiss, meta, MockEmbeddings(), cochange=history)
+    ranked = resp.high_confidence + resp.medium_confidence + resp.related
+    a = ranked[0]
+    assert a.file_path == "A.py"
+    p = 3 / (3 + 3)  # 3 shared commits, shrunk
+    assert a.confidence == pytest.approx(1 - (1 - 0.40) * (1 - (0.4 + 0.5 * p)))
+    assert a.reason == "changed together in 3 of 3 commits; transitive import (2 hops)"
 
 
 def test_buckets_thresholds():
@@ -196,8 +209,8 @@ def test_batch_merges_targets_and_excludes_self():
 
 def test_batch_keeps_highest_confidence_across_targets():
     """A.py -> B.py -> C.py. Batch impact for [B.py, C.py]: A.py is a direct
-    dependent of B.py (0.95) and a transitive dependent of C.py (0.75) — the
-    merged result should keep 0.95."""
+    dependent of B.py and a transitive dependent of C.py; the merged result
+    keeps the higher confidence and records both triggers."""
     g = make_graph_abc()
     meta = make_mock_metadata()
     faiss = MagicMock(spec=FAISSStore)
@@ -205,7 +218,8 @@ def test_batch_keeps_highest_confidence_across_targets():
 
     resp = analyze_impact_batch(["B.py", "C.py"], "repo1", g, faiss, meta, MockEmbeddings())
     all_files = {f.file_path: f for f in resp.high_confidence + resp.medium_confidence + resp.related}
-    assert all_files["A.py"].confidence == 0.95
+    assert all_files["A.py"].confidence == 0.40
+    assert all_files["A.py"].triggered_by == ["B.py", "C.py"]
 
 
 def test_unknown_target_returns_empty():
@@ -292,4 +306,4 @@ def test_equal_confidence_ties_prefer_frequently_changed_files_then_path():
     faiss = MagicMock(spec=FAISSStore)
     faiss.search.return_value = []
     resp = analyze_impact("t.py", "repo1", g, faiss, meta, MockEmbeddings(), cochange=history)
-    assert [f.file_path for f in resp.high_confidence] == ["z_busy.py", "a_quiet.py", "m_quiet.py"]
+    assert [f.file_path for f in resp.medium_confidence] == ["z_busy.py", "a_quiet.py", "m_quiet.py"]

@@ -9,26 +9,43 @@ from app.storage.metadata_store import MetadataStore
 if TYPE_CHECKING:
     from app.core.history import CoChange
 
-# Confidence scores by depth
-_GRAPH_CONFIDENCE = {1: 0.95, 2: 0.75, 3: 0.50}
+# Each signal gives a file a confidence, and a file found by several signals
+# gets their noisy-OR, 1 − ∏(1 − cᵢ): the chance at least one is right if they
+# were independent. Scores are tuned for "will this file change in the same
+# commit?", on the history eval's 2019–2022 dev commits of requests and Flask,
+# and checked once on 2023+. There an import alone is weak evidence and co-change
+# history strong: taking the max with direct imports at 0.95 ranked every
+# importer above every history-backed file (requests held-out recall@5 0.52,
+# Flask 0.33; now 0.58 and 0.43). An importer with no other evidence is medium.
+# Hop count made no difference once imports were weak, so every hop counts the
+# same and only breaks ties.
+_GRAPH_CONFIDENCE = 0.40
 _SYMBOL_CONFIDENCE = 0.70
 _SEMANTIC_CONFIDENCE = 0.35
-# A test named after the target (adapters.py → tests/test_adapters.py) ranks
-# above even direct importers: it's the file most likely to change with it.
-# 0.97 vs 0.9 was chosen on the history eval's dev commits (MRR 0.654 → 0.679)
-# and held on held-out (0.592 → 0.603).
+# A test named after the target (adapters.py → tests/test_adapters.py) is the
+# file most likely to change with it.
 _NAMED_TEST_CONFIDENCE = 0.97
 # Semantic neighbours: read this many chunks, keep up to this many new files.
 _SEMANTIC_POOL = 20
 _SEMANTIC_FILES = 5
 # Co-change: a file that changed together with the target in a fraction p of
 # the target's commits gets confidence 0.4 + 0.5·p (capped at 0.9), and p also
-# breaks ties among files with equal confidence from other signals (e.g. the
-# many "2 hops" files). Chosen on the history eval's 2019–2022 dev commits
-# (signal-only and tiebreak-only were both worse), checked once on 2023+.
+# breaks ties among files with equal confidence from other signals.
 _COCHANGE_BASE = 0.4
 _COCHANGE_SCALE = 0.5
 _COCHANGE_CAP = 0.9
+
+
+def combine_evidence(evidence: list[tuple[float, str, int]]) -> tuple[float, str, int]:
+    """One (confidence, reason, hop) per file from every (confidence, reason,
+    hop) found for it: noisy-OR confidence, reasons strongest first, the
+    shortest import path."""
+    miss = 1.0
+    for confidence, _, _ in evidence:
+        miss *= 1.0 - confidence
+    reasons = [r for _, r, _ in sorted(evidence, key=lambda e: -e[0])]
+    hop = min((h for _, _, h in evidence if h), default=0)
+    return 1.0 - miss, "; ".join(dict.fromkeys(reasons)), hop
 
 
 def _rank_key(file_path, confidence, hop, cochange=None, cochange_p=None):
@@ -60,13 +77,11 @@ def analyze_impact(
     `target` may be a file path (e.g. 'requests/adapters.py') or a symbol name
     (e.g. 'HTTPAdapter').
     """
-    # Accumulate: file_path → best (confidence, reason, depth)
-    results: dict[str, tuple[float, str, int]] = {}
+    # file_path → every (confidence, reason, hop) found for it
+    results: dict[str, list[tuple[float, str, int]]] = {}
 
     def _add(file_path: str, confidence: float, reason: str, hop: int = 0) -> None:
-        existing = results.get(file_path)
-        if existing is None or confidence > existing[0]:
-            results[file_path] = (confidence, reason, hop)
+        results.setdefault(file_path, []).append((confidence, reason, hop))
 
     # ── Signal 1: Graph traversal ──────────────────────────────────────────────
     # Determine the root file to traverse from
@@ -87,9 +102,8 @@ def analyze_impact(
         dependents = graph.dependents_of(root_file, depth=depth)
         for entry in dependents:
             d = entry["depth"]
-            conf = _GRAPH_CONFIDENCE.get(d, 0.30)
             reason = "direct import" if d == 1 else f"transitive import ({d} hops)"
-            _add(entry["file"], conf, reason, d)
+            _add(entry["file"], _GRAPH_CONFIDENCE, reason, d)
 
     # ── Signal 2: Symbol reference search ─────────────────────────────────────
     # Only apply if target looks like a symbol name (not a file path). Uses the
@@ -162,8 +176,9 @@ def analyze_impact(
     medium_confidence: list[ImpactedFile] = []
     related: list[ImpactedFile] = []
 
+    combined = {fp: combine_evidence(ev) for fp, ev in results.items()}
     for file_path, (confidence, reason, hop) in sorted(
-        results.items(), key=lambda x: _rank_key(x[0], x[1][0], x[1][2], cochange, cochange_p)
+        combined.items(), key=lambda x: _rank_key(x[0], x[1][0], x[1][2], cochange, cochange_p)
     ):
         item = ImpactedFile(
             file_path=file_path,

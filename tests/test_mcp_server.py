@@ -81,8 +81,8 @@ def test_ingest_then_query_end_to_end(data_dirs):
     assert {u["file"] for u in d["used_in"]} == {"pkg/session.py", "tests/test_netrc.py"}
 
     imp = call("impact", {"target": "pkg/netrc.py"}).structured_content
-    assert imp["impacted"][0] == {"file": "tests/test_netrc.py", "confidence": 0.97,
-                                  "reason": "test named for this file"}
+    top = imp["impacted"][0]
+    assert top["file"] == "tests/test_netrc.py" and top["reason"].startswith("test named for this file")
     assert "pkg/session.py" in {i["file"] for i in imp["impacted"]}
     assert imp["tests_to_run"] == ["tests/test_netrc.py"]
 

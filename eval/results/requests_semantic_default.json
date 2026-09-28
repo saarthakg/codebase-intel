@@ -46,9 +46,7 @@
     "n": 12
   },
   "impact": {
-    "direct_recall_high": 1.0,
     "direct_recall_any": 1.0,
-    "high_precision": 1.0,
     "n": 10
   },
   "graph": {
