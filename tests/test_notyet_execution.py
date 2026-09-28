@@ -110,13 +110,15 @@ def test_budget_is_respected_and_reported(repo):
 def test_a_moved_repo_is_reported_at_its_new_path(tmp_path):
     """A __pycache__ that moved with the repo still looks fresh to Python, and its code carries the
     old path; notyet's runs must not report tests there."""
+    import os
     import shutil
     import subprocess
 
     from notyet import testrun
     old, new = tmp_path / "old", tmp_path / "moved" / "new"
     _write(old, "tests/test_x.py", "def test_x():\n    assert 1\n")
-    subprocess.run([sys.executable, "-m", "pytest", "-q", "tests"], cwd=old, check=True, capture_output=True)
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}   # notyet's own runs set it
+    subprocess.run([sys.executable, "-m", "pytest", "-q", "tests"], cwd=old, check=True, capture_output=True, env=env)
     assert list((old / "tests/__pycache__").glob("*pytest*.pyc"))       # pytest's rewritten bytecode
     shutil.copytree(old, new)                                            # keeps mtimes, as a move does
     run = testrun.run_pytest(PYTEST, str(new), ["tests/test_x.py"], timeout=60)
