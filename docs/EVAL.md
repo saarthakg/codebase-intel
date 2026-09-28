@@ -149,7 +149,47 @@ What this shows, on 6 sessions:
   catching regressions and gaming that an agent reports as done, needs tasks where those happen:
   larger cross-module changes, follow-up turns that can undo earlier work, and real dogfooding.
 
-## 5. Open decisions these results raise
+## 5. Vacuous new tests, replayed on real commits
+
+**The rule.** After the session, notyet runs the session's new and edited test functions
+against the session-start code:
+- It uses a checkout of the session-start tree, with the session's test-side files copied in,
+  behind the same import canary as the other session-start runs.
+- New `parametrize` cases count as new tests.
+- A test that fails there tells the old code from the new code.
+- **How it decides.** It fires once per session, not once per test. The finding is
+  **test-vacuous** (fix or justify), and it fires only when the session changed source code and
+  *none* of its new tests fails at session start.
+  - If at least one test fails there, the change is proven. Tests that pass on both sides are
+    regression or characterization tests, so they're only counted on the receipt.
+  - Sessions that only add tests aren't compared.
+
+**Results.** `eval/notyet_replay.py` ran on the same 30 click and attrs commits as §2. Raw
+results are in `results/2026-09-28/replay_vacuous.json`.
+
+- **Compared: 25 of 30 commits.** The other 5 had no new test passing on the new code, or
+  changed only test data.
+- **21 of the 25 have at least one new test that fails on the parent.** These are the maintainers'
+  reproducing tests.
+- **test-vacuous fired on 4 commits:**
+  - **click 0d69b6c** "Adds support for editing multiple files" is a real catch. The only new
+    test edits *one* file, which already worked. The multi-file path went in untested.
+  - **attrs 9b98a73** (drop Python 3.9), **6851ab5** (defer imports) and **c44b8b0** (dev-deps
+    update) are refactor or maintenance commits that don't change behavior. The claim is true,
+    and the expected response is an acknowledgment ("refactor, behavior unchanged").
+- **Flagging each test separately** would have added 3 more commits (7 of 30). Each of those
+  already had a reproducing test next to the regression test, which is why the rule works per
+  session.
+- **The replay found three bugs, all fixed:**
+  - new `parametrize` cases weren't counted;
+  - when one new test file couldn't import at session start, pytest dropped every other
+    targeted result (notyet now re-runs by file);
+  - the session-start cache kept results computed by an older notyet (it's now keyed on
+    notyet's own code).
+- **Known gap:** tests whose test data changed at module level, with no function edited, aren't
+  seen as new tests (click b5464b7).
+
+## 6. Open decisions these results raise
 
 1. **Legitimate behavior changes block once.** Keep the block? (It's cheap now: one batch ack,
    and the receipt shows the reason.) Or make `test-changed-to-pass` and `test-removed` "fix or
