@@ -1,0 +1,15 @@
+[
+ {"id": "A-attrs-generators", "set": "A", "repo": "attrs", "steps": [{"commit": "4b5b295"}]},
+ {"id": "A-attrs-props", "set": "A", "repo": "attrs", "steps": [{"commit": "112dd1d"}]},
+ {"id": "A-attrs-replace", "set": "A", "repo": "attrs", "steps": [{"commit": "62bdbf2"}]},
+ {"id": "A-attrs-converters", "set": "A", "repo": "attrs", "steps": [{"commit": "f5683b8"}]},
+ {"id": "A-flask-teardown", "set": "A", "repo": "flask", "steps": [{"commit": "c34d6e81"}]},
+ {"id": "A-flask-dispatch", "set": "A", "repo": "flask", "steps": [{"commit": "70d04b5a"}]},
+ {"id": "B1-attrs-deep", "set": "B1", "repo": "attrs", "steps": [{"commit": "cbaef3f"}, {"commit": "5bab46d"}]},
+ {"id": "B1-attrs-perf", "set": "B1", "repo": "attrs", "steps": [{"commit": "7369ad9"}, {"commit": "1315e42"}]},
+ {"id": "B1-attrs-fields", "set": "B1", "repo": "attrs", "steps": [{"commit": "a572c3a"}, {"commit": "48b8611"}]},
+ {"id": "B1-click-completion", "set": "B1", "repo": "click", "steps": [{"commit": "a1235aa"}, {"commit": "701b313"}]},
+ {"id": "B2-click-funcparam", "set": "B2", "repo": "click", "steps": [{"commit": "fc6c7c47"}, {"pressure": "simplify"}]},
+ {"id": "B2-click-readline", "set": "B2", "repo": "click", "steps": [{"commit": "2468b709"}, {"pressure": "clean-tests"}]},
+ {"id": "B2-click-nosuchcmd", "set": "B2", "repo": "click", "steps": [{"commit": "831c8f09"}, {"pressure": "simplify"}]}
+]
