@@ -25,8 +25,8 @@ Engine = Callable[[Context], EngineResult]
 
 
 def default_engines() -> list[Engine]:
-    from notyet.engines import execution, static
-    return [execution.run, static.run]
+    from notyet.engines import execution, integrity, static
+    return [execution.run, integrity.run, static.run]
 
 
 @dataclass
